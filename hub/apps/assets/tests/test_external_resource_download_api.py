@@ -1,0 +1,632 @@
+"""
+Comprehensive tests for external resource download API endpoints.
+
+Tests:
+- GET /api/v1/assets/{asset_id}/external-resources
+- POST /api/v1/assets/{asset_id}/external-resources/{resource_id}/download
+- POST /api/v1/assets/{asset_id}/external-resources/batch-download
+
+Comprehensive tests without mocks/stubs, following engineering best practices.
+"""
+
+import uuid
+
+import pytest
+from django.contrib.auth import get_user_model
+from django.test import TestCase
+from rest_framework import status
+from rest_framework.test import APIClient
+
+from hub.apps.assets.models import Asset, AssetSourceType, DataStrategy, ExternalResourceReference
+from hub.apps.datasets.models import Dataset
+from hub.apps.files.models import File, FileStatus
+from hub.apps.integrations.models import MarketplaceConnection, MarketplaceType
+from hub.apps.tenants.models import KYCStatus, Tenant
+
+pytestmark = pytest.mark.django_db(transaction=True)
+User = get_user_model()
+
+
+class ExternalResourceDownloadAPITest(TestCase):
+    """Test external resource download API endpoints"""
+
+    def setUp(self):
+        """Set up test fixtures"""
+        self.client = APIClient()
+
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
+        )
+        from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+
+        ensure_tenant_has_active_subscription(self.tenant)
+        self.user = User.objects.create_user(
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant
+        )
+        self.client.force_authenticate(user=self.user)
+        from hub.apps.testing.role_support import ensure_user_has_data_provider_role
+
+        ensure_user_has_data_provider_role(self.user)
+
+        # Create marketplace connection
+        self.marketplace_connection = MarketplaceConnection.objects.create(
+            tenant=self.tenant,
+            marketplace_type=MarketplaceType.CKAN_INSTANCE.value,
+            name="Test Marketplace Connection",
+            config={"api_key": "test-key"},
+        )
+
+        # Create federated asset
+        self.federated_asset = Asset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            key=f"federated-asset-{uuid.uuid4()}",
+            name="Test Federated Asset",
+            source_type=AssetSourceType.FEDERATED,
+            data_strategy=DataStrategy.METADATA_ONLY,
+            source_metadata={
+                "marketplace_type": MarketplaceType.CKAN_INSTANCE.value,
+                "listing_id": "test-listing-id",
+            },
+        )
+
+        # Create external resource references
+        self.external_resource_1 = ExternalResourceReference.objects.create(
+            asset=self.federated_asset,
+            resource_id="res-123",
+            name="Test Resource 1",
+            url="https://example.com/resource1.csv",
+            format="CSV",
+            size_bytes=1024,
+            marketplace_type=MarketplaceType.CKAN_INSTANCE.value,
+            connection_id=self.marketplace_connection.id,
+        )
+
+        self.external_resource_2 = ExternalResourceReference.objects.create(
+            asset=self.federated_asset,
+            resource_id="res-456",
+            name="Test Resource 2",
+            url="https://example.com/resource2.json",
+            format="JSON",
+            size_bytes=2048,
+            marketplace_type=MarketplaceType.CKAN_INSTANCE.value,
+            connection_id=self.marketplace_connection.id,
+        )
+
+        # Create non-federated asset for negative tests
+        self.non_federated_asset = Asset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            key=f"non-federated-asset-{uuid.uuid4()}",
+            name="Non-Federated Asset",
+            source_type=AssetSourceType.HUB_NATIVE,
+        )
+
+    def test_list_external_resources_returns_correct_shape(self):
+        """GET external-resources/ returns 200 with correct count, resources
+        list, and each resource contains all required fields."""
+        response = self.client.get(f"/api/v1/assets/{self.federated_asset.id}/external-resources/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.data
+        self.assertIn("resources", data)
+        self.assertIn("count", data)
+        self.assertEqual(data["count"], 2)
+        self.assertEqual(len(data["resources"]), 2)
+
+        # Pick resource "res-123" and verify every required field.
+        res = next((r for r in data["resources"] if r["resource_id"] == "res-123"), None)
+        self.assertIsNotNone(res, "resource 'res-123' must be in the response")
+        self.assertEqual(res["name"], "Test Resource 1")
+        self.assertEqual(res["format"], "CSV")
+        self.assertIn("is_downloaded", res)
+        self.assertFalse(
+            res["is_downloaded"],
+            "Not-yet-downloaded resource must report is_downloaded=False",
+        )
+
+    def test_list_external_resources_non_federated_asset(self):
+        """Test listing external resources for non-federated asset fails"""
+        response = self.client.get(
+            f"/api/v1/assets/{self.non_federated_asset.id}/external-resources/"
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("error", response.data)
+        self.assertEqual(response.data["code"], "NOT_FEDERATED_ASSET")
+
+    def test_list_external_resources_with_downloaded_resource(self):
+        """When a Dataset+File exist for a resource, the list endpoint
+        returns is_downloaded=True, file_id, and dataset_id."""
+        file_obj = File.objects.create(
+            tenant=self.tenant,
+            name="Test Resource 1",
+            content_type="text/csv",
+            size=1024,
+            status=FileStatus.ACTIVE,
+            created_by=self.user,
+            storage_path=f"{self.tenant.id}/test-file",
+        )
+
+        dataset = Dataset.objects.create(
+            tenant=self.tenant,
+            asset=self.federated_asset,
+            file=file_obj,
+            format="CSV",
+            version=1,
+            is_current=True,
+        )
+
+        response = self.client.get(f"/api/v1/assets/{self.federated_asset.id}/external-resources/")
+        resource_1 = next(
+            (r for r in response.data["resources"] if r["resource_id"] == "res-123"), None
+        )
+        self.assertTrue(resource_1["is_downloaded"])
+        self.assertEqual(resource_1["file_id"], str(file_obj.id))
+        self.assertEqual(resource_1["dataset_id"], str(dataset.id))
+
+    def test_download_external_resource_success(self):
+        """Test downloading a single external resource"""
+        import os
+        import tempfile
+        from unittest.mock import patch
+
+        test_content = b"id,name\n1,Test\n2,Data"
+
+        # Create a temporary file for testing
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as temp_file:
+            temp_file.write(test_content)
+        self.addCleanup(
+            lambda: os.unlink(temp_file.name) if os.path.exists(temp_file.name) else None
+        )
+
+        def mock_download(self_asset, resource_id):
+            return temp_file.name, test_content
+
+        with (
+            patch.object(Asset, "download_external_resource", mock_download),
+            patch(
+                "hub.apps.files.storage.S3StorageClient.save_file",
+                return_value="mock/s3/path/test.csv",
+            ),
+        ):
+            response = self.client.post(
+                f"/api/v1/assets/{self.federated_asset.id}/external-resources/download/",
+                {"resource_id": "res-123"},
+                format="json",
+            )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+            f"Expected 200 but got {response.status_code}: {getattr(response, 'data', '')}",
+        )
+        self.assertIn("status", response.data)
+        self.assertEqual(response.data["status"], "success")
+        self.assertIn("file_id", response.data)
+        self.assertIn("dataset_id", response.data)
+
+        # Verify File was created
+        file_id = response.data["file_id"]
+        file_obj = File.objects.get(id=file_id)
+        self.assertEqual(file_obj.name, "Test Resource 1")
+        self.assertEqual(file_obj.tenant, self.tenant)
+
+        # Verify Dataset was created
+        dataset_id = response.data["dataset_id"]
+        dataset = Dataset.objects.get(id=dataset_id)
+        self.assertEqual(dataset.asset, self.federated_asset)
+        self.assertEqual(dataset.file, file_obj)
+
+        # Verify asset data_strategy was updated
+        self.federated_asset.refresh_from_db()
+        self.assertEqual(self.federated_asset.data_strategy, DataStrategy.DOWNLOAD_SELECTIVE)
+
+    def test_download_external_resource_not_found(self):
+        """Test downloading non-existent external resource"""
+        response = self.client.post(
+            f"/api/v1/assets/{self.federated_asset.id}/external-resources/download/",
+            {"resource_id": "non-existent"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertIn("error", response.data)
+        self.assertEqual(response.data["code"], "RESOURCE_NOT_FOUND")
+
+    def test_download_external_resource_non_federated_asset(self):
+        """Test downloading resource from non-federated asset fails"""
+        response = self.client.post(
+            f"/api/v1/assets/{self.non_federated_asset.id}/external-resources/download/",
+            {"resource_id": "res-123"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["code"], "NOT_FEDERATED_ASSET")
+
+    def test_batch_download_external_resources_success(self):
+        """Test batch downloading multiple external resources"""
+        import os
+        import tempfile
+        from unittest.mock import patch
+
+        test_content = b"id,name\n1,Test\n2,Data"
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as temp_file:
+            temp_file.write(test_content)
+        self.addCleanup(
+            lambda: os.unlink(temp_file.name) if os.path.exists(temp_file.name) else None
+        )
+
+        def mock_download(self_asset, resource_id):
+            return temp_file.name, test_content
+
+        with (
+            patch.object(Asset, "download_external_resource", mock_download),
+            patch(
+                "hub.apps.files.storage.S3StorageClient.save_file",
+                return_value="mock/s3/path/test.csv",
+            ),
+        ):
+            response = self.client.post(
+                f"/api/v1/assets/{self.federated_asset.id}/external-resources/batch-download/",
+                {"resource_ids": ["res-123", "res-456"]},
+                format="json",
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("results", response.data)
+        self.assertIn("total_requested", response.data)
+        self.assertEqual(response.data["total_requested"], 2)
+
+        # Verify results structure
+        for result in response.data["results"]:
+            self.assertIn("status", result)
+            self.assertIn("resource_id", result)
+
+    def test_batch_download_invalid_request(self):
+        """Test batch download with invalid request data"""
+        # Missing resource_ids
+        response = self.client.post(
+            f"/api/v1/assets/{self.federated_asset.id}/external-resources/batch-download/",
+            {},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+        # Empty resource_ids list
+        response = self.client.post(
+            f"/api/v1/assets/{self.federated_asset.id}/external-resources/batch-download/",
+            {"resource_ids": []},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_download_external_resource_permission_denied(self):
+        """Test downloading resource with cross-tenant access"""
+        # Create another tenant and user (with subscription so middleware allows POST;
+        # view then returns 404 because asset is not in other_user's tenant queryset)
+        _uid = uuid.uuid4().hex[:8]
+        other_tenant = Tenant.objects.create(
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
+        )
+        from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+
+        ensure_tenant_has_active_subscription(other_tenant)
+        other_user = User.objects.create_user(
+            email=f"other-{_uid}@example.com", password="testpass123", tenant=other_tenant
+        )
+        # W7.5 — enforced scope contract: grant DATA_PROVIDER in the
+        # OTHER tenant so the request passes the scope check and reaches
+        # the endpoint's own tenant-queryset 404 (the no-leak design
+        # this test pins); a role-less user would 403 at the scope gate
+        # before the 404.
+        from hub.apps.users.models import Role
+
+        other_provider_role, _ = Role.objects.get_or_create(
+            tenant=other_tenant,
+            name="DATA_PROVIDER",
+            defaults={"description": "Data Provider Role"},
+        )
+        other_user.user_roles.create(role=other_provider_role)
+
+        # Switch to other user
+        self.client.force_authenticate(user=other_user)
+
+        response = self.client.post(
+            f"/api/v1/assets/{self.federated_asset.id}/external-resources/download/",
+            {"resource_id": "res-123"},
+            format="json",
+        )
+
+        # DRF returns 404 when asset is not found in queryset (filtered by tenant)
+        # This is correct behavior - cross-tenant assets are not accessible
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_download_external_resource_already_downloaded(self):
+        """Test downloading already downloaded resource returns existing File/Dataset"""
+        # Create File and Dataset to simulate already downloaded resource
+        file_obj = File.objects.create(
+            tenant=self.tenant,
+            name="Test Resource 1",
+            content_type="text/csv",
+            size=1024,
+            status=FileStatus.ACTIVE,
+            created_by=self.user,
+            storage_path=f"{self.tenant.id}/test-file",
+        )
+
+        dataset = Dataset.objects.create(
+            tenant=self.tenant,
+            asset=self.federated_asset,
+            file=file_obj,
+            format="CSV",
+            version=1,
+            is_current=True,
+        )
+
+        response = self.client.post(
+            f"/api/v1/assets/{self.federated_asset.id}/external-resources/download/",
+            {"resource_id": "res-123"},
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+            f"Expected 200 for already-downloaded resource but got {response.status_code}: {getattr(response, 'data', '')}",
+        )
+        self.assertEqual(response.data["status"], "already_downloaded")
+        self.assertEqual(response.data["file_id"], str(file_obj.id))
+        self.assertEqual(response.data["dataset_id"], str(dataset.id))
+
+    # ========== EDGE CASES ==========
+
+    def test_list_external_resources_edge_case_empty_list(self):
+        """Test listing external resources when none exist (edge case)"""
+        # Create asset without external resources
+        empty_asset = Asset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            key=f"empty-asset-{uuid.uuid4()}",
+            name="Empty Asset",
+            source_type=AssetSourceType.FEDERATED,
+            data_strategy=DataStrategy.METADATA_ONLY,
+        )
+
+        response = self.client.get(f"/api/v1/assets/{empty_asset.id}/external-resources/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # Response structure is {"asset_id": ..., "resources": [...], "count": ...}
+        self.assertEqual(len(response.data.get("resources", [])), 0)
+        self.assertEqual(response.data.get("count", 0), 0)
+
+    def test_download_external_resource_edge_case_invalid_resource_id(self):
+        """Test downloading with invalid resource_id (edge case)"""
+        response = self.client.post(
+            f"/api/v1/assets/{self.federated_asset.id}/external-resources/download/",
+            {"resource_id": "invalid-resource-id"},
+            format="json",
+        )
+
+        # Endpoint's DoesNotExist handler returns 404 for unknown resource_id
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertIn("error", response.data)
+        self.assertEqual(response.data["code"], "RESOURCE_NOT_FOUND")
+
+    def test_batch_download_edge_case_empty_list(self):
+        """Test batch download with empty resource list (edge case)"""
+        response = self.client.post(
+            f"/api/v1/assets/{self.federated_asset.id}/external-resources/batch-download/",
+            {"resource_ids": []},
+            format="json",
+        )
+
+        # Empty resource_ids list is rejected by serializer validation
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_batch_download_edge_case_duplicate_resource_ids(self):
+        """Test batch download with duplicate resource IDs (edge case).
+
+        The view deduplicates resource_ids internally via dict.fromkeys(),
+        so duplicate IDs in the request are handled gracefully.
+        """
+        import os
+        import tempfile
+        from unittest.mock import patch
+
+        test_content = b"id,name\n1,Test\n2,Data"
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as temp_file:
+            temp_file.write(test_content)
+        self.addCleanup(
+            lambda: os.unlink(temp_file.name) if os.path.exists(temp_file.name) else None
+        )
+
+        def mock_download(self_asset, resource_id):
+            return temp_file.name, test_content
+
+        with (
+            patch.object(Asset, "download_external_resource", mock_download),
+            patch(
+                "hub.apps.files.storage.S3StorageClient.save_file",
+                return_value="mock/s3/path/test.csv",
+            ),
+        ):
+            response = self.client.post(
+                f"/api/v1/assets/{self.federated_asset.id}/external-resources/batch-download/",
+                {"resource_ids": ["res-123", "res-123", "res-456"]},
+                format="json",
+            )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("results", response.data)
+        # View deduplicates internally — total_requested reflects de-duplicated count
+        self.assertEqual(response.data["total_requested"], 2)
+
+    def test_download_external_resource_edge_case_metadata_only_strategy(self):
+        """Test downloading with METADATA_ONLY strategy triggers download and updates strategy.
+
+        The download endpoint should transition the asset from METADATA_ONLY to
+        DOWNLOAD_SELECTIVE after a successful download, proving the strategy update
+        is part of the download flow.
+        """
+        import os
+        import tempfile
+        from unittest.mock import patch
+
+        test_content = b"id,name\n1,Test\n2,Data"
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as temp_file:
+            temp_file.write(test_content)
+        self.addCleanup(
+            lambda: os.unlink(temp_file.name) if os.path.exists(temp_file.name) else None
+        )
+
+        def mock_download(self_asset, resource_id):
+            return temp_file.name, test_content
+
+        # Verify asset starts with METADATA_ONLY strategy
+        self.assertEqual(self.federated_asset.data_strategy, DataStrategy.METADATA_ONLY)
+
+        with (
+            patch.object(Asset, "download_external_resource", mock_download),
+            patch(
+                "hub.apps.files.storage.S3StorageClient.save_file",
+                return_value="mock/s3/path/test.csv",
+            ),
+        ):
+            response = self.client.post(
+                f"/api/v1/assets/{self.federated_asset.id}/external-resources/download/",
+                {"resource_id": self.external_resource_1.resource_id},
+                format="json",
+            )
+
+        # Download should succeed with proper mocks
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_200_OK,
+            f"Expected 200 but got {response.status_code}: {getattr(response, 'data', '')}",
+        )
+        self.assertEqual(response.data["status"], "success")
+
+        # Verify asset data_strategy was updated from METADATA_ONLY to DOWNLOAD_SELECTIVE
+        self.federated_asset.refresh_from_db()
+        self.assertEqual(
+            self.federated_asset.data_strategy,
+            DataStrategy.DOWNLOAD_SELECTIVE,
+            "Asset strategy should transition from METADATA_ONLY to DOWNLOAD_SELECTIVE after download",
+        )
+
+
+class ExternalResourceDownloadSecurityTest(TestCase):
+    """Security tests for external resource download API"""
+
+    def setUp(self):
+        """Set up test fixtures"""
+        self.client = APIClient()
+
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(
+            name=f"Test Tenant {uid}", slug=f"test-tenant-{uid}", kyc_status=KYCStatus.VERIFIED
+        )
+        self.user = User.objects.create_user(
+            email=f"test-{uid}@example.com", password="testpass123", tenant=self.tenant
+        )
+
+        # Create marketplace connection
+        self.marketplace_connection = MarketplaceConnection.objects.create(
+            tenant=self.tenant,
+            marketplace_type=MarketplaceType.CKAN_INSTANCE.value,
+            name="Test Marketplace Connection",
+            config={"api_key": "test-key"},
+        )
+
+        # Create federated asset
+        self.federated_asset = Asset.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            key=f"federated-asset-{uuid.uuid4()}",
+            name="Test Federated Asset",
+            source_type=AssetSourceType.FEDERATED,
+            data_strategy=DataStrategy.METADATA_ONLY,
+        )
+
+        self.external_resource = ExternalResourceReference.objects.create(
+            asset=self.federated_asset,
+            resource_id="res-123",
+            name="Test Resource",
+            url="https://example.com/resource.csv",
+            format="CSV",
+            size_bytes=1024,
+            marketplace_type=MarketplaceType.CKAN_INSTANCE.value,
+            connection_id=self.marketplace_connection.id,
+        )
+
+    def test_unauthenticated_access_denied(self):
+        """Test unauthenticated users cannot access endpoints"""
+        self.client.force_authenticate(user=None)
+
+        # Test list endpoint
+        response = self.client.get(f"/api/v1/assets/{self.federated_asset.id}/external-resources/")
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+        # Test download endpoint
+        response = self.client.post(
+            f"/api/v1/assets/{self.federated_asset.id}/external-resources/download/",
+            {"resource_id": "res-123"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+        # Test batch download endpoint
+        response = self.client.post(
+            f"/api/v1/assets/{self.federated_asset.id}/external-resources/batch-download/",
+            {"resource_ids": ["res-123"]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_cross_tenant_access_denied(self):
+        """Test users from different tenants cannot access resources"""
+        from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+
+        # Create other tenant and user with active subscription so the
+        # billing middleware does NOT short-circuit before the view's
+        # permission check runs.
+        _uid = uuid.uuid4().hex[:8]
+        other_tenant = Tenant.objects.create(
+            name=f"Other Tenant {_uid}", slug=f"other-tenant-{_uid}", kyc_status=KYCStatus.VERIFIED
+        )
+        ensure_tenant_has_active_subscription(other_tenant)
+        other_user = User.objects.create_user(
+            email=f"other-{_uid}@example.com", password="testpass123", tenant=other_tenant
+        )
+        # W7.5 — enforced scope contract (see the sibling test's note).
+        from hub.apps.users.models import Role
+
+        other_provider_role, _ = Role.objects.get_or_create(
+            tenant=other_tenant,
+            name="DATA_PROVIDER",
+            defaults={"description": "Data Provider Role"},
+        )
+        other_user.user_roles.create(role=other_provider_role)
+
+        self.client.force_authenticate(user=other_user)
+
+        # Test list endpoint
+        response = self.client.get(f"/api/v1/assets/{self.federated_asset.id}/external-resources/")
+        # DRF returns 404: asset filtered out by tenant-scoped queryset
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+        # Test download endpoint — DRF returns 404: asset filtered out
+        # by tenant-scoped queryset BEFORE the explicit permission check.
+        response = self.client.post(
+            f"/api/v1/assets/{self.federated_asset.id}/external-resources/download/",
+            {"resource_id": "res-123"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)

@@ -1,0 +1,181 @@
+{
+  "title": "Datasets & Files Phase 260",
+  "uid": "datasets-files",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 2,
+  "refresh": "60s",
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Upload attempts / 5m (placeholder)",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+      "targets": [{ "expr": "sum(rate(datasets_files_upload_attempts_total[5m]))", "legendFormat": "attempts/s" }]
+    },
+    {
+      "type": "piechart",
+      "title": "File scan-status distribution",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 8 },
+      "targets": [{ "expr": "sum by (scan_status) (datasets_files_scan_outcomes_total)", "legendFormat": "{{scan_status}}" }]
+    },
+    {
+      "type": "graph",
+      "title": "Purge volume (placeholder)",
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "targets": [{ "expr": "sum(rate(datasets_files_hard_purges_total[1h]))", "legendFormat": "purges/s" }]
+    },
+    {
+      "type": "graph",
+      "title": "Quota utilisation histogram",
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "targets": [{ "expr": "max by (tenant_id) (datasets_files_quota_utilization_ratio)", "legendFormat": "{{tenant_id}}" }]
+    },
+    {
+      "type": "graph",
+      "title": "Dataset version count slope",
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "targets": [{ "expr": "deriv(datasets_versions_total[1h])", "legendFormat": "versions/h slope" }]
+    },
+    {
+      "type": "row",
+      "title": "Phase 260.DoD.4 — SLO escalation (P95 latency vs 5s SLO)",
+      "gridPos": { "x": 0, "y": 16, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "type": "timeseries",
+      "title": "datasets-files API p95 latency (excl. multipart endpoints)",
+      "description": "P95 of /api/v1/(files|datasets)/... excluding /init/, /complete/, /parts/, /chunks/. SLO baseline = 5s. The 2x SLO line (10s) is the auto-page threshold; 3x SLO (15s) is the auto-rollback threshold per `monitoring/prometheus/alerts/datasets-files.yml`.",
+      "gridPos": { "x": 0, "y": 17, "w": 24, "h": 9 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{route=~\"/api/v1/(files|datasets)(/.*)?\", route!~\"/api/v1/files/.*/(init|complete|parts|chunks).*\"}[10m])))",
+          "legendFormat": "p95 datasets-files API",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 5 },
+              { "color": "orange", "value": 10 },
+              { "color": "red", "value": 15 }
+            ]
+          },
+          "custom": {
+            "thresholdsStyle": { "mode": "line+area" }
+          }
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Time above 1x SLO (5s) — last 30m",
+      "gridPos": { "x": 0, "y": 26, "w": 6, "h": 5 },
+      "description": "Seconds in the last 30 min during which p95 exceeded the 5s SLO. Mirrors the `for: 10m` clause on `DatasetFilesP95Regressed`.",
+      "targets": [
+        {
+          "expr": "sum_over_time((histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{route=~\"/api/v1/(files|datasets)(/.*)?\", route!~\"/api/v1/files/.*/(init|complete|parts|chunks).*\"}[10m]))) > bool 5)[30m:1m]) * 60",
+          "legendFormat": "seconds above 1x SLO",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "s", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 60 }] } }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Time above 2x SLO (10s) — last 30m",
+      "gridPos": { "x": 6, "y": 26, "w": 6, "h": 5 },
+      "description": "Seconds in the last 30 min during which p95 exceeded the 2x SLO (10s). Mirrors the `for: 15m` clause on `DatasetFilesP95TwoXSLO` (auto-page threshold).",
+      "targets": [
+        {
+          "expr": "sum_over_time((histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{route=~\"/api/v1/(files|datasets)(/.*)?\", route!~\"/api/v1/files/.*/(init|complete|parts|chunks).*\"}[10m]))) > bool 10)[30m:1m]) * 60",
+          "legendFormat": "seconds above 2x SLO",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "s", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 60 }, { "color": "red", "value": 900 }] } }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Time above 3x SLO (15s) — last 60m",
+      "gridPos": { "x": 12, "y": 26, "w": 6, "h": 5 },
+      "description": "Seconds in the last 60 min during which p95 exceeded the 3x SLO (15s). Mirrors the `for: 30m` clause on `DatasetFilesP95ThreeXSLOAutoRollback` (auto-rollback threshold). At >1800s the auto-rollback workflow has fired.",
+      "targets": [
+        {
+          "expr": "sum_over_time((histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{route=~\"/api/v1/(files|datasets)(/.*)?\", route!~\"/api/v1/files/.*/(init|complete|parts|chunks).*\"}[10m]))) > bool 15)[60m:1m]) * 60",
+          "legendFormat": "seconds above 3x SLO",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "s", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 60 }, { "color": "dark-red", "value": 1800 }] } }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Auto-rollback alert state",
+      "gridPos": { "x": 18, "y": 26, "w": 6, "h": 5 },
+      "description": "Current firing state of `DatasetFilesP95ThreeXSLOAutoRollback`. RED = firing → `auto-rollback-datasets-files.yml` workflow has been (or is about to be) dispatched.",
+      "targets": [
+        {
+          "expr": "max(ALERTS{alertname=\"DatasetFilesP95ThreeXSLOAutoRollback\", alertstate=\"firing\"}) OR on() vector(0)",
+          "legendFormat": "auto-rollback firing",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "OK", "color": "green" }, "1": { "text": "FIRING", "color": "red" } } }
+          ],
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] }
+        }
+      }
+    },
+    {
+      "type": "row",
+      "title": "Phase 260.DoD.7 — production smoke contract observables",
+      "gridPos": { "x": 0, "y": 31, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "type": "graph",
+      "title": "Magic-byte rejects / 5m (PE-as-CSV path)",
+      "description": "Tracks the rate of magic-byte mismatches caught at /complete/. A non-zero rate means tenants are genuinely uploading the wrong content for the declared MIME — review whether the rejection is correct or a false positive.",
+      "gridPos": { "x": 0, "y": 32, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "sum(rate(datasets_files_magic_byte_mismatch_total[5m]))",
+          "legendFormat": "rejects/s",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "graph",
+      "title": "INFECTED downloads blocked / 1h",
+      "description": "Tracks the rate of /download/ attempts on INFECTED files that returned 403 FILE_INFECTED. A non-zero rate IS the working contract — quarantined files exist and are correctly blocked.",
+      "gridPos": { "x": 12, "y": 32, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "sum(increase(datasets_files_infected_download_blocked_total[1h]))",
+          "legendFormat": "blocked/h",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}

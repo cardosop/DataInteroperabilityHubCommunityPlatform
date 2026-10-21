@@ -1,0 +1,57 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "CPO-008-1b0a61d1",
+      "journey_name": "Manage Consent Tracking",
+      "persona": "Compliance Officer",
+      "status": "failed",
+      "start_time": 1774695187.5142295,
+      "end_time": 1774695187.7724655,
+      "duration": 0.2582359313964844,
+      "completion_rate": 50.0,
+      "success_rate": 50.0,
+      "error_message": "Step 'Create Consent Record' returned HTTP 400: {'detail': 'reason is required', 'code': 'VALIDATION_ERROR', 'details': {}}",
+      "error_type": "AssertionError",
+      "steps": [
+        {
+          "step_name": "Create Asset for Consent",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774695187.5142345,
+          "end_time": 1774695187.7680807,
+          "duration": 0.2538461685180664,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Create Consent Record",
+          "status": "StepStatus.FAILED",
+          "start_time": 1774695187.7680912,
+          "end_time": 1774695187.7724621,
+          "duration": 0.004370927810668945,
+          "error_message": "Step 'Create Consent Record' returned HTTP 400: {'detail': 'reason is required', 'code': 'VALIDATION_ERROR', 'details': {}}",
+          "error_type": "AssertionError",
+          "retry_count": 0,
+          "metadata": {
+            "args": "()",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-03-28T10:53:07.772551"
+}

@@ -1,0 +1,149 @@
+# Frontend Dockerfile
+# Multi-stage build for production
+# No external # syntax= image: avoids an extra pull of docker/dockerfile from
+# Docker Hub (can TLS-timeout on flaky links). Builtin BuildKit frontend is enough.
+# Do not use RUN --network=host: rootless/hardened engines often reject it with
+# "network.host is not allowed". Builder is Debian slim; NPM_USE_PUBLIC_DNS is
+# opt-in and skipped on read-only /etc/resolv.conf (common in rootless).
+
+# Build stage (Debian glibc: fewer npm/registry stalls vs Alpine+mDNS on some rootless/bridge setups)
+FROM node:20-bookworm-slim AS builder
+
+# Optional corporate proxy (pass from host: docker compose build --build-arg HTTPS_PROXY=...)
+ARG HTTP_PROXY=
+ARG HTTPS_PROXY=
+ARG NO_PROXY=
+ENV HTTP_PROXY=$HTTP_PROXY \
+    HTTPS_PROXY=$HTTPS_PROXY \
+    NO_PROXY=$NO_PROXY
+
+# Brand name (Phase 28.7.5 Meshant); baked in at build time
+ARG VITE_APP_NAME=Meshant
+ENV VITE_APP_NAME=$VITE_APP_NAME
+
+# Optional UX feature flags (Phase 29.66.16); default: enabled
+ARG VITE_FEATURE_TOAST_ENABLED=
+ARG VITE_FEATURE_BREADCRUMBS_ENABLED=
+ARG VITE_FEATURE_RESOURCE_PICKERS_ENABLED=
+ARG VITE_FEATURE_SIDEBAR_ADVANCED=
+ENV VITE_FEATURE_TOAST_ENABLED=$VITE_FEATURE_TOAST_ENABLED
+ENV VITE_FEATURE_BREADCRUMBS_ENABLED=$VITE_FEATURE_BREADCRUMBS_ENABLED
+ENV VITE_FEATURE_RESOURCE_PICKERS_ENABLED=$VITE_FEATURE_RESOURCE_PICKERS_ENABLED
+ENV VITE_FEATURE_SIDEBAR_ADVANCED=$VITE_FEATURE_SIDEBAR_ADVANCED
+
+# API base URL baked into the JS bundle.
+# Default is empty: the app uses relative /api/v1 paths, proxied by nginx.
+# Override at build time for deployments where the frontend is not served by nginx
+# (e.g. CDN builds): --build-arg VITE_API_BASE_URL=https://api.example.com/api/v1
+ARG VITE_API_BASE_URL=
+ARG VITE_WS_BASE_URL=
+ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+ENV VITE_WS_BASE_URL=$VITE_WS_BASE_URL
+
+# Sentry DSN baked into the JS bundle at build time.
+# Set via --build-arg VITE_SENTRY_DSN=https://... or CI/CD pipeline secret.
+# Left empty here so builds without Sentry configured still succeed.
+ARG VITE_SENTRY_DSN=
+ARG VITE_ENVIRONMENT=production
+ENV VITE_SENTRY_DSN=$VITE_SENTRY_DSN
+ENV VITE_ENVIRONMENT=$VITE_ENVIRONMENT
+
+ARG VITE_MVP_MODE=
+ARG VITE_STRIPE_PUBLISHABLE_KEY=
+ENV VITE_MVP_MODE=$VITE_MVP_MODE
+ENV VITE_STRIPE_PUBLISHABLE_KEY=$VITE_STRIPE_PUBLISHABLE_KEY
+
+WORKDIR /app
+
+# Registry fetch tuning: slow or flaky networks during `npm ci` often surface as
+# ETIMEDOUT; retries + longer timeouts reduce spurious build failures.
+# Override at build time, e.g. --build-arg NPM_FETCH_TIMEOUT=900000
+ARG NPM_FETCH_RETRIES=5
+ARG NPM_FETCH_TIMEOUT=600000
+ENV NPM_CONFIG_FETCH_RETRIES=${NPM_FETCH_RETRIES} \
+    NPM_CONFIG_FETCH_TIMEOUT=${NPM_FETCH_TIMEOUT} \
+    NPM_CONFIG_FETCH_RETRY_MINTIMEOUT=20000 \
+    NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT=120000 \
+    NPM_CONFIG_MAXSOCKETS=3
+
+# Prefer IPv4 when resolving registry hosts (common fix when IPv6 routes stall).
+ENV NODE_OPTIONS=--dns-result-order=ipv4first
+
+# Copy package files
+COPY package*.json ./
+# --no-audit avoids extra registry round-trips after install.
+# Optional: NPM_USE_PUBLIC_DNS=1 tries to write 8.8.8.8 / 1.1.1.1 into /etc/resolv.conf
+# before npm ci. Rootless/read-only builds skip silently (|| true); default is off.
+ARG NPM_USE_PUBLIC_DNS=0
+RUN set -eux; \
+  if [ "$NPM_USE_PUBLIC_DNS" = "1" ]; then \
+    printf '%s\n' "nameserver 8.8.8.8" "nameserver 1.1.1.1" > /etc/resolv.conf || true; \
+  fi; \
+  npm ci --no-audit --fund=false
+
+# Copy source files
+COPY . .
+
+# Vite only auto-loads VITE_* variables from .env files; ENV vars set on the
+# Docker layer are NOT picked up by `import.meta.env.*` in source. Materialize
+# build-arg-supplied VITE_* values into a .env.production.local file so Vite
+# inlines them into the bundle. (.dockerignore excludes .env*, so this file
+# only exists inside the builder layer.) Without this, VITE_MVP_MODE=true was
+# silently dropped and MvpGatedRoute never activated on staging deploys.
+RUN { \
+      [ -n "$VITE_MVP_MODE" ] && echo "VITE_MVP_MODE=$VITE_MVP_MODE"; \
+      [ -n "$VITE_SENTRY_DSN" ] && echo "VITE_SENTRY_DSN=$VITE_SENTRY_DSN"; \
+      [ -n "$VITE_ENVIRONMENT" ] && echo "VITE_ENVIRONMENT=$VITE_ENVIRONMENT"; \
+      [ -n "$VITE_STRIPE_PUBLISHABLE_KEY" ] && echo "VITE_STRIPE_PUBLISHABLE_KEY=$VITE_STRIPE_PUBLISHABLE_KEY"; \
+      [ -n "$VITE_FEATURE_SIDEBAR_ADVANCED" ] && echo "VITE_FEATURE_SIDEBAR_ADVANCED=$VITE_FEATURE_SIDEBAR_ADVANCED"; \
+      true; \
+    } > .env.production.local && cat .env.production.local
+
+# Build application (Vite bakes VITE_APP_NAME into bundle)
+RUN npm run build
+
+# Production stage
+# W8.1: nginx-unprivileged runs as uid 101 (non-root) and listens
+# on 8080; the compose/helm port mappings translate to their public ports.
+# The base image's default USER is already 101 — the package steps must
+# run as root (apk writes /var/cache/apk + /var/log), then drop back.
+FROM nginxinc/nginx-unprivileged:alpine AS production
+USER root
+# Upgrade OS packages with known CVEs (including OpenSSL), then install wget
+# for healthcheck.  The explicit libcrypto3/libssl3 upgrade ensures
+# CVE-2026-28390 is patched even when Docker layer cache is warm.
+RUN apk upgrade --no-cache \
+    && apk add --no-cache --upgrade libcrypto3 libssl3 \
+    && apk add --no-cache wget
+
+# Copy built files
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+# Copy nginx configuration as a template.
+# The official nginx:alpine image runs envsubst on files in /etc/nginx/templates/
+# at container startup (/docker-entrypoint.d/20-envsubst-on-templates.sh),
+# outputting the rendered file to /etc/nginx/conf.d/default.conf.
+# This allows runtime substitution of ${API_HOST} in the CSP header without
+# rebuilding the image.
+COPY nginx.conf /etc/nginx/templates/default.conf.template
+
+# API host included in the CSP connect-src directive.
+# Default is empty (same-origin only), which is correct when /api is proxied
+# through this nginx instance.  Override at docker run / docker-compose level:
+#   API_HOST=https://api.example.com
+ENV API_HOST=""
+# Upstream for nginx proxy_pass — overridden in Kubernetes to match Helm service name
+ENV API_UPSTREAM="api-service:8000"
+
+# W8.1 — the base image already runs as uid 101 (non-root); make the
+# contract explicit.
+USER 101
+
+# Expose the unprivileged port (nginx.conf listens on 8080).
+EXPOSE 8080
+
+# W8.1 — in-image healthcheck matching the compose healthcheck.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=5 \
+    CMD wget -q -O /dev/null http://localhost:8080/ || exit 1
+
+CMD ["nginx", "-g", "daemon off;"]

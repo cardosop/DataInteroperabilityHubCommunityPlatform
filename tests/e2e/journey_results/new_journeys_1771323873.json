@@ -1,0 +1,69 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.012853145599365234
+  },
+  "journeys": [
+    {
+      "journey_id": "DS-004-bbffd9c5",
+      "journey_name": "Tune Recommendation Engine",
+      "persona": "Data Scientist",
+      "status": "completed",
+      "start_time": 1771323873.7759767,
+      "end_time": 1771323873.7888298,
+      "duration": 0.012853145599365234,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "View Current Model",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771323873.7796872,
+          "end_time": 1771323873.779691,
+          "duration": 3.814697265625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Note: Model Tuning Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771323873.7842236,
+          "end_time": 1771323873.7842264,
+          "duration": 2.86102294921875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Model Testing Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771323873.788825,
+          "end_time": 1771323873.7888286,
+          "duration": 3.5762786865234375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-17T10:24:33.788882"
+}

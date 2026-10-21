@@ -1,0 +1,140 @@
+groups:
+  - name: data_mesh
+    interval: 30s
+    rules:
+      # Compliance Violation Alert
+      - alert: MeshComplianceViolation
+        expr: |
+          sum(rate(mesh_compliance_violations_total[15m])) by (tenant_id, domain_id, severity) > 0
+        for: 5m
+        labels:
+          severity: warning
+          component: data-mesh
+        annotations:
+          summary: "Compliance violation detected in data mesh domain {{ $labels.domain_id }}"
+          description: "Domain {{ $labels.domain_id }} in tenant {{ $labels.tenant_id }} has {{ $value }} violations with severity {{ $labels.severity }} in the last 15 minutes"
+
+      # High Compliance Violation Rate Alert
+      - alert: MeshHighComplianceViolationRate
+        expr: |
+          (
+            sum(rate(mesh_compliance_violations_total[15m])) by (tenant_id, domain_id)
+            /
+            sum(rate(mesh_compliance_checks_total[15m])) by (tenant_id, domain_id)
+          ) > 0.1
+        for: 10m
+        labels:
+          severity: high
+          component: data-mesh
+        annotations:
+          summary: "High compliance violation rate in data mesh domain {{ $labels.domain_id }}"
+          description: "Domain {{ $labels.domain_id }} in tenant {{ $labels.tenant_id }} has violation rate above 10% in the last 15 minutes"
+
+      # Domain Health Degraded Alert
+      - alert: MeshDomainHealthDegraded
+        expr: |
+          mesh_domain_health_status{health_status="DEGRADED"} == 0.5
+        for: 5m
+        labels:
+          severity: warning
+          component: data-mesh
+        annotations:
+          summary: "Data mesh domain {{ $labels.domain_id }} health is degraded"
+          description: "Domain {{ $labels.domain_id }} in tenant {{ $labels.tenant_id }} has degraded health status"
+
+      # Domain Health Unhealthy Alert
+      - alert: MeshDomainHealthUnhealthy
+        expr: |
+          mesh_domain_health_status{health_status="UNHEALTHY"} == 0
+        for: 5m
+        labels:
+          severity: critical
+          component: data-mesh
+        annotations:
+          summary: "Data mesh domain {{ $labels.domain_id }} is unhealthy"
+          description: "Domain {{ $labels.domain_id }} in tenant {{ $labels.tenant_id }} is in unhealthy state"
+
+      # Topology Update Failure Alert
+      - alert: MeshTopologyUpdateFailure
+        expr: |
+          (
+            sum(rate(mesh_topology_update_failures_total[15m])) by (tenant_id)
+            /
+            sum(rate(mesh_topology_updates_total[15m])) by (tenant_id)
+          ) > 0.05
+        for: 10m
+        labels:
+          severity: high
+          component: data-mesh
+        annotations:
+          summary: "High topology update failure rate for tenant {{ $labels.tenant_id }}"
+          description: "Tenant {{ $labels.tenant_id }} has topology update failure rate above 5% in the last 15 minutes"
+
+      # Topology Update Duration Alert
+      - alert: MeshTopologyUpdateSlow
+        expr: |
+          histogram_quantile(0.95, sum(rate(mesh_topology_update_duration_seconds_bucket[15m])) by (tenant_id, le)) > 10
+        for: 10m
+        labels:
+          severity: medium
+          component: data-mesh
+        annotations:
+          summary: "Slow topology updates for tenant {{ $labels.tenant_id }}"
+          description: "Tenant {{ $labels.tenant_id }} has P95 topology update duration above 10 seconds"
+
+      # Compliance Check Duration Alert
+      - alert: MeshComplianceCheckSlow
+        expr: |
+          histogram_quantile(0.95, sum(rate(mesh_compliance_check_duration_seconds_bucket[15m])) by (tenant_id, domain_id, le)) > 60
+        for: 10m
+        labels:
+          severity: medium
+          component: data-mesh
+        annotations:
+          summary: "Slow compliance checks for domain {{ $labels.domain_id }}"
+          description: "Domain {{ $labels.domain_id }} in tenant {{ $labels.tenant_id }} has P95 compliance check duration above 60 seconds"
+
+      # High Policy Application Failure Rate Alert
+      - alert: MeshPolicyApplicationHighFailureRate
+        expr: |
+          (
+            sum(rate(mesh_policy_applied_total{status="FAILED"}[15m])) by (tenant_id)
+            /
+            sum(rate(mesh_policy_applied_total[15m])) by (tenant_id)
+          ) > 0.1
+        for: 10m
+        labels:
+          severity: high
+          component: data-mesh
+        annotations:
+          summary: "High policy application failure rate for tenant {{ $labels.tenant_id }}"
+          description: "Tenant {{ $labels.tenant_id }} has policy application failure rate above 10% in the last 15 minutes"
+
+      # Domain Creation Failure Rate Alert
+      - alert: MeshDomainCreationHighFailureRate
+        expr: |
+          (
+            sum(rate(mesh_domain_created_total{status="failed"}[15m])) by (tenant_id)
+            /
+            sum(rate(mesh_domain_created_total[15m])) by (tenant_id)
+          ) > 0.1
+        for: 10m
+        labels:
+          severity: high
+          component: data-mesh
+        annotations:
+          summary: "High domain creation failure rate for tenant {{ $labels.tenant_id }}"
+          description: "Tenant {{ $labels.tenant_id }} has domain creation failure rate above 10% in the last 15 minutes"
+
+      # No Compliance Checks Alert
+      - alert: MeshNoComplianceChecks
+        expr: |
+          sum(rate(mesh_compliance_checks_total[1h])) by (tenant_id, domain_id) == 0
+        for: 1h
+        labels:
+          severity: warning
+          component: data-mesh
+        annotations:
+          summary: "No compliance checks performed for domain {{ $labels.domain_id }}"
+          description: "Domain {{ $labels.domain_id }} in tenant {{ $labels.tenant_id }} has not had any compliance checks in the last hour"
+

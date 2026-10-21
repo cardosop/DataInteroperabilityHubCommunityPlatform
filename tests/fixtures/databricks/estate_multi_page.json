@@ -1,0 +1,149 @@
+{
+  "routes": {
+    "/api/2.1/unity-catalog/catalogs": [
+      {
+        "catalogs": [
+          {
+            "name": "main",
+            "comment": "primary catalog",
+            "owner": "admin@example.com",
+            "catalog_type": "MANAGED",
+            "properties": {"purpose": "analytics"},
+            "full_name": "main"
+          }
+        ],
+        "next_page_token": null
+      }
+    ],
+    "/api/2.1/unity-catalog/schemas": [
+      {
+        "schemas": [
+          {
+            "name": "sales",
+            "comment": "sales schema",
+            "owner": "admin@example.com",
+            "properties": {"kind": "tables"},
+            "full_name": "main.sales",
+            "catalog_name": "main"
+          }
+        ],
+        "next_page_token": null
+      }
+    ],
+    "/api/2.1/unity-catalog/tables": [
+      {
+        "tables": [
+          {
+            "name": "orders",
+            "comment": "Order fact table",
+            "owner": "admin@example.com",
+            "table_type": "MANAGED",
+            "storage_location": "s3://bucket/orders",
+            "columns": [{"name": "customer_id", "type_text": "BIGINT"}],
+            "full_name": "main.sales.orders",
+            "catalog_name": "main",
+            "schema_name": "sales"
+          }
+        ],
+        "next_page_token": "tok-tables-1"
+      },
+      {
+        "tables": [
+          {
+            "name": "customers",
+            "comment": "Customer dim",
+            "owner": "admin@example.com",
+            "table_type": "MANAGED",
+            "storage_location": "s3://bucket/customers",
+            "columns": [{"name": "id", "type_text": "BIGINT"}],
+            "full_name": "main.sales.customers",
+            "catalog_name": "main",
+            "schema_name": "sales"
+          }
+        ],
+        "next_page_token": null
+      }
+    ],
+    "/api/2.1/unity-catalog/views": [
+      {
+        "views": [
+          {
+            "name": "v_orders",
+            "view_definition": "SELECT * FROM orders",
+            "comment": "orders view",
+            "owner": "admin@example.com",
+            "full_name": "main.sales.v_orders",
+            "catalog_name": "main",
+            "schema_name": "sales"
+          }
+        ],
+        "next_page_token": null
+      }
+    ],
+    "/api/2.1/unity-catalog/volumes": [
+      {
+        "volumes": [
+          {
+            "name": "raw",
+            "volume_type": "MANAGED",
+            "storage_location": "s3://bucket/raw",
+            "comment": "raw volume",
+            "owner": "admin@example.com",
+            "full_name": "main.sales.raw",
+            "catalog_name": "main",
+            "schema_name": "sales"
+          }
+        ],
+        "next_page_token": null
+      }
+    ],
+    "/api/2.1/unity-catalog/models": [
+      {
+        "models": [
+          {
+            "name": "churn",
+            "comment": "churn model",
+            "owner": "admin@example.com",
+            "aliases": ["champion"],
+            "latest_version": 2,
+            "full_name": "main.sales.churn",
+            "catalog_name": "main",
+            "schema_name": "sales"
+          }
+        ],
+        "next_page_token": "tok-models-1"
+      },
+      {
+        "models": [],
+        "next_page_token": null
+      }
+    ],
+    "/api/2.1/unity-catalog/external-locations": [
+      {
+        "external_locations": [
+          {
+            "name": "s3-raw",
+            "url": "s3://bucket/raw",
+            "credential_name": "sc1",
+            "owner": "admin@example.com",
+            "full_name": "s3-raw"
+          }
+        ],
+        "next_page_token": null
+      }
+    ],
+    "/api/2.1/unity-catalog/storage-credentials": [
+      {
+        "storage_credentials": [
+          {
+            "name": "sc1",
+            "comment": "raw credential",
+            "owner": "admin@example.com",
+            "full_name": "sc1"
+          }
+        ],
+        "next_page_token": null
+      }
+    ]
+  }
+}

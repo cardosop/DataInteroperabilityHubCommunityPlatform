@@ -1,0 +1,148 @@
+# Phase 260.0.21 — Datasets & Files hardening alert scaffolds (extend with real metrics).
+# Recording rules should back these once `datasets_files_*` counters land in OTel.
+
+groups:
+  - name: datasets-files-phase260
+    rules:
+      - alert: DatasetFilesUploadErrorRateHigh
+        expr: sum(rate(datasets_files_upload_failures_total[5m])) / sum(rate(datasets_files_upload_attempts_total[5m])) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Upload failure ratio >5% for 10m"
+          description: "Inspect API + S3 CORS + multipart completion path (`docs/runbooks/datasets-files-dr.md`)."
+
+      - alert: ClamavScanBacklogDepth
+        expr: sum(rq_queue_depth{job="clamav-heavy"}) > 1000
+        for: 30m
+        labels:
+          severity: critical
+        annotations:
+          summary: "ClamAV backlog sustained >1000 (placeholder metric)"
+          description: "See `docs/runbooks/file-virus-scan-incident.md` — replace metric label with canonical RQ instrumentation."
+
+      - alert: MagicByteMismatchSpike
+        expr: increase(datasets_files_magic_byte_mismatch_total[1h]) > 500
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Magic-byte rejects spiking"
+
+      - alert: ScheduledIngestionStuckRuns
+        expr: increase(scheduled_ingestion_run_stuck_total[30m]) > 0
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Scheduled ingestion runs stuck past SLA"
+
+      - alert: TenantFileQuotaPressure
+        expr: max by (tenant) (datasets_files_quota_utilization_ratio) > 0.9
+        for: 24h
+        labels:
+          severity: info
+        annotations:
+          summary: "Tenant file quota >90% utilisation budget"
+
+      # ----------------------------------------------------------------------
+      # Phase 260.DoD.4 — SLO miss escalation policy
+      #
+      # Contract (from openspec/changes/preprod01/tasks.md::260.DoD.4):
+      #   * P95 > 2x SLO for 15 min → auto-page on-call
+      #   * P95 > 3x SLO for 30 min → auto-rollback via `helm rollback`
+      #
+      # SLO baseline: 5 seconds for the datasets-files REST surface
+      # (`/api/v1/(files|datasets)/...`). The route selector excludes the
+      # known-slow large-upload endpoints (`/init/`, `/complete/`, `/parts/`,
+      # `/chunks/`) which legitimately run multipart-coordination work; their
+      # P95 is tracked separately and excluded from this SLO contract — alerts
+      # that fire on those routes during a normal multipart upload would be
+      # false positives.
+      #
+      # Auto-rollback wiring: the 3x SLO alert carries `auto_rollback: "true"`,
+      # which Alertmanager routes to the GitHub `repository_dispatch` endpoint
+      # with `event_type=auto-rollback-datasets-files`. The
+      # `.github/workflows/auto-rollback-datasets-files.yml` workflow consumes
+      # that dispatch and runs `helm rollback`. This mirrors the asset-creation
+      # auto-rollback wiring landed in Phase 250.DoD.4 (alert
+      # `AssetWorkflowDurationP95ThreeXSLOAutoRollback` →
+      # `auto-rollback-asset-creation.yml`).
+      # ----------------------------------------------------------------------
+
+      - alert: DatasetFilesP95Regressed
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (
+              rate(http_request_duration_seconds_bucket{
+                route=~"/api/v1/(files|datasets)(/.*)?",
+                route!~"/api/v1/files/.*/(init|complete|parts|chunks).*"
+              }[10m])
+            )
+          ) > 5
+        for: 10m
+        labels:
+          severity: warning
+          team: datasets-files-eng
+          phase: "260.DoD.4"
+        annotations:
+          summary: "datasets-files API p95 above 5s SLO"
+          description: |
+            p95 latency on the /files/ and /datasets/ REST surface has regressed
+            past the 5-second SLO. Likely causes: DB contention (RLS policy
+            evaluation), object-store latency (S3 SlowDown), Redis lock waits
+            in the purge path, or worker-pool saturation.
+          runbook_url: "https://meshant-internal.example.com/runbooks/datasets-files-dr"
+          dashboard_url: "https://meshant-internal.example.com/d/datasets-files"
+
+      - alert: DatasetFilesP95TwoXSLO
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (
+              rate(http_request_duration_seconds_bucket{
+                route=~"/api/v1/(files|datasets)(/.*)?",
+                route!~"/api/v1/files/.*/(init|complete|parts|chunks).*"
+              }[10m])
+            )
+          ) > 10
+        for: 15m
+        labels:
+          severity: page
+          team: datasets-files-eng
+          phase: "260.DoD.4"
+        annotations:
+          summary: "datasets-files API p95 > 2x SLO for 15 minutes"
+          description: |
+            Escalation threshold breached: p95 latency has remained above 10s
+            (2x the 5s SLO) for 15 minutes. Page the on-call engineer and
+            begin incident triage immediately.
+          runbook_url: "https://meshant-internal.example.com/runbooks/datasets-files-dr"
+          dashboard_url: "https://meshant-internal.example.com/d/datasets-files"
+
+      - alert: DatasetFilesP95ThreeXSLOAutoRollback
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (
+              rate(http_request_duration_seconds_bucket{
+                route=~"/api/v1/(files|datasets)(/.*)?",
+                route!~"/api/v1/files/.*/(init|complete|parts|chunks).*"
+              }[10m])
+            )
+          ) > 15
+        for: 30m
+        labels:
+          severity: critical
+          team: datasets-files-eng
+          phase: "260.DoD.4"
+          auto_rollback: "true"
+        annotations:
+          summary: "datasets-files API p95 > 3x SLO for 30 minutes"
+          description: |
+            Auto-rollback threshold breached: p95 latency has remained above 15s
+            (3x the 5s SLO) for 30 minutes. Trigger rollback automation to
+            execute `helm rollback hub <previous-revision>` via the
+            `auto-rollback-datasets-files` GitHub workflow.
+          runbook_url: "https://meshant-internal.example.com/runbooks/datasets-files-dr"
+          rollback_command: "helm rollback hub <previous-revision>"
+          dashboard_url: "https://meshant-internal.example.com/d/datasets-files"

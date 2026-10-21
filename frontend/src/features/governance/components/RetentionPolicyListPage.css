@@ -1,0 +1,124 @@
+.governance-retention-policy-list-page {
+  padding: 2rem;
+}
+
+.governance-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+}
+
+.governance-list-header h1 {
+  margin: 0;
+}
+
+.governance-list-filters {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.filter-group label {
+  font-weight: 500;
+  font-size: 0.875rem;
+}
+
+.filter-group input,
+.filter-group select {
+  padding: 0.5rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 0.875rem;
+}
+
+.governance-retention-policy-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--color-background-primary);
+  border-radius: 4px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.governance-retention-policy-table thead {
+  background: var(--color-neutral-100);
+}
+
+.governance-retention-policy-table th {
+  padding: 1rem;
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.875rem;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+.governance-retention-policy-table td {
+  padding: 1rem;
+  border-top: 1px solid #eee;
+}
+
+.governance-retention-policy-table tbody tr.row-link {
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.governance-retention-policy-table tbody tr.row-link:hover {
+  background-color: var(--color-background-secondary);
+}
+
+.governance-retention-policy-table tbody tr.row-link:focus {
+  outline: 2px solid var(--color-info);
+  outline-offset: -2px;
+}
+
+.governance-status-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.governance-status-badge.enabled {
+  background-color: var(--color-success-100);
+  color: var(--color-success-700);
+}
+
+.governance-status-badge.disabled {
+  background-color: var(--color-error-100);
+  color: var(--color-error-900);
+}
+
+.governance-list-pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid #eee;
+}
+
+.pagination-info {
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+}
+
+.pagination-controls {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.pagination-controls button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

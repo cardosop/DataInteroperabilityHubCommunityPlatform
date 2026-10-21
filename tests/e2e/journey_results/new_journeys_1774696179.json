@@ -1,0 +1,84 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.4205353260040283
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-011-7b5dc547",
+      "journey_name": "Assign Data Stewards",
+      "persona": "Data Product Owner",
+      "status": "completed",
+      "start_time": 1774696179.5502124,
+      "end_time": 1774696179.9707477,
+      "duration": 0.4205353260040283,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Create Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774696179.5502193,
+          "end_time": 1774696179.8049479,
+          "duration": 0.2547285556793213,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Create Stewardship Access Request",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774696179.8053515,
+          "end_time": 1774696179.955585,
+          "duration": 0.15023350715637207,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Approve Steward Access",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774696179.9555984,
+          "end_time": 1774696179.965632,
+          "duration": 0.010033607482910156,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Verify Steward Access",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774696179.965642,
+          "end_time": 1774696179.9707444,
+          "duration": 0.005102396011352539,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "aa4efa4d-a46c-4acc-99b0-e4c37f38a3b6"
+      }
+    }
+  ],
+  "exported_at": "2026-03-28T11:09:39.970822"
+}

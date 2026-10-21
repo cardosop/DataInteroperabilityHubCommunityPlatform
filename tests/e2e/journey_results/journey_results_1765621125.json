@@ -1,0 +1,86 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.07375407218933105
+  },
+  "journeys": [
+    {
+      "journey_id": "DE-006-9037311a",
+      "journey_name": "Schema Evolution",
+      "persona": "Data Engineer / Contract Author",
+      "status": "completed",
+      "start_time": 1765621125.6456506,
+      "end_time": 1765621125.7194047,
+      "duration": 0.07375407218933105,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Create Asset with Dataset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765621125.645656,
+          "end_time": 1765621125.7193654,
+          "duration": 0.07370924949645996,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "tuple"
+          }
+        },
+        {
+          "step_name": "Detect Schema Changes",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765621125.7193763,
+          "end_time": 1765621125.7193825,
+          "duration": 6.198883056640625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Calculate Version Impact",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765621125.7193854,
+          "end_time": 1765621125.7193875,
+          "duration": 2.1457672119140625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Generate Migration Plan",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765621125.7193894,
+          "end_time": 1765621125.7193997,
+          "duration": 1.0251998901367188e-05,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "650879ec-573d-4db2-a9e5-e6a1e9dac84f",
+        "dataset_id": "b2a74ee8-5086-4354-b195-1cfc891c9e64",
+        "changes_detected": false
+      }
+    }
+  ],
+  "exported_at": "2025-12-13T10:18:45.719484"
+}

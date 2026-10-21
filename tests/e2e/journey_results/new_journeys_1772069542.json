@@ -1,0 +1,82 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.018706321716308594
+  },
+  "journeys": [
+    {
+      "journey_id": "DEV-009-8f85be70",
+      "journey_name": "Integrate with Developer Portal",
+      "persona": "External Developer",
+      "status": "completed",
+      "start_time": 1772069542.976412,
+      "end_time": 1772069542.9951184,
+      "duration": 0.018706321716308594,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Access Developer Portal",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772069542.981954,
+          "end_time": 1772069542.981961,
+          "duration": 6.9141387939453125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "View API Documentation",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772069542.9872227,
+          "end_time": 1772069542.9872289,
+          "duration": 6.198883056640625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Generate API Key",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772069542.9918108,
+          "end_time": 1772069542.9918163,
+          "duration": 5.4836273193359375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Monitor API Usage",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772069542.9951136,
+          "end_time": 1772069542.9951167,
+          "duration": 3.0994415283203125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-26T01:32:22.995186"
+}

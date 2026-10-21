@@ -1,0 +1,85 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.5004804134368896
+  },
+  "journeys": [
+    {
+      "journey_id": "PERF-TEST-35d39e68",
+      "journey_name": "Performance Test",
+      "persona": "Test",
+      "status": "completed",
+      "start_time": 1779983425.3179634,
+      "end_time": 1779983425.8184438,
+      "duration": 0.5004804134368896,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Step 1",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1779983425.3179677,
+          "end_time": 1779983425.4180446,
+          "duration": 0.10007691383361816,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {}
+        },
+        {
+          "step_name": "Step 2",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1779983425.418063,
+          "end_time": 1779983425.518139,
+          "duration": 0.10007596015930176,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {}
+        },
+        {
+          "step_name": "Step 3",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1779983425.5181577,
+          "end_time": 1779983425.6182306,
+          "duration": 0.10007286071777344,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {}
+        },
+        {
+          "step_name": "Step 4",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1779983425.6182446,
+          "end_time": 1779983425.7183304,
+          "duration": 0.10008573532104492,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {}
+        },
+        {
+          "step_name": "Step 5",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1779983425.7183485,
+          "end_time": 1779983425.818436,
+          "duration": 0.10008740425109863,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {}
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-05-28T15:50:25.818589"
+}

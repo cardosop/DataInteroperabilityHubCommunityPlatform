@@ -1,0 +1,69 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.014764070510864258
+  },
+  "journeys": [
+    {
+      "journey_id": "CM-002-384be7ca",
+      "journey_name": "Moderate Reviews and Ratings",
+      "persona": "Community Manager",
+      "status": "completed",
+      "start_time": 1774653789.9036753,
+      "end_time": 1774653789.9184394,
+      "duration": 0.014764070510864258,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "View Pending Reviews",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774653789.9122818,
+          "end_time": 1774653789.9122872,
+          "duration": 5.4836273193359375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "View Reviews Audit",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774653789.9184287,
+          "end_time": 1774653789.918434,
+          "duration": 5.245208740234375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Note: No Pending Reviews to Moderate",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774653789.9184365,
+          "end_time": 1774653789.9184384,
+          "duration": 1.9073486328125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-03-27T23:23:09.918500"
+}

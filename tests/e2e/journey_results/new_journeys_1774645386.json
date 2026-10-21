@@ -1,0 +1,69 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.1699213981628418
+  },
+  "journeys": [
+    {
+      "journey_id": "MPA-009-3fc5f0fb",
+      "journey_name": "Manage Plugin Marketplace",
+      "persona": "Platform Admin",
+      "status": "completed",
+      "start_time": 1774645386.2921758,
+      "end_time": 1774645386.4620972,
+      "duration": 0.1699213981628418,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "View Plugin Marketplace",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774645386.3488922,
+          "end_time": 1774645386.3488996,
+          "duration": 7.3909759521484375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Note: Plugin Approval Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774645386.4060285,
+          "end_time": 1774645386.406035,
+          "duration": 6.4373016357421875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Monitor Plugin Usage",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774645386.4620864,
+          "end_time": 1774645386.4620948,
+          "duration": 8.344650268554688e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-03-27T21:03:06.462169"
+}

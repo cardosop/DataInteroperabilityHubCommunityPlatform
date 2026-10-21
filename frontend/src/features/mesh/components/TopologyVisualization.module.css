@@ -1,0 +1,61 @@
+/* TopologyVisualization — Phase 38 (36.4) */
+
+.wrapper {
+  padding: var(--spacing-lg, 2rem);
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-md, 1rem);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--font-size-xl, 1.5rem);
+  font-weight: 600;
+}
+
+.summary {
+  display: flex;
+  gap: var(--spacing-md, 1rem);
+  font-size: var(--font-size-sm, 0.875rem);
+  color: var(--color-neutral-600, #666);
+}
+
+.legend {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md, 1rem);
+  margin-top: var(--spacing-sm, 0.5rem);
+  padding: var(--spacing-sm, 0.5rem) var(--spacing-md, 1rem);
+  background: var(--color-background-primary, white);
+  border-radius: var(--border-radius-md, 8px);
+  box-shadow: var(--shadow-sm);
+  font-size: var(--font-size-sm, 0.875rem);
+}
+
+.legendTitle {
+  font-weight: 600;
+}
+
+.legendItems {
+  display: flex;
+  gap: var(--spacing-md, 1rem);
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.legendDot {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}

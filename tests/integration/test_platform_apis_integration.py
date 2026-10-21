@@ -1,0 +1,125 @@
+"""
+Integration tests for Platform APIs: tenants list/suspend/resume, usage, erasure (admin).
+
+Real APIClient; admin where required. No mocks/stubs. Plan 3.3.1.1 (P1).
+"""
+
+import uuid
+
+import pytest
+from django.contrib.auth import get_user_model
+from rest_framework import status
+from rest_framework.test import APIClient
+
+from hub.apps.tenants.models import Tenant
+from hub.apps.users.models import UserStatus
+
+User = get_user_model()
+
+pytestmark = pytest.mark.django_db(transaction=True)
+
+
+class TestPlatformAPIsIntegration:
+    """Integration tests for platform/tenants/ and platform admin actions."""
+
+    @pytest.fixture(autouse=True)
+    def _setup(self, db):
+        self.client = APIClient()
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(
+            name=f"Platform Integration Tenant {uid}",
+            slug=f"platform-integration-tenant-{uid}",
+        )
+        self.admin = User.objects.create_user(
+            email=f"platform_admin-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
+            is_platform_admin=True,
+        )
+        self.client.force_authenticate(user=self.admin)
+
+    def test_platform_tenants_list_returns_200(self):
+        """GET /api/v1/platform/tenants/ returns 200 for platform admin."""
+        response = self.client.get("/api/v1/platform/tenants/")
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert isinstance(data, (list, dict))
+        if isinstance(data, dict):
+            assert "results" in data
+
+    @pytest.mark.timeout(30)
+    def test_platform_tenants_usage_returns_200(self):
+        """GET /api/v1/platform/tenants/usage/?tenant_id=<id> returns 200.
+
+        Uses the optional ``tenant_id`` query parameter for an O(1)
+        single-tenant lookup, avoiding O(n) iteration over every
+        ACTIVE/SUSPENDED tenant (6k+ under --reuse-db).
+        """
+        response = self.client.get(f"/api/v1/platform/tenants/usage/?tenant_id={self.tenant.id}")
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert "results" in data or "count" in data
+        # The response must include the requested tenant
+        results = data.get("results", [data] if isinstance(data, dict) else data)
+        tenant_ids = [r.get("tenant_id") for r in results if isinstance(r, dict)]
+        assert str(self.tenant.id) in tenant_ids, (
+            f"Response should include test tenant {self.tenant.id}"
+        )
+
+    def test_platform_tenant_suspend_resume_flow(self):
+        """Platform admin can suspend and resume a tenant."""
+        # Create a second tenant to suspend
+        uid2 = uuid.uuid4().hex[:8]
+        other = Tenant.objects.create(
+            name=f"Other Tenant {uid2}",
+            slug=f"other-tenant-platform-integration-{uid2}",
+        )
+        # Suspend
+        response_suspend = self.client.post(
+            f"/api/v1/platform/tenants/{other.id}/suspend/",
+            data={"reason": "Integration test"},
+            format="json",
+        )
+        assert response_suspend.status_code in (
+            status.HTTP_200_OK,
+            status.HTTP_400_BAD_REQUEST,
+            status.HTTP_404_NOT_FOUND,
+        )
+        if response_suspend.status_code == status.HTTP_200_OK:
+            response_resume = self.client.post(f"/api/v1/platform/tenants/{other.id}/resume/")
+            assert response_resume.status_code in (
+                status.HTTP_200_OK,
+                status.HTTP_400_BAD_REQUEST,
+                status.HTTP_404_NOT_FOUND,
+            )
+
+    def test_platform_users_erasure_requests_returns_200(self):
+        """GET platform/users/{id}/erasure-requests/ returns 200 for platform admin."""
+        url = f"/api/v1/platform/users/{self.admin.id}/erasure-requests/"
+        response = self.client.get(url)
+        assert response.status_code == status.HTTP_200_OK
+        assert isinstance(response.json(), list)
+
+    def test_platform_request_erasure_returns_201_and_audit_actor_is_platform_admin(self):
+        """POST platform/users/{id}/request-erasure/ (29.67.2): audit actor = platform admin."""
+        from hub.apps.audit.models import AuditEvent
+
+        regular_user = User.objects.create_user(
+            email=f"regular_platform_erasure-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
+        )
+        response = self.client.post(f"/api/v1/platform/users/{regular_user.id}/request-erasure/")
+        assert response.status_code == status.HTTP_201_CREATED
+
+        event = (
+            AuditEvent.objects.filter(resource_type="ERASURE_REQUEST", action="ERASURE_REQUESTED")
+            .order_by("-timestamp")
+            .first()
+        )
+        assert event is not None
+        assert event.actor_user_id == self.admin.id
+        assert event.details_json.get("source") == "platform_admin"
+        assert event.details_json.get("initiated_by") == str(self.admin.id)

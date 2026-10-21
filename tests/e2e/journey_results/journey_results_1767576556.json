@@ -1,0 +1,86 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.053864240646362305
+  },
+  "journeys": [
+    {
+      "journey_id": "CPO-002-e6e5a507",
+      "journey_name": "Generate Compliance Report",
+      "persona": "Compliance & Privacy Officer",
+      "status": "completed",
+      "start_time": 1767576556.8826573,
+      "end_time": 1767576556.9365215,
+      "duration": 0.053864240646362305,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Create Asset with Compliance Data",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1767576556.8826628,
+          "end_time": 1767576556.9355829,
+          "duration": 0.05292010307312012,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Select Regulation",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1767576556.9355915,
+          "end_time": 1767576556.9355965,
+          "duration": 5.0067901611328125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Collect Compliance Data",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1767576556.9355984,
+          "end_time": 1767576556.9356008,
+          "duration": 2.384185791015625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Generate Report",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1767576556.9356022,
+          "end_time": 1767576556.9365182,
+          "duration": 0.0009160041809082031,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "UUID"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "0310aceb-eb17-49b6-b439-c746c8e906f2",
+        "regulation": "GDPR",
+        "report_id": "676450c6-42b7-4795-ab44-93475037d7a8"
+      }
+    }
+  ],
+  "exported_at": "2026-01-05T01:29:16.936589"
+}

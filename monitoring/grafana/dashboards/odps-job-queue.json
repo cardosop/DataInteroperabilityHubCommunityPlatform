@@ -1,0 +1,270 @@
+{
+  "title": "ODPS Job Queue",
+  "tags": [
+    "hub",
+    "jobs",
+    "odps",
+    "queue"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 16,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "ODPS Job Queue Length by Job Type",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "sum(job_queue_length{job_type=~\"ODPS_.*\"}) by (job_type, queue_name)",
+          "legendFormat": "{{job_type}} {{queue_name}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "yaxes": [
+        {
+          "format": "short",
+          "label": "Jobs"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "xaxis": {
+        "mode": "time"
+      }
+    },
+    {
+      "id": 2,
+      "title": "ODPS Job Execution Rate by Job Type",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "sum(rate(jobs_completed_total{job_type=~\"ODPS_.*\"}[5m])) by (job_type, status)",
+          "legendFormat": "{{job_type}} {{status}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "yaxes": [
+        {
+          "format": "ops",
+          "label": "Jobs/sec"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "xaxis": {
+        "mode": "time"
+      }
+    },
+    {
+      "id": 3,
+      "title": "ODPS Job Success/Failure Rate by Job Type",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "sum(rate(jobs_completed_total{job_type=~\"ODPS_.*\", status=\"COMPLETED\"}[5m])) by (job_type)",
+          "legendFormat": "{{job_type}} Success",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(jobs_completed_total{job_type=~\"ODPS_.*\", status=\"FAILED\"}[5m])) by (job_type)",
+          "legendFormat": "{{job_type}} Failed",
+          "refId": "B"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "yaxes": [
+        {
+          "format": "ops",
+          "label": "Jobs/sec"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "xaxis": {
+        "mode": "time"
+      }
+    },
+    {
+      "id": 4,
+      "title": "ODPS Job Duration (p50, p95, p99) by Job Type",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(job_duration_seconds_bucket{job_type=~\"ODPS_.*\"}[5m])) by (job_type, le))",
+          "legendFormat": "{{job_type}} P50",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(job_duration_seconds_bucket{job_type=~\"ODPS_.*\"}[5m])) by (job_type, le))",
+          "legendFormat": "{{job_type}} P95",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(job_duration_seconds_bucket{job_type=~\"ODPS_.*\"}[5m])) by (job_type, le))",
+          "legendFormat": "{{job_type}} P99",
+          "refId": "C"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "yaxes": [
+        {
+          "format": "s",
+          "label": "Duration"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "xaxis": {
+        "mode": "time"
+      }
+    },
+    {
+      "id": 5,
+      "title": "ODPS Job Retry Count Distribution",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "sum(rate(job_retry_count_bucket{job_type=~\"ODPS_.*\"}[5m])) by (job_type, le)",
+          "legendFormat": "{{job_type}} {{le}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "yaxes": [
+        {
+          "format": "short",
+          "label": "Retries"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "xaxis": {
+        "mode": "time"
+      }
+    },
+    {
+      "id": 6,
+      "title": "ODPS Job Timeout Rate",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "sum(rate(job_timeout_rate{job_type=~\"ODPS_.*\"}[5m])) by (job_type, queue_name)",
+          "legendFormat": "{{job_type}} {{queue_name}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "yaxes": [
+        {
+          "format": "ops",
+          "label": "Timeouts/sec"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "xaxis": {
+        "mode": "time"
+      }
+    },
+    {
+      "id": 7,
+      "title": "ODPS Job Queue Depth Over Time",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "sum(job_queue_depth{job_type=~\"ODPS_.*\"}) by (job_type, queue_name)",
+          "legendFormat": "{{job_type}} {{queue_name}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      },
+      "yaxes": [
+        {
+          "format": "short",
+          "label": "Queue Depth"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "xaxis": {
+        "mode": "time"
+      }
+    },
+    {
+      "id": 8,
+      "title": "ODPS Job Processing Rate Over Time",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "sum(rate(job_processing_rate{job_type=~\"ODPS_.*\"}[5m])) by (job_type, status)",
+          "legendFormat": "{{job_type}} {{status}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 24
+      },
+      "yaxes": [
+        {
+          "format": "ops",
+          "label": "Processing Rate"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "xaxis": {
+        "mode": "time"
+      }
+    }
+  ]
+}

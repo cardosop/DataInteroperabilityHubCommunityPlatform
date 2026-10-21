@@ -1,0 +1,44 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-011-7269a095",
+      "journey_name": "Assign Data Stewards",
+      "persona": "Data Product Owner",
+      "status": "failed",
+      "start_time": 1772244495.9340284,
+      "end_time": 1772244496.4098465,
+      "duration": 0.4758181571960449,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": "An error occurred in the current transaction. You can't execute queries until the end of the 'atomic' block.",
+      "error_type": "TransactionManagementError",
+      "steps": [
+        {
+          "step_name": "Create Asset",
+          "status": "StepStatus.FAILED",
+          "start_time": 1772244495.9340427,
+          "end_time": 1772244496.4098418,
+          "duration": 0.4757990837097168,
+          "error_message": "An error occurred in the current transaction. You can't execute queries until the end of the 'atomic' block.",
+          "error_type": "TransactionManagementError",
+          "retry_count": 0,
+          "metadata": {
+            "args": "()",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-28T02:08:16.409930"
+}

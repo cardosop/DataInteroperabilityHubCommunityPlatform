@@ -1,0 +1,57 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DC-006-ceb1dfb1",
+      "journey_name": "Use Natural Language Search",
+      "persona": "Data Consumer",
+      "status": "failed",
+      "start_time": 1774662066.3214235,
+      "end_time": 1774662066.335189,
+      "duration": 0.013765573501586914,
+      "completion_rate": 50.0,
+      "success_rate": 50.0,
+      "error_message": "False is not true : Search interpretation should have interpretation/query_interpretation, got: ['query', 'interpreted_query', 'results', 'execution_time_ms', 'cached']",
+      "error_type": "AssertionError",
+      "steps": [
+        {
+          "step_name": "Enter Natural Language Query",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774662066.3214324,
+          "end_time": 1774662066.335161,
+          "duration": 0.013728618621826172,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Review Query Interpretation",
+          "status": "StepStatus.FAILED",
+          "start_time": 1774662066.3351693,
+          "end_time": 1774662066.3351862,
+          "duration": 1.6927719116210938e-05,
+          "error_message": "False is not true : Search interpretation should have interpretation/query_interpretation, got: ['query', 'interpreted_query', 'results', 'execution_time_ms', 'cached']",
+          "error_type": "AssertionError",
+          "retry_count": 0,
+          "metadata": {
+            "args": "()",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-03-28T01:41:06.335280"
+}

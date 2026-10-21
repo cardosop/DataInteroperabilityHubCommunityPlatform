@@ -1,0 +1,74 @@
+/* 278.C.1 — Tenant pill with environment color trim */
+.tenant-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  border: 2px solid transparent;
+  background: var(--color-surface-raised, #f3f4f6);
+  color: var(--color-text-primary, #111827);
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  white-space: nowrap;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tenant-pill:hover {
+  background: var(--color-surface-hover, #e5e7eb);
+}
+
+.tenant-pill:focus-visible {
+  outline: 2px solid var(--color-focus-ring, #2563eb);
+  outline-offset: 2px;
+}
+
+/* Environment color trim — 278.C.P1.7: uses dedicated env-color tokens
+   defined in index.css :root so overrides stay centralised. */
+.tenant-pill--red {
+  border-color: var(--env-color-production);
+}
+
+.tenant-pill--amber {
+  border-color: var(--env-color-staging);
+}
+
+.tenant-pill--blue {
+  border-color: var(--env-color-sandbox);
+}
+
+.tenant-pill--neutral {
+  border-color: var(--env-color-development);
+}
+
+.tenant-pill__env-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.tenant-pill--red .tenant-pill__env-dot {
+  background: var(--env-color-production);
+}
+
+.tenant-pill--amber .tenant-pill__env-dot {
+  background: var(--env-color-staging);
+}
+
+.tenant-pill--blue .tenant-pill__env-dot {
+  background: var(--env-color-sandbox);
+}
+
+.tenant-pill--neutral .tenant-pill__env-dot {
+  background: var(--env-color-development);
+}
+
+.tenant-pill__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

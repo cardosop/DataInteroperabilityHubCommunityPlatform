@@ -1,0 +1,70 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.dynamic]
+version = {attr = "datahub_interoperability.__version__"}
+
+[project]
+name = "datahub-interoperability"
+# W9.1 — single-source: the published version derives from the package
+# __init__ (root fix for the 2.0.0/1.0.0/setup.py mismatch named in W12.6).
+dynamic = ["version"]
+description = "Python SDK for Interoperable Data Hub"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+authors = [
+    {name = "DataHub Team", email = "cardosop@users.noreply.github.com"},
+]
+keywords = ["datahub", "data-contracts", "data-quality", "compliance", "marketplace"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+]
+dependencies = [
+    "httpx>=0.25.0",
+    "pydantic>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "pytest-mock>=3.10.0",
+    "black>=26.3.1",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/cardosop/DataInteroperabilityHubCommunityPlatform"
+Documentation = "https://github.com/cardosop/DataInteroperabilityHubCommunityPlatform/blob/main/sdk/python/README.md"
+Repository = "https://github.com/cardosop/DataInteroperabilityHubCommunityPlatform.git"
+
+[tool.black]
+line-length = 100
+target-version = ['py312']
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+# The SDK test tree bootstraps sys.path before imports (test-isolation
+# pattern) — same intent as the root config's E402/E501 ignores, declared
+# here because nearest-config-wins discovery means this file shadows the
+# root .ruff.toml for the whole sdk/python tree.
+ignore = ["E402", "E501"]
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+

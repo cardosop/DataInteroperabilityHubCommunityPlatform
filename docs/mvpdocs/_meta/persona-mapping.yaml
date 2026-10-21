@@ -1,0 +1,35 @@
+# Persona Mapping: Frontend 13 -> Product Canon 6
+#
+# Maps every persona used in Phase 216 fixtures (frontend/e2e/personas/,
+# cli/tests/fixtures/personas.py, sdk/python/tests/fixtures/personas.py)
+# to exactly one of the 6 product-canonical personas from
+# InputDocs/personas.md.
+#
+# D163 — Phase 217.0.4
+# Drift test: scripts/check_persona_mapping_drift.py
+#
+# Product-canonical personas:
+#   DPO  = Data Product Owner
+#   DE   = Data Engineer
+#   CPO  = Compliance & Privacy Officer
+#   DC   = Data Consumer
+#   MPA  = Marketplace & Platform Admin
+#   DEV  = External Developer
+
+mapping:
+  # --- Direct 1:1 matches (6 canonical) ---
+  data_product_owner: DPO
+  data_engineer: DE
+  compliance_officer: CPO
+  data_consumer: DC
+  platform_admin: MPA
+  external_developer: DEV
+
+  # --- Frontend-only roles mapped to nearest canon ---
+  visitor: DC          # unauthenticated browsing -> Data Consumer
+  auditor: CPO         # audit trail review -> Compliance Officer
+  community_manager: MPA  # community ops -> Platform Admin
+  data_analyst: DC     # data analysis -> Data Consumer
+  data_mesh_domain_owner: DPO  # domain ownership -> Data Product Owner
+  data_scientist: DE   # ML/data work -> Data Engineer
+  tenant_admin: MPA    # tenant management -> Platform Admin

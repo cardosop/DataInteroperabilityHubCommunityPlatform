@@ -1,0 +1,70 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-007-d618d13a",
+      "journey_name": "Use AI Schema Matching for Asset Creation",
+      "persona": "Data Product Owner",
+      "status": "failed",
+      "start_time": 1772244483.5883887,
+      "end_time": 1772244486.3511698,
+      "duration": 2.7627811431884766,
+      "completion_rate": 66.66666666666666,
+      "success_rate": 66.66666666666666,
+      "error_message": "An error occurred in the current transaction. You can't execute queries until the end of the 'atomic' block.",
+      "error_type": "TransactionManagementError",
+      "steps": [
+        {
+          "step_name": "Upload Data File",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772244483.5884225,
+          "end_time": 1772244483.6503613,
+          "duration": 0.06193876266479492,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Complete File Upload",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772244483.650387,
+          "end_time": 1772244486.3466651,
+          "duration": 2.6962780952453613,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Create Asset",
+          "status": "StepStatus.FAILED",
+          "start_time": 1772244486.346682,
+          "end_time": 1772244486.3511639,
+          "duration": 0.004481792449951172,
+          "error_message": "An error occurred in the current transaction. You can't execute queries until the end of the 'atomic' block.",
+          "error_type": "TransactionManagementError",
+          "retry_count": 0,
+          "metadata": {
+            "args": "()",
+            "kwargs": "{'key': 'customer-data-9dd451e4', 'name': 'Customer Data', 'description': 'Customer data for schema matching test'}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-28T02:08:06.351325"
+}

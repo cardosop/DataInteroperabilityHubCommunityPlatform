@@ -1,0 +1,22 @@
+{
+  "schema": "https://opendataproducts.org/schema/v1.9",
+  "version": "1.9",
+  "product": {
+    "details": {
+      "en": {
+        "productID": "sample-product-internal-ref-v1.9",
+        "name": "Sample Data Product with Internal $ref v1.9",
+        "description": "A sample ODPS 1.x data product demonstrating internal $ref usage."
+      }
+    },
+    "contract": {
+      "contractURL": "https://example.com/contracts/sample-product-internal-ref-v1.9"
+    }
+  },
+  "$defs": {
+    "contractReference": {
+      "$ref": "#/product/contract"
+    }
+  }
+}
+

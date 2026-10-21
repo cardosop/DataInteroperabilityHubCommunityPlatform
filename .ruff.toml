@@ -1,0 +1,78 @@
+# Ruff configuration file.
+#
+# THIS FILE IS AUTHORITATIVE: ruff's config discovery prefers .ruff.toml
+# over [tool.ruff] in pyproject.toml, so pyproject's ruff section is only a
+# mirror. Both are kept equivalent (Q.2.1, 2026-08-21) — change BOTH or
+# neither (enforced by GATE-34 / scripts/check_config_single_source.py).
+
+line-length = 100
+target-version = "py312"  # was py311 — resolved to py312 (Q.2.1)
+
+exclude = [
+    ".git",
+    ".venv",
+    "venv",
+    "__pycache__",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    "build",
+    "dist",
+    "migrations",
+    "node_modules",
+    "backups",
+    "cli/build",
+]
+
+[lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "BLE", # flake8-blind-except (Phase T.1 — blind `except Exception` must not lint clean)
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+    "ARG", # flake8-unused-arguments
+    "SIM", # flake8-simplify
+    "TCH", # flake8-type-checking
+    "PIE", # flake8-pie
+    "PL",  # Pylint
+    "PT",  # flake8-pytest-style (Phase T.1 — pytest anti-patterns must not lint clean)
+    "TRY", # tryceratops
+    "RUF", # Ruff-specific rules
+]
+ignore = [
+    "E501",  # line too long (handled by ruff format)
+    "B008",  # do not perform function calls in argument defaults
+    "PLR0913", # too many arguments
+    "PLR2004", # magic value used in comparison
+    "TRY003", # avoid specifying long messages outside the exception class
+    "TRY002", # define own exceptions — same style philosophy as TRY003 (2026-09-29 cilint cleanup): this codebase raises builtins with message context; per-site custom exception classes are refactor-for-metric churn
+    "PLC0415", # lazy imports inside functions (Django pattern to avoid circular imports)
+    "E402",  # module-level imports after django.setup() (Django initialization pattern)
+    "PLR0912", # too many branches — W3.1 threshold calibration (2026-08-22): smooth heavy tail 13–32+, complexity heuristics are wrong for this codebase's service-layer methods; refactor-for-metric churn is high-risk
+    "PLR0915", # too many statements — W3.1 threshold calibration (same rationale as PLR0912)
+]
+
+[lint.isort]
+known-first-party = ["hub"]
+
+[lint.per-file-ignores]
+"__init__.py" = ["F401"]  # unused imports in __init__.py
+# Test trees (2026-09-28 cilint cleanup policy): PT009/PT027/PT012/PT013/PT021
+# fire on the unittest API inside Django TestCase subclasses where self.assert*
+# IS the framework idiom; ARG001/ARG002/ARG005 fire on pytest-injected fixture
+# args and override signatures. These are framework noise, not debt.
+"**/tests/**/*.py" = [
+    "PLR2004", "S101",  # allow magic numbers and asserts in tests
+    "PT009", "PT027", "PT012", "PT013", "PT021",
+    "ARG001", "ARG002", "ARG005",
+]
+# TransactionTestCase-based validator scripts living outside a tests/ tree.
+"scripts/validate_odps_final_checklist.py" = ["PT009", "PT027"]
+"scripts/verify_existing_functionality.py" = ["PT009", "PT027"]
+"scripts/test_django6_breaking_changes.py" = ["PT009", "PT027"]
+"hub/apps/**/migrations/*.py" = ["ALL"]  # ignore migrations
+

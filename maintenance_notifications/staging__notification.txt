@@ -1,0 +1,27 @@
+Subject: Scheduled Maintenance - Django 6 Upgrade - staging
+
+Dear Stakeholders,
+
+We will be performing a scheduled maintenance window to upgrade to Django 6.
+
+**Environment**: staging
+**Date**: 
+**Time**:  UTC
+**Duration**: 3 hours
+
+**Impact**: Staging environment only (no user impact)
+
+During this maintenance window:
+- Django 6 upgrade will be deployed
+- Database migrations will be run
+- All services will be verified
+- Comprehensive tests will be executed
+
+We will provide status updates throughout the maintenance window.
+
+If you have any questions or concerns, please contact the deployment team.
+
+Thank you for your understanding.
+
+Deployment Team
+Sun Dec  7 07:57:22 PM -03 2025

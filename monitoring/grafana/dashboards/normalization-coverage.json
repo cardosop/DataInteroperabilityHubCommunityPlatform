@@ -1,0 +1,190 @@
+{
+  "title": "Normalization Coverage",
+  "tags": [
+    "normalization",
+    "coverage",
+    "phase15"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 16,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Normalization Coverage by Object Type (P50)",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.5, sum(rate(normalization_coverage_by_object_bucket[5m])) by (object_type, tenant_id, le))",
+          "legendFormat": "{{object_type}} ({{tenant_id}})",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "percentunit",
+          "label": "Coverage",
+          "min": 0,
+          "max": 1
+        },
+        {
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Normalization Coverage by Object Type (P95)",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(normalization_coverage_by_object_bucket[5m])) by (object_type, tenant_id, le))",
+          "legendFormat": "{{object_type}} ({{tenant_id}})",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "percentunit",
+          "label": "Coverage",
+          "min": 0,
+          "max": 1
+        },
+        {
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Contract JSON Size Distribution",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.5, sum(rate(contract_json_size_bytes_bucket[5m])) by (tenant_id, le))",
+          "legendFormat": "P50 ({{tenant_id}})",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(contract_json_size_bytes_bucket[5m])) by (tenant_id, le))",
+          "legendFormat": "P95 ({{tenant_id}})",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(contract_json_size_bytes_bucket[5m])) by (tenant_id, le))",
+          "legendFormat": "P99 ({{tenant_id}})",
+          "refId": "C"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "bytes",
+          "label": "Size"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Missing Objects Rate",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(contract_missing_objects_total[5m])) by (object_type, tenant_id)",
+          "legendFormat": "{{object_type}} ({{tenant_id}})",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "reqps",
+          "label": "Missing Objects/sec"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Broken Lineage Links Rate",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(contract_broken_lineage_links_total[5m])) by (link_type, tenant_id)",
+          "legendFormat": "{{link_type}} ({{tenant_id}})",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "reqps",
+          "label": "Broken Links/sec"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Normalization Coverage Heatmap",
+      "type": "heatmap",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(normalization_coverage_by_object_bucket[5m])) by (object_type, tenant_id, le)",
+          "format": "heatmap",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "short",
+          "label": "Object Type"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    }
+  ]
+}

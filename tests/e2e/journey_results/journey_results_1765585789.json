@@ -1,0 +1,83 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "CPO-002-7f31d7dc",
+      "journey_name": "Generate Compliance Report",
+      "persona": "Compliance & Privacy Officer",
+      "status": "failed",
+      "start_time": 1765585788.5002296,
+      "end_time": 1765585789.6069112,
+      "duration": 1.1066815853118896,
+      "completion_rate": 75.0,
+      "success_rate": 75.0,
+      "error_message": "null value in column \"start_date\" of relation \"compliance_reports\" violates not-null constraint\nDETAIL:  Failing row contains (3012cf6e-10bb-492b-8d7b-0f823e12db9d, GDPR, ASSET_COMPLIANCE, {\"data\": {}, \"regulation\": \"GDPR\"}, null, null, f, null, [], f, null, 2025-12-13 00:29:49.606139+00, 2884fd98-45e6-4edf-bcba-c068f6b9f753, null).\n",
+      "error_type": "IntegrityError",
+      "steps": [
+        {
+          "step_name": "Create Asset with Compliance Data",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765585788.5002348,
+          "end_time": 1765585789.6059532,
+          "duration": 1.1057183742523193,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Select Regulation",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765585789.605963,
+          "end_time": 1765585789.6059678,
+          "duration": 4.76837158203125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Collect Compliance Data",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765585789.60597,
+          "end_time": 1765585789.6059723,
+          "duration": 2.384185791015625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Generate Report",
+          "status": "StepStatus.FAILED",
+          "start_time": 1765585789.6059732,
+          "end_time": 1765585789.6069071,
+          "duration": 0.0009338855743408203,
+          "error_message": "null value in column \"start_date\" of relation \"compliance_reports\" violates not-null constraint\nDETAIL:  Failing row contains (3012cf6e-10bb-492b-8d7b-0f823e12db9d, GDPR, ASSET_COMPLIANCE, {\"data\": {}, \"regulation\": \"GDPR\"}, null, null, f, null, [], f, null, 2025-12-13 00:29:49.606139+00, 2884fd98-45e6-4edf-bcba-c068f6b9f753, null).\n",
+          "error_type": "IntegrityError",
+          "retry_count": 0,
+          "metadata": {
+            "args": "('8d77356c-7f96-489e-948b-4ce159a540c7', 'GDPR', {'regulation': 'GDPR', 'data': {}})",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2025-12-13T00:29:49.607014"
+}

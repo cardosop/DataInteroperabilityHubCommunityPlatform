@@ -1,0 +1,278 @@
+"""
+Unit tests for PATCH /auth/me/ — User profile update (Phase 7 useronboardfix).
+
+Tests cover:
+- Profile update (display_name, avatar, preferences)
+- Validation (invalid avatar URL, invalid preferences)
+- Permissions (authenticated only; user can only update own profile)
+- Cache invalidation after update
+
+No mocks/stubs — uses real DB and auth.
+"""
+
+import uuid
+
+import pytest
+from django.contrib.auth import get_user_model
+from django.core.management import call_command
+from django.test import TestCase
+from rest_framework import status
+from rest_framework.test import APIClient
+
+from hub.apps.tenants.models import Tenant, TenantConfig, TenantPlan
+
+pytestmark = pytest.mark.django_db(transaction=True)
+User = get_user_model()
+
+
+@pytest.mark.journey("JOURNEY-AUTH-PROFILE")
+class MeProfileUpdateTest(TestCase):
+    """Test PATCH /auth/me/ profile update."""
+
+    def setUp(self):
+        self.client = APIClient()
+        call_command("seed_default_plans")
+
+        unique_id = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(
+            name=f"Profile Test Tenant {unique_id}",
+            slug=f"profile-test-{unique_id}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
+        )
+        TenantConfig.objects.create(tenant=self.tenant)
+        plan = TenantPlan.objects.get(slug="free", is_active=True)
+        try:
+            from hub.apps.billing.models import Subscription, SubscriptionStatus
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.billing (paid layer) not installed in core-only mode")
+
+        Subscription.objects.create(
+            tenant=self.tenant,
+            plan=plan,
+            status=SubscriptionStatus.ACTIVE,
+        )
+
+        uid = uuid.uuid4().hex[:8]
+        self.user = User.objects.create_user(
+            email=f"profileuser-{uid}@example.com",
+            password="SecurePass123",
+            tenant=self.tenant,
+            display_name="Original Name",
+        )
+        self.user.status = "ACTIVE"
+        # Phase 92: ensure non-null for NOT NULL fields (--reuse-db may have old schema)
+        if self.user.avatar_url is None:
+            self.user.avatar_url = ""
+        self.user.save()
+
+    def _login(self):
+        response = self.client.post(
+            "/api/v1/auth/login/",
+            {"email": self.user.email, "password": "SecurePass123"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        token = response.data["access_token"]
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+        return token
+
+    def test_patch_display_name_updates_user(self):
+        """PATCH with display_name updates user and returns updated data."""
+        self._login()
+        response = self.client.patch(
+            "/api/v1/auth/me/",
+            {"display_name": "Updated Display Name"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["name"], "Updated Display Name")
+
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.display_name, "Updated Display Name")
+
+    def test_patch_avatar_updates_user(self):
+        """PATCH with avatar URL updates user.avatar_url."""
+        self._login()
+        avatar_url = "https://example.com/avatars/user123.png"
+        response = self.client.patch(
+            "/api/v1/auth/me/",
+            {"avatar": avatar_url},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["avatar"], avatar_url)
+
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.avatar_url, avatar_url)
+
+    def test_patch_preferences_updates_user(self):
+        """PATCH with preferences updates user.preferences."""
+        self._login()
+        prefs = {"theme": "dark", "language": "en"}
+        response = self.client.patch(
+            "/api/v1/auth/me/",
+            {"preferences": prefs},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["preferences"], prefs)
+
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.preferences, prefs)
+
+    def test_patch_has_seen_tour_updates_user(self):
+        """PATCH has_seen_tour persists the flag and returns it in the
+        /auth/me/ payload (Phase 278.R.6 product-tour cross-device
+        persistence — close-test-coverage-gaps 3.2)."""
+        self._login()
+        self.assertFalse(self.user.has_seen_tour)
+        response = self.client.patch(
+            "/api/v1/auth/me/",
+            {"has_seen_tour": True},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data["has_seen_tour"])
+
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.has_seen_tour)
+
+    def test_get_me_includes_has_seen_tour(self):
+        """GET /auth/me/ carries has_seen_tour — the SPA's ProductTourGate
+        reads it to decide whether to re-show the tour."""
+        self._login()
+        response = self.client.get("/api/v1/auth/me/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("has_seen_tour", response.data)
+        self.assertFalse(response.data["has_seen_tour"])
+
+    def test_patch_partial_update_preserves_other_fields(self):
+        """PATCH with only display_name preserves avatar and preferences."""
+        self.user.avatar_url = "https://example.com/old.png"
+        self.user.preferences = {"theme": "light"}
+        self.user.save()
+
+        self._login()
+        response = self.client.patch(
+            "/api/v1/auth/me/",
+            {"display_name": "New Name Only"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["name"], "New Name Only")
+        self.assertEqual(response.data["avatar"], "https://example.com/old.png")
+        self.assertEqual(response.data["preferences"], {"theme": "light"})
+
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.display_name, "New Name Only")
+        self.assertEqual(self.user.avatar_url, "https://example.com/old.png")
+        self.assertEqual(self.user.preferences, {"theme": "light"})
+
+    def test_patch_invalid_avatar_url_returns_400(self):
+        """PATCH with invalid avatar URL returns 400."""
+        self._login()
+        response = self.client.patch(
+            "/api/v1/auth/me/",
+            {"avatar": "not-a-valid-url"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("avatar", response.data)
+
+    def test_patch_invalid_preferences_returns_400(self):
+        """PATCH with non-dict preferences returns 400."""
+        self._login()
+        response = self.client.patch(
+            "/api/v1/auth/me/",
+            {"preferences": ["not", "a", "dict"]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("preferences", response.data)
+
+    def test_patch_preferences_too_large_returns_400(self):
+        """PATCH with preferences exceeding 10KB returns 400."""
+        self._login()
+        large_value = "x" * 10241
+        response = self.client.patch(
+            "/api/v1/auth/me/",
+            {"preferences": {"key": large_value}},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("preferences", response.data)
+
+    def test_patch_unauthenticated_returns_401(self):
+        """PATCH without token returns 401."""
+        response = self.client.patch(
+            "/api/v1/auth/me/",
+            {"display_name": "Should Fail"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_patch_invalidates_cache(self):
+        """PATCH invalidates GET cache so next GET returns fresh data."""
+        self._login()
+        # Prime cache
+        self.client.get("/api/v1/auth/me/")
+        # Update via PATCH
+        self.client.patch(
+            "/api/v1/auth/me/",
+            {"display_name": "Cached Update"},
+            format="json",
+        )
+        # Next GET must return updated data (not cached old)
+        get_resp = self.client.get("/api/v1/auth/me/")
+        self.assertEqual(get_resp.data["name"], "Cached Update")
+
+    def test_stale_get_set_after_patch_cannot_poison_cache(self):
+        """A slow GET's late SET (built pre-PATCH) must never be served.
+
+        Regression (2026-10-03): the GET branch cached its payload after
+        building it — a GET that started BEFORE the PATCH but landed its
+        cache.set AFTER the PATCH's cache.delete poisoned the entry with
+        the OLD name for the full 300s TTL, and the SPA's refresh paths
+        re-applied the stale payload (JOURNEY-AUTH-PROFILE intermittent
+        header staleness under batch load). The version-tagged entry
+        makes such a late SET unreadable.
+        """
+        from django.core.cache import cache as dj_cache
+
+        self._login()
+        # Prime under version 0, then PATCH (bumps the version + deletes).
+        self.client.get("/api/v1/auth/me/")
+        self.client.patch(
+            "/api/v1/auth/me/",
+            {"display_name": "Fresh Name"},
+            format="json",
+        )
+
+        # Simulate the slow GET's late SET: version 0 + OLD payload.
+        stale_key = f"user:me:{self.user.id}"
+        stale_payload = {
+            "v": 0,
+            "data": {
+                "id": str(self.user.id),
+                "email": self.user.email,
+                "name": "STALE OLD NAME",
+            },
+        }
+        dj_cache.set(stale_key, stale_payload, 300)
+
+        get_resp = self.client.get("/api/v1/auth/me/")
+        self.assertEqual(get_resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(get_resp.data["name"], "Fresh Name")
+
+    def test_get_me_includes_avatar_and_preferences(self):
+        """GET /auth/me/ includes avatar and preferences in response."""
+        self.user.avatar_url = "https://gravatar.com/avatar.png"
+        self.user.preferences = {"notifications": True}
+        self.user.save()
+
+        self._login()
+        response = self.client.get("/api/v1/auth/me/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["avatar"], "https://gravatar.com/avatar.png")
+        self.assertEqual(response.data["preferences"], {"notifications": True})

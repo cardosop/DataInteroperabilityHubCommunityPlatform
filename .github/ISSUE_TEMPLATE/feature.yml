@@ -1,0 +1,22 @@
+name: Feature request
+description: Propose a core-platform improvement
+labels: [enhancement, triage]
+body:
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: |
+        What would you like the core to do? NOTE: the semantic layer,
+        marketplace, billing/BaaS, ML/AI and social features are
+        hosted-SaaS capabilities and are NOT open to contribution
+        (see README open-core boundary).
+    validations:
+      required: true
+  - type: textarea
+    id: rationale
+    attributes:
+      label: Use case
+      description: Who benefits and how?
+    validations:
+      required: true

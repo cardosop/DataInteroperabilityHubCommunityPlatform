@@ -1,0 +1,85 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.038973331451416016
+  },
+  "journeys": [
+    {
+      "journey_id": "CPO-001-8492b466",
+      "journey_name": "Review Compliance for Asset",
+      "persona": "Compliance & Privacy Officer",
+      "status": "completed",
+      "start_time": 1774704380.9467888,
+      "end_time": 1774704380.9857621,
+      "duration": 0.038973331451416016,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Create Asset with Compliance Runs",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774704380.9467952,
+          "end_time": 1774704380.9848742,
+          "duration": 0.038079023361206055,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Retrieve Compliance Runs",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774704380.984884,
+          "end_time": 1774704380.985404,
+          "duration": 0.0005199909210205078,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "list"
+          }
+        },
+        {
+          "step_name": "Review Compliance Status",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774704380.9854085,
+          "end_time": 1774704380.985752,
+          "duration": 0.00034356117248535156,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Review Compliance Details",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774704380.985756,
+          "end_time": 1774704380.9857597,
+          "duration": 3.814697265625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "08c4b532-26c4-4e21-b154-eab28ff7eaa6",
+        "runs_count": 1
+      }
+    }
+  ],
+  "exported_at": "2026-03-28T13:26:20.985835"
+}

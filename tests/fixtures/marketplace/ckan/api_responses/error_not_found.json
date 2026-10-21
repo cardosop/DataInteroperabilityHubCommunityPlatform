@@ -1,0 +1,8 @@
+{
+  "success": false,
+  "error": {
+    "__type": "Not Found Error",
+    "message": "Not found"
+  }
+}
+

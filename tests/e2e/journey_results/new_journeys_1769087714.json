@@ -1,0 +1,71 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 24.557097673416138
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-010-4433118f",
+      "journey_name": "Publish Asset with Usage-Based Pricing",
+      "persona": "Data Product Owner",
+      "status": "completed",
+      "start_time": 1769087690.3452804,
+      "end_time": 1769087714.902378,
+      "duration": 24.557097673416138,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Select Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769087690.3452883,
+          "end_time": 1769087714.8824818,
+          "duration": 24.537193536758423,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Configure Usage-Based Pricing",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769087714.8869157,
+          "end_time": 1769087714.8981974,
+          "duration": 0.011281728744506836,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "HttpResponseNotFound"
+          }
+        },
+        {
+          "step_name": "Create Listing",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769087714.8982043,
+          "end_time": 1769087714.902376,
+          "duration": 0.004171609878540039,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "6e864e2b-4803-4800-8b50-0d17564699d4"
+      }
+    }
+  ],
+  "exported_at": "2026-01-22T13:15:14.902442"
+}

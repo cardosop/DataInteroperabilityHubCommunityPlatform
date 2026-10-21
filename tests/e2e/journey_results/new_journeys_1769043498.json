@@ -1,0 +1,71 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 4.6742682456970215
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-010-41226897",
+      "journey_name": "Publish Asset with Usage-Based Pricing",
+      "persona": "Data Product Owner",
+      "status": "completed",
+      "start_time": 1769043493.565653,
+      "end_time": 1769043498.2399213,
+      "duration": 4.6742682456970215,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Select Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769043493.5656593,
+          "end_time": 1769043498.2184458,
+          "duration": 4.652786493301392,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Configure Usage-Based Pricing",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769043498.2232912,
+          "end_time": 1769043498.2351253,
+          "duration": 0.011834144592285156,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "HttpResponseNotFound"
+          }
+        },
+        {
+          "step_name": "Create Listing",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769043498.235133,
+          "end_time": 1769043498.239919,
+          "duration": 0.004786014556884766,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "545afd71-a386-4c52-a3a7-fc2ac35a065e"
+      }
+    }
+  ],
+  "exported_at": "2026-01-22T00:58:18.239983"
+}

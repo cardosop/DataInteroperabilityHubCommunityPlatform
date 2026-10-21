@@ -1,0 +1,4 @@
+order_id,customer,amount_brl,region,ordered_at
+1001,Acme Inc,1250.00,SP,2026-08-01
+1002,Beta Ltda,340.50,RJ,2026-08-02
+1003,Gamma SA,99.90,MG,2026-08-03

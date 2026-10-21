@@ -1,0 +1,18 @@
+# Doc-Claim Veracity Pass (W12.8) — 2026-10-15
+
+Every "docs that contradict code" liar named in the oss-release-remediation
+design (anti-pattern register row 5) was checked against the code it
+describes and either corrected or deleted, with a test/gate pin that keeps
+the ledger honest (the P4 principle: a doc claim must cite a test or gate
+that proves it).  Pins: `scripts/tests/test_w128_doc_claim_veracity.py` +
+`hub/apps/tenants/tests/test_plan_defaults_doc_claims.py` (CI-wired).
+
+| Claim | Verdict | What was wrong / what happened | Cited to |
+|---|---|---|---|
+| `plan_defaults.py` docstring: "Imported by `seed_default_plans.py` and `PersonalTenantService`" | **FALSE — corrected** | `PersonalTenantService` (hub/apps/tenants/services.py) never imported the catalog — it resolves the seeded FREE plan by slug at runtime. Docstring now names the real importers (`seed_default_plans.py`, `backfill_enterprise_limits.py`) and states the correction. The same file's section comment "Platform Plans (6 tiers)" undercounted the real list (7) — fixed. | `test_every_named_importer_actually_imports`, `test_personal_tenant_service_correction_is_present_and_true`, `test_tier_count_claims_match_the_real_lists` (tenants) |
+| `.github/workflows/CI_CD_SUMMARY.md` "Total Workflows: 6" | **FALSE — deleted** | ~79 shipped yml files. The W12.7 disposition had watched `docs/CI_CD_SUMMARY.md` (never shipped) while the liar lived under `.github/workflows/`. The real file is deleted (`git rm`); the maintained overview is `.github/workflows/README.md`. GATE-61 STUB-008 now pins the real path. Dead name-filter references removed from `scripts/review_cicd_workflows.py` and `tests/ci/test_cicd_pipeline_comprehensive_validation.py` (the filters could never match a `*.yml` glob anyway). | `test_stale_workflow_count_summary_is_gone`, `test_no_code_references_the_deleted_summary` + GATE-61 |
+| README `make boundary-check` / `make publish-check` "targets that don't exist" (assessment finding) | **ALREADY TRUE — now pinned** | The targets exist (Makefile.core, W7.x). Every `make <target>` the README names is now mechanically pinned to a real target; the `make setup` removal claim is pinned (no root setup.sh, no `setup` target). | `test_readme_make_targets_exist`, `test_readme_setup_removal_claim_is_true` |
+| README quickstart claims (bootstrap .env, shared/ mirror, compose services incl. "redis ×4", migrate + seed, wait-for-live; ports :8000/:3000/:80/:443/:8092 + override vars) | **TRUE — now pinned** | Verified against Makefile.core's quickstart recipe and docker-compose.yml (service blocks + default port mappings). | `test_quickstart_compose_services_exist`, `test_quickstart_dependency_files_exist`, `test_readme_port_claims_match_compose` |
+| "Tests re-documented to bless absent RLS middleware" | **ALREADY FIXED (W1.20) — now ratcheted** | `TenantScopingMiddleware` arms GUCs transaction-locally (SET LOCAL), `RLS_REQUEST_PATH_ENABLED` default armed, paired-GUC pin shipped. A scan pin makes any hub Python file claiming the arming is absent/never-armed flip RED. | `test_no_prose_claims_rls_arming_absent`, `test_rls_arming_machinery_exists` |
+| Reviewer checklist lacks the P4 rule | **FALSE — corrected** | `docs/OSS_CONTRIBUTION.md` reviewer checklist gained row 7: doc/contract claims must cite a test or gate that proves them. | `test_reviewer_checklist_carries_the_p4_claim_rule` |
+| Docstrings claiming idempotency the function lacks | **Swept + fixed this pass** | See the companion rows in `docs/audits/idempotency-claim-veracity-2026-10-15.md` (rotation, notification waves, transformation retry safety, scheduled-run replay, event replay). | the per-surface pins listed there |

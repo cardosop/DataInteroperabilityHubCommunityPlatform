@@ -1,0 +1,312 @@
+{
+  "title": "Marketplace Connector Performance",
+  "tags": [
+    "marketplace",
+    "connector",
+    "performance",
+    "monitoring"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 16,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Connector Operations Rate",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "sum(rate(marketplace_connector_operations_total[5m])) by (marketplace_type, operation_type, status)",
+          "legendFormat": "{{marketplace_type}} {{operation_type}} {{status}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "yaxes": [
+        {
+          "format": "ops",
+          "label": "Operations/sec"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "xaxis": {
+        "mode": "time"
+      },
+      "description": "Rate of connector operations (list_listings, get_listing, sync_pull, sync_push, download_resource) over time"
+    },
+    {
+      "id": 2,
+      "title": "Connector Operation Duration (P50, P95, P99)",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(marketplace_connector_operation_duration_seconds_bucket[5m])) by (marketplace_type, operation_type, status, le))",
+          "legendFormat": "{{marketplace_type}} {{operation_type}} {{status}} P50",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(marketplace_connector_operation_duration_seconds_bucket[5m])) by (marketplace_type, operation_type, status, le))",
+          "legendFormat": "{{marketplace_type}} {{operation_type}} {{status}} P95",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(marketplace_connector_operation_duration_seconds_bucket[5m])) by (marketplace_type, operation_type, status, le))",
+          "legendFormat": "{{marketplace_type}} {{operation_type}} {{status}} P99",
+          "refId": "C"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "yaxes": [
+        {
+          "format": "s",
+          "label": "Duration"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "xaxis": {
+        "mode": "time"
+      },
+      "description": "Connector operation duration percentiles showing P50, P95, and P99 latencies"
+    },
+    {
+      "id": 3,
+      "title": "Connector Operation Errors",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "sum(rate(marketplace_connector_operation_errors_total[5m])) by (marketplace_type, operation_type, error_type)",
+          "legendFormat": "{{marketplace_type}} {{operation_type}} {{error_type}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "yaxes": [
+        {
+          "format": "ops",
+          "label": "Errors/sec"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "xaxis": {
+        "mode": "time"
+      },
+      "description": "Rate of connector operation errors over time, grouped by error type"
+    },
+    {
+      "id": 4,
+      "title": "Operation Success vs Error Rate",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "sum(rate(marketplace_connector_operations_total{status=\"success\"}[5m])) by (marketplace_type, operation_type)",
+          "legendFormat": "{{marketplace_type}} {{operation_type}} Success",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(marketplace_connector_operations_total{status=\"error\"}[5m])) by (marketplace_type, operation_type)",
+          "legendFormat": "{{marketplace_type}} {{operation_type}} Error",
+          "refId": "B"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "yaxes": [
+        {
+          "format": "ops",
+          "label": "Rate"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "xaxis": {
+        "mode": "time"
+      },
+      "description": "Comparison of success and error rates for connector operations"
+    },
+    {
+      "id": 5,
+      "title": "Operations by Type",
+      "type": "bargauge",
+      "targets": [
+        {
+          "expr": "sum(marketplace_connector_operations_total) by (operation_type, status)",
+          "legendFormat": "{{operation_type}} {{status}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": null,
+                "color": "green"
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "gradient"
+      },
+      "description": "Total connector operations by operation type and status"
+    },
+    {
+      "id": 6,
+      "title": "Error Rate Percentage by Operation",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "(sum(rate(marketplace_connector_operations_total{status=\"error\"}[5m])) by (marketplace_type, operation_type) / sum(rate(marketplace_connector_operations_total[5m])) by (marketplace_type, operation_type)) * 100",
+          "legendFormat": "{{marketplace_type}} {{operation_type}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "yaxes": [
+        {
+          "format": "percent",
+          "label": "Error Rate",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "xaxis": {
+        "mode": "time"
+      },
+      "description": "Error rate percentage for each connector operation type"
+    },
+    {
+      "id": 7,
+      "title": "Operations by Marketplace Type",
+      "type": "table",
+      "targets": [
+        {
+          "expr": "sum(marketplace_connector_operations_total) by (marketplace_type, operation_type, status, tenant_id)",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 24
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        }
+      },
+      "description": "Connector operations grouped by marketplace type, operation type, status, and tenant"
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "marketplace_type",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": "label_values(marketplace_connector_operations_total, marketplace_type)",
+        "includeAll": true,
+        "multi": true,
+        "allValue": null,
+        "current": {
+          "selected": false,
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "operation_type",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": "label_values(marketplace_connector_operations_total, operation_type)",
+        "includeAll": true,
+        "multi": true,
+        "allValue": null,
+        "current": {
+          "selected": false,
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "tenant_id",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": "label_values(marketplace_connector_operations_total, tenant_id)",
+        "includeAll": true,
+        "multi": true,
+        "allValue": null,
+        "current": {
+          "selected": false,
+          "text": "All",
+          "value": "$__all"
+        }
+      }
+    ]
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "editable": true,
+  "graphTooltip": 0,
+  "links": []
+}

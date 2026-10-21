@@ -1,0 +1,86 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 1.5780177116394043
+  },
+  "journeys": [
+    {
+      "journey_id": "CPO-002-134ee0a5",
+      "journey_name": "Generate Compliance Report",
+      "persona": "Compliance & Privacy Officer",
+      "status": "completed",
+      "start_time": 1765592974.735332,
+      "end_time": 1765592976.3133497,
+      "duration": 1.5780177116394043,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Create Asset with Compliance Data",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765592974.7353394,
+          "end_time": 1765592976.3124964,
+          "duration": 1.5771570205688477,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Select Regulation",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765592976.3125079,
+          "end_time": 1765592976.312515,
+          "duration": 7.152557373046875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Collect Compliance Data",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765592976.3125172,
+          "end_time": 1765592976.3125193,
+          "duration": 2.1457672119140625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Generate Report",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765592976.3125207,
+          "end_time": 1765592976.3133464,
+          "duration": 0.0008256435394287109,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "UUID"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "6bcc947d-4546-4140-80d9-238d223028eb",
+        "regulation": "GDPR",
+        "report_id": "b5518e59-b973-41dd-885f-c754ecc01fa2"
+      }
+    }
+  ],
+  "exported_at": "2025-12-13T02:29:36.313430"
+}

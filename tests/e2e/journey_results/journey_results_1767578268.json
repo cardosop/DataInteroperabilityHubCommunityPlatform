@@ -1,0 +1,82 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 1.9550323486328125e-05
+  },
+  "journeys": [
+    {
+      "journey_id": "DEV-002-bdd44875",
+      "journey_name": "Integrate via SDK",
+      "persona": "External Developer / Integrator",
+      "status": "completed",
+      "start_time": 1767578268.8698416,
+      "end_time": 1767578268.8698611,
+      "duration": 1.9550323486328125e-05,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Install SDK",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1767578268.8698475,
+          "end_time": 1767578268.8698523,
+          "duration": 4.76837158203125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Configure SDK",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1767578268.8698542,
+          "end_time": 1767578268.8698556,
+          "duration": 1.430511474609375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Authenticate",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1767578268.869857,
+          "end_time": 1767578268.8698583,
+          "duration": 1.1920928955078125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Use SDK Methods",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1767578268.8698592,
+          "end_time": 1767578268.8698604,
+          "duration": 1.1920928955078125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-01-05T01:57:48.869923"
+}

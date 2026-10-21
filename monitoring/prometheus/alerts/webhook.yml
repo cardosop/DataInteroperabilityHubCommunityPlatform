@@ -1,0 +1,174 @@
+# Phase 233.6.4 — Webhook surface alert rules.
+#
+# Alerts the on-call when the webhook surface degrades. Reads from the
+# three Phase 233.6.2 metrics:
+#   - meshant_webhook_outbound_total
+#   - meshant_webhook_signature_verification_duration_seconds (histogram)
+#   - meshant_webhook_rate_limit_blocks_total
+#
+# Plus the existing http_request_duration_seconds_bucket histogram for
+# the webhook delivery endpoints (subscriber-side latency / failure
+# rates surface in the standard HTTP metrics).
+#
+# Severity ladder mirrors the platform convention used by
+# datasets-files.yml + asset-creation.yml:
+#   - warning : team should investigate during business hours
+#   - page    : auto-page on-call engineer
+#   - critical: auto-page + auto-rollback (when paired with workflow)
+
+groups:
+  - name: webhook-phase233
+    rules:
+      # ----------------------------------------------------------------
+      # 1. Outbound delivery failure-rate.
+      #
+      # The outbound counter labels include outcome. The
+      # delivery's terminal state (SUCCESS/FAILED/DEAD_LETTER) is
+      # tracked separately by _attempt_delivery; for the trigger-time
+      # signal, "rate_limited" outcomes spiking is a tenant-misconfig
+      # signal that the on-call needs to see fast.
+      # ----------------------------------------------------------------
+      - alert: WebhookRateLimitedSpikePerTenant
+        expr: |
+          sum by (tenant_id) (
+            rate(meshant_webhook_outbound_total{outcome="rate_limited"}[5m])
+          ) > 5
+        for: 10m
+        labels:
+          severity: warning
+          team: webhooks-eng
+          phase: "233.6"
+        annotations:
+          summary: "Tenant rate-limited >5 webhook deliveries/sec for 10m"
+          description: |
+            A tenant is hitting its outbound webhook rate limit at
+            a rate >5 deliveries/sec for 10+ minutes. Either the
+            tenant's subscriber is misconfigured (not handling
+            real event volume) or the per-tenant limit is too low
+            for legitimate traffic. Investigate via the
+            ``WEBHOOK_RATE_LIMIT_EXCEEDED`` audit events for the
+            tenant_id label.
+          runbook_url: "https://meshant-internal.example.com/runbooks/webhook-key-rotation"
+          dashboard_url: "https://meshant-internal.example.com/d/webhook-health"
+
+      # ----------------------------------------------------------------
+      # 2. Signature compute duration P95 — slow path indicator.
+      #
+      # HMAC-SHA256 of a typical payload should be sub-millisecond.
+      # P95 > 100ms means decrypt_secret is slow (KMS round-trip
+      # outage, Fernet key contention, or a pathological payload size).
+      # ----------------------------------------------------------------
+      - alert: WebhookSignatureComputeDurationHigh
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (
+              rate(meshant_webhook_signature_verification_duration_seconds_bucket[10m])
+            )
+          ) > 0.1
+        for: 15m
+        labels:
+          severity: warning
+          team: webhooks-eng
+          phase: "233.6"
+        annotations:
+          summary: "Webhook signature compute p95 above 100ms"
+          description: |
+            The HMAC + decrypt_secret path on outbound webhook
+            delivery has p95 latency above 100ms for 15+ minutes.
+            Typical p95 is <1ms; this magnitude indicates a slow
+            ``decrypt_secret`` round-trip (KMS outage, Fernet key
+            contention) or a pathologically large payload. Check
+            KMS health + the size distribution of recent
+            ``WebhookDelivery.payload`` rows.
+          runbook_url: "https://meshant-internal.example.com/runbooks/webhook-key-rotation"
+          dashboard_url: "https://meshant-internal.example.com/d/webhook-health"
+
+      # ----------------------------------------------------------------
+      # 3. Triggered → delivered ratio implies retry storm.
+      #
+      # If the trigger-time outbound counter races ahead of actual
+      # successful deliveries (tracked via WebhookDelivery row
+      # transitions), the dispatch worker is failing OR the retry
+      # storm is consuming the rate-limit budget.
+      # ----------------------------------------------------------------
+      - alert: WebhookTriggerVolumeAnomalyHigh
+        expr: |
+          sum(rate(meshant_webhook_outbound_total{outcome="triggered"}[5m])) > 100
+        for: 30m
+        labels:
+          severity: warning
+          team: webhooks-eng
+          phase: "233.6"
+        annotations:
+          summary: "Webhook trigger volume >100/sec for 30 minutes"
+          description: |
+            Sustained outbound trigger volume above 100/sec for
+            30+ minutes. Inspect for a runaway event source (a
+            misconfigured federated-import job, a model-drift loop
+            triggering ml.training.failed events, or an automation
+            client without backoff). Check the top-N event_type
+            label values on this metric.
+          runbook_url: "https://meshant-internal.example.com/runbooks/webhook-key-rotation"
+          dashboard_url: "https://meshant-internal.example.com/d/webhook-health"
+
+      # ----------------------------------------------------------------
+      # 4. Cross-tenant rate-limit blocks (kill-switch firing or DoS).
+      #
+      # If MULTIPLE tenants are hitting rate-limit simultaneously,
+      # either an upstream bug fires events for the whole platform OR
+      # an attacker is exercising the test endpoint across stolen
+      # auth. Either way: page.
+      # ----------------------------------------------------------------
+      - alert: WebhookRateLimitBlockedAcrossManyTenants
+        expr: |
+          count(
+            sum by (tenant_id) (
+              increase(meshant_webhook_rate_limit_blocks_total[5m])
+            ) > 0
+          ) > 10
+        for: 10m
+        labels:
+          severity: page
+          team: webhooks-eng
+          phase: "233.6"
+        annotations:
+          summary: "Rate-limit blocks firing on >10 tenants simultaneously"
+          description: |
+            Rate-limit blocks have fired on >10 distinct tenants in
+            the last 5 minutes for 10+ minutes. Either an upstream
+            event source is fan-out-storming the whole platform or
+            an attacker is hitting outbound webhooks across stolen
+            auth. PAGE the on-call. Investigate via
+            ``WEBHOOK_RATE_LIMIT_EXCEEDED`` audit events grouped
+            by tenant_id.
+          runbook_url: "https://meshant-internal.example.com/runbooks/webhook-key-rotation"
+          dashboard_url: "https://meshant-internal.example.com/d/webhook-health"
+
+      # ----------------------------------------------------------------
+      # 5. Duplicate-skip rate (idempotency hits).
+      #
+      # The idempotency check skips deliveries whose event_id
+      # already has a SUCCESS row. A high duplicate-skip rate means
+      # the upstream emitter is double-firing — informational, not
+      # urgent.
+      # ----------------------------------------------------------------
+      - alert: WebhookDuplicateSkipRateHigh
+        expr: |
+          sum(rate(meshant_webhook_outbound_total{outcome="duplicate_skipped"}[5m]))
+          /
+          sum(rate(meshant_webhook_outbound_total[5m])) > 0.2
+        for: 1h
+        labels:
+          severity: info
+          team: webhooks-eng
+          phase: "233.6"
+        annotations:
+          summary: "Webhook duplicate-skip ratio >20% for 1 hour"
+          description: |
+            More than 20% of outbound webhook trigger attempts are
+            being skipped as duplicates for over an hour. Indicates
+            an upstream event source is double-firing. Not urgent
+            (the duplicate is correctly de-deduplicated) but
+            worth investigating to reduce platform load.
+          runbook_url: "https://meshant-internal.example.com/runbooks/webhook-key-rotation"
+          dashboard_url: "https://meshant-internal.example.com/d/webhook-health"

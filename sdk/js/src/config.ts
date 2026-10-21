@@ -1,0 +1,61 @@
+/**
+ * SDK Configuration
+ */
+
+export interface DataHubClientConfig {
+  /**
+   * Base URL for the API (e.g., https://api.hub.example.com/api/v1)
+   */
+  baseUrl: string;
+  
+  /**
+   * API token (JWT or API key) for authentication
+   */
+  apiToken?: string;
+
+  /**
+   * Authentication type.
+   * - 'bearer' (default): sends `Authorization: Bearer {token}`
+   * - 'apikey': sends `Authorization: ApiKey {token}`
+   */
+  authType?: 'bearer' | 'apikey';
+
+  /**
+   * Request timeout in milliseconds (default: 30000)
+   */
+  timeout?: number;
+  
+  /**
+   * Maximum number of retries for transient errors (default: 3)
+   */
+  maxRetries?: number;
+
+  /**
+   * Base of the exponential backoff between retries, in milliseconds
+   * (default: 1000).  The server's `Retry-After` header always wins
+   * when it asks for a longer wait.
+   */
+  backoffBaseMs?: number;
+
+  /**
+   * Custom user agent string
+   */
+  userAgent?: string;
+
+  /**
+   * Enable request/response logging (default: false)
+   */
+  enableLogging?: boolean;
+}
+
+/**
+ * Default configuration values
+ */
+export const DEFAULT_CONFIG: Partial<DataHubClientConfig> = {
+  timeout: 30000,
+  maxRetries: 3,
+  backoffBaseMs: 1000,
+  userAgent: '@meshant/interoperability-sdk/1.0.0',
+  enableLogging: false,
+};
+

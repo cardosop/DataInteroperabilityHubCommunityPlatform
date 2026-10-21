@@ -1,0 +1,57 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DC-011-3724c81f",
+      "journey_name": "Purchase Asset with Usage-Based Pricing",
+      "persona": "Data Consumer",
+      "status": "failed",
+      "start_time": 1774660850.4521458,
+      "end_time": 1774660850.7422116,
+      "duration": 0.2900657653808594,
+      "completion_rate": 50.0,
+      "success_rate": 50.0,
+      "error_message": "Step 'View Listing' returned HTTP 400: {'error': {'code': 'VALIDATION_ERROR', 'message': \"{'short_description': [ErrorDetail(string='This field is required.', code='required')]}\", 'http_status': 400, 'request_id': '5c0e2113-a40e-4614-be70-d2dd238eecca', 'timestamp': '2026-03-28T01:20:50.738618+00:00', 'details': {'short_description': [ErrorDetail(string='This field is required.', code='required')]}}, 'short_description': 'This field is required.'}",
+      "error_type": "AssertionError",
+      "steps": [
+        {
+          "step_name": "Select Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774660850.4521532,
+          "end_time": 1774660850.7346616,
+          "duration": 0.28250837326049805,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "View Listing",
+          "status": "StepStatus.FAILED",
+          "start_time": 1774660850.7346728,
+          "end_time": 1774660850.7422073,
+          "duration": 0.007534503936767578,
+          "error_message": "Step 'View Listing' returned HTTP 400: {'error': {'code': 'VALIDATION_ERROR', 'message': \"{'short_description': [ErrorDetail(string='This field is required.', code='required')]}\", 'http_status': 400, 'request_id': '5c0e2113-a40e-4614-be70-d2dd238eecca', 'timestamp': '2026-03-28T01:20:50.738618+00:00', 'details': {'short_description': [ErrorDetail(string='This field is required.', code='required')]}}, 'short_description': 'This field is required.'}",
+          "error_type": "AssertionError",
+          "retry_count": 0,
+          "metadata": {
+            "args": "()",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-03-28T01:20:50.742310"
+}

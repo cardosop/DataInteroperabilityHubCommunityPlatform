@@ -1,0 +1,112 @@
+/**
+ * Marketplace Connections React Query Hooks
+ */
+
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { normalizePaginated } from '../../../shared/utils/paginated';
+import { useMutationWithNotification } from '../../../shared/hooks/useMutationWithNotification';
+import { marketplaceConnectionService } from '../services/marketplaceConnectionService';
+import type {
+  MarketplaceConnectionCreate,
+  MarketplaceConnectionUpdate,
+  MarketplaceConnectionListFilters,
+} from '../../../shared/types/integrations';
+
+export function useMarketplaceConnections(filters: MarketplaceConnectionListFilters = {}) {
+  return useQuery({
+    queryKey: ['integrations', 'marketplace', 'connections', 'list', filters],
+    queryFn: async () => {
+      const data = await marketplaceConnectionService.list(filters);
+      // React Query requires non-undefined; API may return undefined on error/empty
+      return normalizePaginated(
+        data ?? {
+          results: [],
+          count: 0,
+          page: 1,
+          page_size: 50,
+          total_pages: 0,
+          has_next: false,
+          has_previous: false,
+          next_page: null,
+          previous_page: null,
+        }
+      );
+    },
+  });
+}
+
+export function useMarketplaceConnection(id: string | null) {
+  return useQuery({
+    queryKey: ['integrations', 'marketplace', 'connections', 'detail', id],
+    queryFn: () => marketplaceConnectionService.getById(id!),
+    enabled: !!id,
+  });
+}
+
+export function useCreateMarketplaceConnection() {
+  const queryClient = useQueryClient();
+
+  return useMutationWithNotification({
+    mutationFn: (data: MarketplaceConnectionCreate) => marketplaceConnectionService.create(data),
+    successMessage: 'Connection created',
+    errorMessage: 'Failed to create connection',
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['integrations', 'marketplace', 'connections'] });
+    },
+  });
+}
+
+export function useUpdateMarketplaceConnection() {
+  const queryClient = useQueryClient();
+
+  return useMutationWithNotification({
+    mutationFn: ({ id, data }: { id: string; data: MarketplaceConnectionUpdate }) =>
+      marketplaceConnectionService.update(id, data),
+    successMessage: 'Connection updated',
+    errorMessage: 'Failed to update connection',
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['integrations', 'marketplace', 'connections'] });
+      queryClient.invalidateQueries({
+        queryKey: ['integrations', 'marketplace', 'connections', 'detail', variables.id],
+      });
+    },
+  });
+}
+
+export function usePartialUpdateMarketplaceConnection() {
+  const queryClient = useQueryClient();
+
+  return useMutationWithNotification({
+    mutationFn: ({ id, data }: { id: string; data: Partial<MarketplaceConnectionUpdate> }) =>
+      marketplaceConnectionService.partialUpdate(id, data),
+    successMessage: 'Connection updated',
+    errorMessage: 'Failed to update connection',
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['integrations', 'marketplace', 'connections'] });
+      queryClient.invalidateQueries({
+        queryKey: ['integrations', 'marketplace', 'connections', 'detail', variables.id],
+      });
+    },
+  });
+}
+
+export function useDeleteMarketplaceConnection() {
+  const queryClient = useQueryClient();
+
+  return useMutationWithNotification({
+    mutationFn: (id: string) => marketplaceConnectionService.delete(id),
+    successMessage: 'Connection deleted',
+    errorMessage: 'Failed to delete connection',
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['integrations', 'marketplace', 'connections'] });
+    },
+  });
+}
+
+export function useTestMarketplaceConnection() {
+  return useMutationWithNotification({
+    mutationFn: (id: string) => marketplaceConnectionService.test(id),
+    successMessage: 'Connection test passed',
+    errorMessage: 'Failed to test connection',
+  });
+}

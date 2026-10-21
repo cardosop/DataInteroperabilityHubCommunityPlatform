@@ -1,0 +1,95 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 1.829972743988037
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-012-bc59b6c4",
+      "journey_name": "Join Data Community",
+      "persona": "Data Product Owner",
+      "status": "completed",
+      "start_time": 1774667225.8810322,
+      "end_time": 1774667227.711005,
+      "duration": 1.829972743988037,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Browse Data Communities",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774667225.8810394,
+          "end_time": 1774667225.8874347,
+          "duration": 0.0063953399658203125,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Join Community",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774667225.8974087,
+          "end_time": 1774667225.9050498,
+          "duration": 0.0076410770416259766,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Participate in Discussions",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774667225.9050555,
+          "end_time": 1774667225.911151,
+          "duration": 0.006095409393310547,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Share Assets in Community",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774667227.6959195,
+          "end_time": 1774667227.703751,
+          "duration": 0.007831573486328125,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Access Knowledge Base",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774667227.7037585,
+          "end_time": 1774667227.7110028,
+          "duration": 0.0072443485260009766,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-03-28T03:07:07.711075"
+}

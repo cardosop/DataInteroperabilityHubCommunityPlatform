@@ -1,0 +1,43 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.006819725036621094
+  },
+  "journeys": [
+    {
+      "journey_id": "DE-012-8e9c3d50",
+      "journey_name": "Create Custom Plugin",
+      "persona": "Data Engineer",
+      "status": "completed",
+      "start_time": 1772135236.9833894,
+      "end_time": 1772135236.990209,
+      "duration": 0.006819725036621094,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Design Plugin",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772135236.9833992,
+          "end_time": 1772135236.9902062,
+          "duration": 0.006807088851928711,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-26T19:47:16.990262"
+}

@@ -1,0 +1,125 @@
+"""
+Unit tests for Cost Tracking
+"""
+
+import uuid
+from datetime import timedelta
+from decimal import Decimal
+
+import pytest
+from django.test import TestCase
+from django.utils import timezone
+
+from hub.apps.scheduled_ingestion.cost_tracking import CostTrackingManager
+from hub.apps.scheduled_ingestion.models import (
+    ScheduledIngestion,
+    ScheduledIngestionRun,
+    ScheduledIngestionRunStatus,
+)
+from hub.apps.tenants.models import Tenant
+from hub.apps.users.models import User, UserStatus
+
+pytestmark = pytest.mark.django_db(transaction=True)
+
+
+class CostTrackingTest(TestCase):
+    """Test Cost Tracking"""
+
+    def setUp(self):
+        """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
+        )
+
+        self.user = User.objects.create_user(
+            email=f"user-{uid}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
+        )
+
+        self.scheduled_ingestion = ScheduledIngestion.objects.create(
+            tenant=self.tenant,
+            name="Test Ingestion",
+            source_type="S3",
+            source_config={"bucket": "test-bucket"},
+            schedule_type="DAILY",
+            schedule_config={"time": "00:00"},
+            file_pattern=".*\\.csv",
+            created_by=self.user,
+        )
+
+    def test_calculate_run_costs(self):
+        """Test calculating costs for a run"""
+        # Create run
+        run = ScheduledIngestionRun.objects.create(
+            scheduled_ingestion=self.scheduled_ingestion,
+            status=ScheduledIngestionRunStatus.COMPLETED,
+            started_at=timezone.now() - timedelta(hours=1),
+            completed_at=timezone.now(),
+            files_found=10,
+            files_processed=10,
+            datasets_created=10,
+            result_json={
+                "files_processed": [
+                    {"file_path": "file1.csv", "size_bytes": 1024 * 1024},  # 1MB
+                    {"file_path": "file2.csv", "size_bytes": 2 * 1024 * 1024},  # 2MB
+                ]
+            },
+        )
+
+        # Calculate costs
+        cost = CostTrackingManager.calculate_run_costs(str(run.id))
+
+        assert cost is not None
+        assert cost.run == run
+        assert cost.scheduled_ingestion == self.scheduled_ingestion
+        assert cost.total_cost_usd > Decimal("0.0")
+        assert cost.storage_cost_usd > Decimal("0.0")
+        assert cost.compute_cost_usd > Decimal("0.0")
+        assert cost.network_cost_usd > Decimal("0.0")
+        assert "storage" in cost.cost_breakdown_json
+        assert "compute" in cost.cost_breakdown_json
+        assert "network" in cost.cost_breakdown_json
+
+    def test_get_cost_report(self):
+        """Test getting cost report"""
+        # Create runs with costs
+        run1 = ScheduledIngestionRun.objects.create(
+            scheduled_ingestion=self.scheduled_ingestion,
+            status=ScheduledIngestionRunStatus.COMPLETED,
+            started_at=timezone.now() - timedelta(days=2),
+            completed_at=timezone.now() - timedelta(days=2) + timedelta(hours=1),
+            files_processed=10,
+            datasets_created=10,
+        )
+
+        run2 = ScheduledIngestionRun.objects.create(
+            scheduled_ingestion=self.scheduled_ingestion,
+            status=ScheduledIngestionRunStatus.COMPLETED,
+            started_at=timezone.now() - timedelta(days=1),
+            completed_at=timezone.now() - timedelta(days=1) + timedelta(hours=1),
+            files_processed=5,
+            datasets_created=5,
+        )
+
+        # Calculate costs for runs
+        CostTrackingManager.calculate_run_costs(str(run1.id))
+        CostTrackingManager.calculate_run_costs(str(run2.id))
+
+        # Get cost report
+        report = CostTrackingManager.get_cost_report(
+            tenant_id=str(self.tenant.id),
+            start_date=timezone.now() - timedelta(days=3),
+            end_date=timezone.now(),
+        )
+
+        assert "summary" in report
+        assert report["summary"]["total_cost_usd"] > 0.0
+        assert report["summary"]["total_runs"] == 2
+        assert "cost_by_ingestion" in report
+        assert "daily_trends" in report

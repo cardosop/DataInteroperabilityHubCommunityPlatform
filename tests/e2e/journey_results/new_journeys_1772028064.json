@@ -1,0 +1,82 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.29683470726013184
+  },
+  "journeys": [
+    {
+      "journey_id": "TA-005-4862f51f",
+      "journey_name": "Configure Data Mesh Domains",
+      "persona": "Tenant Admin",
+      "status": "completed",
+      "start_time": 1772028064.5852757,
+      "end_time": 1772028064.8821104,
+      "duration": 0.29683470726013184,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Create Domains",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772028064.5852838,
+          "end_time": 1772028064.8162506,
+          "duration": 0.23096680641174316,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Assign Domain Owners",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772028064.8162637,
+          "end_time": 1772028064.855446,
+          "duration": 0.039182424545288086,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Configure Domain Policies",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772028064.8554606,
+          "end_time": 1772028064.8627872,
+          "duration": 0.007326602935791016,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Monitor Domains",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772028064.8627965,
+          "end_time": 1772028064.8821068,
+          "duration": 0.01931023597717285,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-25T14:01:04.882197"
+}

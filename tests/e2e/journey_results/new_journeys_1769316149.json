@@ -1,0 +1,136 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 1.451322078704834
+  },
+  "journeys": [
+    {
+      "journey_id": "DE-011-6d0a3b74",
+      "journey_name": "Set Up Reverse ETL",
+      "persona": "Data Engineer",
+      "status": "completed",
+      "start_time": 1769316148.5155444,
+      "end_time": 1769316149.9668665,
+      "duration": 1.451322078704834,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Select Data Source",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769316148.5155494,
+          "end_time": 1769316149.9487138,
+          "duration": 1.433164358139038,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Configure Reverse ETL",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769316149.948724,
+          "end_time": 1769316149.9527457,
+          "duration": 0.004021644592285156,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "HttpResponseNotFound"
+          }
+        },
+        {
+          "step_name": "Note: Reverse ETL API Not Yet Implemented",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769316149.9527733,
+          "end_time": 1769316149.9527764,
+          "duration": 3.0994415283203125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Field Mapping Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769316149.9556224,
+          "end_time": 1769316149.9556255,
+          "duration": 3.0994415283203125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Transformation Configuration Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769316149.958465,
+          "end_time": 1769316149.9584684,
+          "duration": 3.337860107421875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Schedule Configuration Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769316149.9612706,
+          "end_time": 1769316149.961274,
+          "duration": 3.337860107421875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Reverse ETL Testing Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769316149.9641192,
+          "end_time": 1769316149.9641225,
+          "duration": 3.337860107421875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Reverse ETL Deployment Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769316149.9668612,
+          "end_time": 1769316149.966865,
+          "duration": 3.814697265625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "603da8a0-0147-43e4-99f9-849c5e42c30f"
+      }
+    }
+  ],
+  "exported_at": "2026-01-25T04:42:29.966949"
+}

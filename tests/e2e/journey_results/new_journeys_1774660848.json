@@ -1,0 +1,44 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "CPO-006-a34ff0ee",
+      "journey_name": "Configure Automated Compliance",
+      "persona": "Compliance Officer",
+      "status": "failed",
+      "start_time": 1774660848.9270504,
+      "end_time": 1774660848.9364402,
+      "duration": 0.009389877319335938,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": "Step 'Define Compliance Rules' returned HTTP 404: {'error': {'code': 'NOT_FOUND', 'message': 'Resource not found', 'http_status': 404, 'request_id': '726dd7a5-1919-442f-a268-26fcdaab3802', 'timestamp': '2026-03-28T01:20:48.931877+00:00', 'details': {'message': 'Resource not found'}}}",
+      "error_type": "AssertionError",
+      "steps": [
+        {
+          "step_name": "Define Compliance Rules",
+          "status": "StepStatus.FAILED",
+          "start_time": 1774660848.9364262,
+          "end_time": 1774660848.9364376,
+          "duration": 1.1444091796875e-05,
+          "error_message": "Step 'Define Compliance Rules' returned HTTP 404: {'error': {'code': 'NOT_FOUND', 'message': 'Resource not found', 'http_status': 404, 'request_id': '726dd7a5-1919-442f-a268-26fcdaab3802', 'timestamp': '2026-03-28T01:20:48.931877+00:00', 'details': {'message': 'Resource not found'}}}",
+          "error_type": "AssertionError",
+          "retry_count": 0,
+          "metadata": {
+            "args": "()",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-03-28T01:20:48.936522"
+}

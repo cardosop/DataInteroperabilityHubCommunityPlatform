@@ -1,0 +1,14 @@
+{% extends "notifications/emails/base.html" %}
+
+{% block title %}Access Request {{ status_text|title }}{% endblock %}
+
+{% block content %}
+<h2>Access Request {{ status_text|title }}</h2>
+<p>Hello{% if user.display_name %} {{ user.display_name }}{% endif %},</p>
+<p>Your access request has been <strong>{{ status_text }}</strong>.</p>
+<p><strong>Access Request ID:</strong> {{ access_request_id }}</p>
+<p><strong>Resource:</strong> {{ resource }}</p>
+{% if rejection_reason %}
+<p><strong>Rejection Reason:</strong> {{ rejection_reason }}</p>
+{% endif %}
+{% endblock %}

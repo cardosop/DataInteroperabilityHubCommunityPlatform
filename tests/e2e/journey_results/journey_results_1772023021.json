@@ -1,0 +1,84 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.0013053417205810547
+  },
+  "journeys": [
+    {
+      "journey_id": "TA-002-7a3dd2ed",
+      "journey_name": "Configure Tenant Settings",
+      "persona": "Tenant Admin",
+      "status": "completed",
+      "start_time": 1772023021.8995607,
+      "end_time": 1772023021.900866,
+      "duration": 0.0013053417205810547,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Retrieve Tenant",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772023021.899566,
+          "end_time": 1772023021.8995705,
+          "duration": 4.5299530029296875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Tenant"
+          }
+        },
+        {
+          "step_name": "Update Settings",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772023021.8995728,
+          "end_time": 1772023021.900237,
+          "duration": 0.0006642341613769531,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Tenant"
+          }
+        },
+        {
+          "step_name": "Configure Integrations",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772023021.9002402,
+          "end_time": 1772023021.9002433,
+          "duration": 3.0994415283203125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Tenant"
+          }
+        },
+        {
+          "step_name": "Save Settings",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772023021.9002447,
+          "end_time": 1772023021.9008617,
+          "duration": 0.0006170272827148438,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Tenant"
+          }
+        }
+      ],
+      "metadata": {
+        "tenant_id": "44d6f510-07ae-49a1-8edf-cbd9aff9efdd"
+      }
+    }
+  ],
+  "exported_at": "2026-02-25T12:37:01.900968"
+}

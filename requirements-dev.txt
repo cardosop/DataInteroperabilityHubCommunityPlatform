@@ -1,0 +1,85 @@
+# Include production requirements
+-r requirements.txt
+
+# Dev-only protocol oracle (openspec add-delta-sharing-server 5.6): the
+# delta-sharing reference client validates the NATIVE server's wire shapes
+# in P9. NEVER a runtime dependency — the Hub's native server (5.3) is the
+# runtime surface; no production module may import this package.
+delta-sharing>=1.0,<2.0                   # Apache 2.0
+
+# Development Tools (compatible with Django 6)
+pytest>=7.4.0
+pytest-django>=4.11.0
+pytest-cov>=4.1.0
+pytest-mock>=3.12.0
+pytest-asyncio>=0.21.0
+pytest-xdist>=3.5.0  # -n auto for parallel test execution
+# Optional (evidence collection; uncomment if needed — see docs/EVIDENCE_COLLECTION_PLAN.md):
+# pytest-html>=4.0.0
+# pytest-json-report>=1.5.0
+
+# Code Quality
+ruff>=0.1.0
+black>=26.3.1
+mypy>=1.7.0
+django-stubs>=5.0.0
+types-redis>=4.6.0
+types-requests>=2.31.0
+
+# Security Scanning
+bandit[toml]>=1.7.5
+safety>=2.3.5
+pip-audit>=2.6.1
+
+# Testing Utilities
+daphne>=4.1.0  # Required for channels.testing (WebsocketCommunicator)
+factory-boy>=3.3.0
+# Phase 227 Wave 1 (227.L2.6) — property-based tests for the recursive
+# nested-properties walker (test_odcs_nested_properties.py). The test
+# uses pytest.importorskip so missing dep skips gracefully.
+hypothesis>=6.100.0
+# Pact consumer contract tests (tests/pact/consumer/, Phase 280.B.5.1).
+# Must be the 3.x line: 2.x pins cffi~=1.0 which conflicts with the
+# pinned cryptography 46.x (cffi>=2.0, CVE-2026-26007) — the resolver
+# backtracks to a source distribution and the build aborts. 3.x uses
+# pact-python-ffi (cffi~=2.0) and its own DSL (Pact/upon_receiving/
+# with_body(part=…)/pact.serve()); the consumer tests are written
+# against that API. The consumer modules use the W16 environment guard
+# (skip locally, raise in CI) when this package is absent.
+pact-python>=3.4.0,<4.0
+
+# Phase 227 Wave 1 (227.L8.6 + 227.L8.7) — performance benchmark for
+# the contract normalisation hot path. Pinned SLOs (p99):
+#   * 1000-field ODCS: < 500 ms
+#   * 100-port ODPS (10 fields/port): < 1 s
+#   * 50000-field analytics contract: < 5 s, < 500 MB resident
+# CI wiring fails on >20% regression vs. saved baseline.
+pytest-benchmark>=4.0.0
+pytest-timeout>=2.2.0
+faker>=20.0.0
+freezegun>=1.4.0
+locust>=2.17.0
+moto>=5.0.0  # AWS service mocking (S3, SQS, SES, etc.)
+responses>=0.24.0  # HTTP/HTTPS request mocking
+jsonschema>=4.20.0  # JSON Schema validation for API contract testing
+
+# Development Server
+django-debug-toolbar>=4.4.0
+django-extensions>=3.3.0
+
+# Documentation
+sphinx>=7.2.0
+sphinx-rtd-theme>=2.0.0
+
+# Pre-commit Hooks
+pre-commit>=3.5.0
+
+# Prefect for integration testing — matches prefect-integration service version
+# (docker-compose.test.yml uses prefecthq/prefect:3-python3.12).
+# Required by test_prefect_full_flow_integration.py subprocess flow execution.
+prefect>=3.6.15,<4.0
+
+# Event Bus POC (Kafka/RabbitMQ) — test dependencies for proof-of-concept implementations
+# Used by tests/integration/test_kafka_rabbitmq_poc.py
+kafka-python>=2.0.2
+pika>=1.3.2

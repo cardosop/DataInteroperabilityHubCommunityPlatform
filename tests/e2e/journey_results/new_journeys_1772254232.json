@@ -1,0 +1,69 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.012991666793823242
+  },
+  "journeys": [
+    {
+      "journey_id": "CM-002-c1e44775",
+      "journey_name": "Moderate Reviews and Ratings",
+      "persona": "Community Manager",
+      "status": "completed",
+      "start_time": 1772254232.6528542,
+      "end_time": 1772254232.6658459,
+      "duration": 0.012991666793823242,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "View Pending Reviews",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772254232.660816,
+          "end_time": 1772254232.6608214,
+          "duration": 5.4836273193359375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "View Reviews Audit",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772254232.6658373,
+          "end_time": 1772254232.6658401,
+          "duration": 2.86102294921875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Note: No Pending Reviews to Moderate",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772254232.665843,
+          "end_time": 1772254232.6658444,
+          "duration": 1.430511474609375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-28T04:50:32.665908"
+}

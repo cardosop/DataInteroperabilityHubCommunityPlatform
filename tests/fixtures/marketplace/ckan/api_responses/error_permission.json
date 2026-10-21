@@ -1,0 +1,8 @@
+{
+  "success": false,
+  "error": {
+    "__type": "Authorization Error",
+    "message": "Access denied: You are not authorized to perform this action"
+  }
+}
+

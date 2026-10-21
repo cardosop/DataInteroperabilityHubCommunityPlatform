@@ -1,0 +1,13 @@
+{
+  "capturedAt": "2026-04-26",
+  "phase": "226.F1.b",
+  "note": "Fragile-selector baseline. The CI gate fails if fragileTotal exceeds this number, OR if fragileRatio increases by more than the configured tolerance.",
+  "fragileTotal": 1011,
+  "testidLookups": 3345,
+  "totalLookups": 4356,
+  "fragileRatio": 0.23209366391184574,
+  "tolerance": {
+    "fragileTotalAllowDelta": 0,
+    "fragileRatioAllowDelta": 0.005
+  }
+}

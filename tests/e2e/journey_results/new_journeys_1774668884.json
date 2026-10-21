@@ -1,0 +1,110 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 5.140970468521118
+  },
+  "journeys": [
+    {
+      "journey_id": "DC-011-f4e4a3cb",
+      "journey_name": "Purchase Asset with Usage-Based Pricing",
+      "persona": "Data Consumer",
+      "status": "completed",
+      "start_time": 1774668879.4302669,
+      "end_time": 1774668884.5712373,
+      "duration": 5.140970468521118,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Select Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774668879.4318624,
+          "end_time": 1774668884.506411,
+          "duration": 5.074548721313477,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Create Listing",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774668884.5064218,
+          "end_time": 1774668884.5231738,
+          "duration": 0.016752004623413086,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Publish Listing",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774668884.5231864,
+          "end_time": 1774668884.5395744,
+          "duration": 0.016387939453125,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Purchase Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774668884.5455675,
+          "end_time": 1774668884.559352,
+          "duration": 0.013784408569335938,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Monitor Usage",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774668884.5593665,
+          "end_time": 1774668884.5644858,
+          "duration": 0.00511932373046875,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "HttpResponseNotFound"
+          }
+        },
+        {
+          "step_name": "Review Billing",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774668884.564495,
+          "end_time": 1774668884.5712335,
+          "duration": 0.006738424301147461,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "HttpResponseNotFound"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "5b96149f-00d9-4e08-a352-96299d0be5b2"
+      }
+    }
+  ],
+  "exported_at": "2026-03-28T03:34:44.571321"
+}

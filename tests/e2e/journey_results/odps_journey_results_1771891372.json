@@ -1,0 +1,29 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.5915815830230713
+  },
+  "journeys": [
+    {
+      "journey_id": "ODPS-003-VERSION-1583366f",
+      "journey_name": "ODPS Export - Version Specific",
+      "persona": "Data Product Owner",
+      "status": "completed",
+      "start_time": 1771891372.3791966,
+      "end_time": 1771891372.9707782,
+      "duration": 0.5915815830230713,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-24T00:02:52.970822"
+}

@@ -1,0 +1,657 @@
+"""
+Scheduled Ingestion Models
+
+Models for managing scheduled/recurring data ingestion from external sources.
+"""
+
+import re
+import uuid
+from typing import ClassVar
+
+from croniter import croniter  # type: ignore[import-untyped]
+from django.conf import settings
+from django.core.exceptions import ValidationError
+from django.db import models
+from django.utils import timezone
+
+from hub.apps.core.state_machine import GuardedStateMachine
+from hub.apps.integrations.encryption import EncryptionError, decrypt_json_field, encrypt_json_field
+
+
+class SourceType(models.TextChoices):
+    """Source type enumeration"""
+
+    S3 = "S3", "Amazon S3"
+    GCS = "GCS", "Google Cloud Storage"
+    AZURE_BLOB = "AZURE_BLOB", "Azure Blob Storage"
+    HTTP = "HTTP", "HTTP"
+    HTTPS = "HTTPS", "HTTPS"
+    FTP = "FTP", "FTP"
+    SFTP = "SFTP", "SFTP"
+    DATABASE = "DATABASE", "Database"
+    # Phase 285.6 — warehouse sources via dlt sql_database verified source
+    SNOWFLAKE_SOURCE = "SNOWFLAKE_SOURCE", "Snowflake Source"
+    BIGQUERY_SOURCE = "BIGQUERY_SOURCE", "BigQuery Source"
+    DATABRICKS_SOURCE = "DATABRICKS_SOURCE", "Databricks Source"
+    ATHENA_SOURCE = "ATHENA_SOURCE", "Athena Source"
+
+
+class ScheduleType(models.TextChoices):
+    """Schedule type enumeration"""
+
+    DAILY = "DAILY", "Daily"
+    WEEKLY = "WEEKLY", "Weekly"
+    MONTHLY = "MONTHLY", "Monthly"
+    CUSTOM_CRON = "CUSTOM_CRON", "Custom Cron"
+
+
+class ScheduledIngestionStatus(models.TextChoices):
+    """Scheduled ingestion status enumeration"""
+
+    ACTIVE = "ACTIVE", "Active"
+    PAUSED = "PAUSED", "Paused"
+    ERROR = "ERROR", "Error"
+    DELETED = "DELETED", "Deleted"
+
+
+class DeploymentSyncStatus(models.TextChoices):
+    """Phase 25.4.4 — Prefect deployment sync status"""
+
+    SYNCED = "SYNCED", "Synced"
+    PENDING = "PENDING", "Pending"
+    FAILED = "FAILED", "Failed"
+
+
+class ScheduledIngestionRunStatus(models.TextChoices):
+    """Scheduled ingestion run status enumeration"""
+
+    PENDING = "PENDING", "Pending"
+    RUNNING = "RUNNING", "Running"
+    COMPLETED = "COMPLETED", "Completed"
+    FAILED = "FAILED", "Failed"
+    CANCELLED = "CANCELLED", "Cancelled"
+
+
+class IngestionRunStateMachine(GuardedStateMachine):
+    """
+    W3.1 (R2-P1) — the scheduled-ingestion run lifecycle matrix.
+
+    PENDING → RUNNING | COMPLETED | FAILED | CANCELLED
+    RUNNING → COMPLETED | FAILED | CANCELLED
+    COMPLETED / FAILED / CANCELLED are terminal.
+
+    A run is created PENDING (dlt spine / manual trigger) or RUNNING (the
+    internal worker create). PENDING→COMPLETED/FAILED stays legal because
+    the legacy Prefect full-flow PATCHes the trigger-created run straight
+    to its terminal state (a first-class producer; same precedent as the
+    payment matrix's PENDING→SUCCEEDED webhook hop). The guarded spine +
+    RQ worker still walk PENDING→RUNNING→terminal explicitly. Every
+    status write on an existing row is validated against this matrix in
+    ``ScheduledIngestionRun.clean()``.
+    """
+
+    TRANSITIONS: ClassVar[dict] = {
+        ScheduledIngestionRunStatus.PENDING: frozenset(
+            {
+                ScheduledIngestionRunStatus.RUNNING,
+                ScheduledIngestionRunStatus.COMPLETED,
+                ScheduledIngestionRunStatus.FAILED,
+                ScheduledIngestionRunStatus.CANCELLED,
+            }
+        ),
+        ScheduledIngestionRunStatus.RUNNING: frozenset(
+            {
+                ScheduledIngestionRunStatus.COMPLETED,
+                ScheduledIngestionRunStatus.FAILED,
+                ScheduledIngestionRunStatus.CANCELLED,
+            }
+        ),
+        ScheduledIngestionRunStatus.COMPLETED: frozenset(),
+        ScheduledIngestionRunStatus.FAILED: frozenset(),
+        ScheduledIngestionRunStatus.CANCELLED: frozenset(),
+    }
+
+
+class ScheduledIngestion(models.Model):
+    """
+    Scheduled ingestion model for recurring data ingestion from external sources.
+
+    Orchestrated using Prefect workflows that create SCHEDULED_INGESTION jobs
+    in django-rq queues for processing by the worker service.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.ForeignKey(
+        "tenants.Tenant",
+        on_delete=models.CASCADE,
+        related_name="scheduled_ingestions",
+        help_text="Tenant this scheduled ingestion belongs to",
+    )
+    name = models.CharField(
+        max_length=255, help_text="Scheduled ingestion name (unique per tenant)"
+    )
+    description = models.TextField(null=True, blank=True, help_text="Optional description")
+    source_type = models.CharField(
+        max_length=50,
+        choices=SourceType.choices,
+        help_text="Source type: S3, GCS, AZURE_BLOB, HTTP, FTP, SFTP, DATABASE",
+    )
+    source_config = models.JSONField(
+        blank=True,
+        default=dict,
+        help_text="Source configuration (connection details, credentials, paths) stored securely",
+    )
+    schedule_type = models.CharField(
+        max_length=20,
+        choices=ScheduleType.choices,
+        default=ScheduleType.DAILY,
+        help_text="Schedule type: DAILY, WEEKLY, MONTHLY, CUSTOM_CRON",
+    )
+    schedule_config = models.JSONField(
+        help_text="Schedule configuration (cron expression, timezone, days of week)"
+    )
+    file_pattern = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text="File pattern (regex for matching files). Omit or leave blank to match all files (.*).",
+    )
+    asset = models.ForeignKey(
+        "assets.Asset",
+        on_delete=models.SET_NULL,
+        related_name="scheduled_ingestions",
+        null=True,
+        blank=True,
+        help_text="Asset to associate ingested data with (optional)",
+    )
+    contract = models.ForeignKey(
+        "contracts.Contract",
+        on_delete=models.SET_NULL,
+        related_name="scheduled_ingestions",
+        null=True,
+        blank=True,
+        help_text="Contract to use for ingested data (optional - can create new contract per ingestion)",
+    )
+    auto_create_asset = models.BooleanField(
+        default=False, help_text="Create asset if it doesn't exist"
+    )
+    auto_activate = models.BooleanField(
+        default=False, help_text="Auto-activate asset after ingestion"
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=ScheduledIngestionStatus.choices,
+        default=ScheduledIngestionStatus.ACTIVE,
+        help_text="Status: ACTIVE, PAUSED, ERROR",
+    )
+    next_run_at = models.DateTimeField(
+        null=True, blank=True, help_text="Next scheduled run time (calculated based on schedule)"
+    )
+    prefect_deployment_id = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        help_text="Prefect deployment ID (format: {tenant_id}-{scheduled_ingestion_id})",
+    )
+    deployment_sync_status = models.CharField(
+        max_length=10,
+        choices=DeploymentSyncStatus.choices,
+        default=DeploymentSyncStatus.PENDING,
+        help_text="Prefect deployment sync status: SYNCED, PENDING, FAILED",
+    )
+    prefect_work_pool_name = models.CharField(
+        max_length=255, default="default", help_text="Prefect work pool name"
+    )
+    last_processed_file = models.CharField(
+        max_length=500,
+        null=True,
+        blank=True,
+        help_text="Last processed file path/key (for incremental ingestion)",
+    )
+    last_processed_timestamp = models.DateTimeField(
+        null=True, blank=True, help_text="Last processed file timestamp (for incremental ingestion)"
+    )
+    ingestion_state = models.JSONField(
+        null=True,
+        blank=True,
+        default=dict,
+        help_text="Ingestion state (processed files list, incremental state, etc.)",
+    )
+    error_message = models.TextField(
+        null=True, blank=True, help_text="Error message if status is ERROR"
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="created_scheduled_ingestions",
+        null=True,
+        blank=True,
+        help_text="User who created the scheduled ingestion",
+    )
+    consecutive_failure_count = models.PositiveIntegerField(
+        default=0,
+        help_text="Number of consecutive failed runs (Phase 71 — auto-pause)",
+    )
+    last_error_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Timestamp of the last failure (Phase 71)",
+    )
+    credential_ref = models.CharField(
+        max_length=1024,
+        null=True,
+        blank=True,
+        help_text=(
+            "AWS SM ARN (arn:aws:secretsmanager:...) or "
+            "prefect://block-slug for dlt credential resolution"
+        ),
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "scheduled_ingestions"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["tenant", "status"]),
+            models.Index(fields=["tenant", "name"]),
+            models.Index(fields=["tenant", "source_type"]),
+            models.Index(fields=["next_run_at"]),
+            models.Index(fields=["status", "next_run_at"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tenant", "name"], name="unique_scheduled_ingestion_name_per_tenant"
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.name} ({self.tenant.name})"
+
+    def clean(self):
+        """Validate scheduled ingestion"""
+        # Validate file pattern is a valid regex when set (None means match-all in processor)
+        if self.file_pattern:
+            try:
+                re.compile(self.file_pattern)
+            except re.error as e:
+                raise ValidationError(f"Invalid file pattern regex: {e!s}") from e
+
+        # Validate cron expression if schedule_type is CUSTOM_CRON
+        if self.schedule_type == ScheduleType.CUSTOM_CRON:
+            cron_expr = self.schedule_config.get("cron")
+            if not cron_expr:
+                raise ValidationError("Cron expression is required for CUSTOM_CRON schedule type")
+
+            try:
+                croniter(cron_expr)
+            except Exception as e:
+                raise ValidationError(f"Invalid cron expression: {e!s}") from e
+
+    def save(self, *args, **kwargs):
+        """Override save to validate, encrypt source_config, and calculate next_run_at"""
+        self.full_clean()
+
+        # Encrypt source_config if plaintext dict (not already encrypted)
+        if (
+            isinstance(self.source_config, dict)
+            and self.source_config
+            and not self.source_config.get("_encrypted")
+        ):
+            try:
+                encrypted = encrypt_json_field(self.source_config)
+                self.source_config = {"_encrypted": encrypted}
+            except EncryptionError as e:
+                raise ValidationError({"source_config": f"Failed to encrypt: {e}"}) from e
+
+        # Calculate next_run_at if not set or if schedule changed
+        if not self.next_run_at or self._state.adding:
+            self.next_run_at = self._calculate_next_run_at()
+
+        super().save(*args, **kwargs)
+
+    def get_source_config(self) -> dict:
+        """
+        Get decrypted source configuration.
+
+        Returns:
+            Decrypted source config dictionary.
+            Legacy plaintext dicts (pre-migration) are returned as-is.
+        """
+        if not self.source_config:
+            return {}
+        if isinstance(self.source_config, dict):
+            if "_encrypted" in self.source_config:
+                return decrypt_json_field(self.source_config["_encrypted"])
+            # Legacy plaintext — return as-is
+            return self.source_config
+        return {}
+
+    def _calculate_next_run_at(self):
+        """Calculate next run time based on schedule"""
+        from datetime import datetime, timedelta
+
+        now = timezone.now()
+
+        if self.schedule_type == ScheduleType.DAILY:
+            # Daily at time specified in schedule_config (default: midnight)
+            time_str = self.schedule_config.get("time", "00:00")
+            hour, minute = map(int, time_str.split(":"))
+            next_run = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            if next_run <= now:
+                next_run += timedelta(days=1)
+            return next_run
+
+        elif self.schedule_type == ScheduleType.WEEKLY:
+            # Weekly on specified day(s) of week
+            days_of_week = self.schedule_config.get("days_of_week", [0])  # Default: Monday
+            time_str = self.schedule_config.get("time", "00:00")
+            hour, minute = map(int, time_str.split(":"))
+
+            # Find next matching day
+            next_run: datetime | None = None
+            for i in range(7):
+                candidate = now + timedelta(days=i)
+                if candidate.weekday() in days_of_week:
+                    next_run = candidate.replace(hour=hour, minute=minute, second=0, microsecond=0)
+                    if next_run > now:
+                        break
+
+            # If no match found in next 7 days, use first day of next week
+            if next_run is None:
+                next_run = now + timedelta(days=7)
+            # The replace is idempotent for the matched candidate (same
+            # hour/minute/second/microsecond) — one return for both paths.
+            return next_run.replace(hour=hour, minute=minute, second=0, microsecond=0)
+
+        elif self.schedule_type == ScheduleType.MONTHLY:
+            # Monthly on specified day of month
+            day_of_month = self.schedule_config.get("day_of_month", 1)
+            time_str = self.schedule_config.get("time", "00:00")
+            hour, minute = map(int, time_str.split(":"))
+
+            # Find next matching day
+            next_run = now.replace(
+                day=day_of_month, hour=hour, minute=minute, second=0, microsecond=0
+            )
+            if next_run <= now:
+                # Move to next month
+                if next_run.month == 12:
+                    next_run = next_run.replace(year=next_run.year + 1, month=1)
+                else:
+                    next_run = next_run.replace(month=next_run.month + 1)
+            return next_run
+
+        elif self.schedule_type == ScheduleType.CUSTOM_CRON:
+            # Use cron expression
+            cron_expr = self.schedule_config.get("cron")
+            timezone_str = self.schedule_config.get("timezone", "UTC")
+
+            try:
+                from croniter import croniter as _croniter
+                from pytz import timezone as pytz_timezone  # type: ignore[import-untyped]
+
+                tz = pytz_timezone(timezone_str)
+                cron = _croniter(cron_expr, now.astimezone(tz))
+                next_run = cron.get_next(datetime)
+                return timezone.make_aware(next_run)
+            except (ImportError, KeyError, ValueError, AttributeError, TypeError) as e:
+                # Graceful fallback when cron expression / timezone parsing
+                # fails (e.g. pytz not installed, invalid timezone string,
+                # malformed cron expression).  Log at warning so SRE can
+                # detect configuration drift.
+                import logging
+
+                logger = logging.getLogger(__name__)
+                logger.warning(
+                    "CUSTOM_CRON next_run calculation failed for %s: %s — "
+                    "falling back to tomorrow.",
+                    self.name if hasattr(self, "name") else str(self.pk),
+                    e,
+                )
+                return now + timedelta(days=1)
+
+        # Default: tomorrow at midnight
+        return (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+class ScheduledIngestionRun(models.Model):
+    """
+    Scheduled ingestion run model for tracking individual ingestion executions.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    scheduled_ingestion = models.ForeignKey(
+        ScheduledIngestion,
+        on_delete=models.CASCADE,
+        related_name="runs",
+        help_text="Scheduled ingestion this run belongs to",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=ScheduledIngestionRunStatus.choices,
+        default=ScheduledIngestionRunStatus.PENDING,
+        help_text="Run status: PENDING, RUNNING, COMPLETED, FAILED, CANCELLED",
+    )
+    started_at = models.DateTimeField(null=True, blank=True, help_text="When run started")
+    heartbeat_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text=(
+            "W3.5 (R2-P4) — the worker's last liveness claim. The stuck-run "
+            "detector only recovers runs whose lease expired: a fresh "
+            "heartbeat means the worker is alive and the run is left alone."
+        ),
+    )
+    completed_at = models.DateTimeField(
+        null=True, blank=True, help_text="When run completed (success or failure)"
+    )
+    prefect_flow_run_id = models.CharField(
+        max_length=255, null=True, blank=True, help_text="Prefect flow run ID"
+    )
+    job_id = models.UUIDField(null=True, blank=True, help_text="Job ID (FK to jobs table)")
+    files_found = models.IntegerField(default=0, help_text="Number of files found")
+    files_processed = models.IntegerField(
+        default=0, help_text="Number of files successfully processed"
+    )
+    files_failed = models.IntegerField(
+        default=0, help_text="Number of files that failed to process"
+    )
+    datasets_created = models.IntegerField(default=0, help_text="Number of datasets created")
+    error_message = models.TextField(null=True, blank=True, help_text="Error message if run failed")
+    result_json = models.JSONField(
+        null=True,
+        blank=True,
+        default=dict,
+        help_text="Run result data (files processed, datasets created, etc.)",
+    )
+    dlq_sync_status = models.CharField(
+        max_length=20,
+        choices=[("PENDING", "Pending"), ("SYNCED", "Synced"), ("FAILED", "Failed")],
+        default="PENDING",
+        help_text="Phase 72: DLQ sync status after run completion",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "scheduled_ingestion_runs"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["scheduled_ingestion", "status"]),
+            models.Index(fields=["scheduled_ingestion", "created_at"]),
+            models.Index(fields=["status", "created_at"]),
+            models.Index(fields=["prefect_flow_run_id"]),
+            models.Index(fields=["job_id"]),
+        ]
+        constraints = [
+            # W3.1 (R2-P1) — DB-level domain guard for the run status
+            # (defense in depth under the app-level transition matrix;
+            # out-of-band SQL writes cannot land a garbage status).
+            models.CheckConstraint(
+                condition=models.Q(status__in=ScheduledIngestionRunStatus.values),
+                name="scheduled_ingestion_runs_status_valid",
+            ),
+        ]
+
+    def __str__(self):
+        return f"Run {self.id} for {self.scheduled_ingestion.name}"
+
+    def clean(self):
+        """W3.1 (R2-P1) — every status write on an existing row is validated
+        against the shared guarded-transition matrix. Creation sets the
+        initial status; same-status saves (metadata-only writes) are
+        no-ops by design — the matrix is strict, identity is not a
+        transition."""
+        if self.pk:
+            old_status = (
+                type(self).objects.filter(pk=self.pk).values_list("status", flat=True).first()
+            )
+            if old_status is not None and old_status != self.status:
+                IngestionRunStateMachine.validate_transition(old_status, self.status)
+
+    def save(self, *args, **kwargs):
+        # W3.1 — the guard runs the transition matrix ONLY, deliberately
+        # not full_clean(): field validators are serializer/service
+        # concerns and this model never ran them on save before. The DB
+        # CHECK constraint is the status-domain backstop.
+        self.clean()
+        super().save(*args, **kwargs)
+
+
+class DeadLetterQueueItem(models.Model):
+    """
+    Dead Letter Queue item for permanently failed files.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    scheduled_ingestion = models.ForeignKey(
+        ScheduledIngestion,
+        on_delete=models.CASCADE,
+        related_name="dlq_items",
+        help_text="Scheduled ingestion this DLQ item belongs to",
+    )
+    file_path = models.CharField(max_length=500, help_text="File path/key that failed")
+    error_message = models.TextField(help_text="Error message from last failure")
+    error_code = models.CharField(
+        max_length=50, null=True, blank=True, help_text="Error code for categorization"
+    )
+    retry_count = models.IntegerField(default=0, help_text="Number of retry attempts")
+    first_failed_at = models.DateTimeField(help_text="When file first failed")
+    last_failed_at = models.DateTimeField(help_text="When file last failed")
+    permanently_failed_at = models.DateTimeField(
+        help_text="When file was marked as permanently failed"
+    )
+    resolution_status = models.CharField(
+        max_length=20,
+        choices=[
+            ("PENDING", "Pending"),
+            ("RETRYING", "Retrying"),
+            ("RESOLVED", "Resolved"),
+            ("IGNORED", "Ignored"),
+        ],
+        default="PENDING",
+        help_text="Resolution status",
+    )
+    resolution_notes = models.TextField(null=True, blank=True, help_text="Notes about resolution")
+    resolved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="resolved_dlq_items",
+        help_text="User who resolved this item",
+    )
+    resolved_at = models.DateTimeField(null=True, blank=True, help_text="When item was resolved")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "scheduled_ingestion_dlq"
+        ordering = ["-permanently_failed_at"]
+        indexes = [
+            models.Index(fields=["scheduled_ingestion", "resolution_status"]),
+            models.Index(fields=["scheduled_ingestion", "permanently_failed_at"]),
+            models.Index(fields=["resolution_status", "permanently_failed_at"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["scheduled_ingestion", "file_path"], name="unique_dlq_item_per_file"
+            ),
+        ]
+
+    def __str__(self):
+        return f"DLQ Item: {self.file_path} ({self.scheduled_ingestion.name})"
+
+
+class IngestionCost(models.Model):
+    """
+    Cost tracking for scheduled ingestion runs.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    scheduled_ingestion = models.ForeignKey(
+        ScheduledIngestion,
+        on_delete=models.CASCADE,
+        related_name="costs",
+        help_text="Scheduled ingestion this cost belongs to",
+    )
+    run = models.ForeignKey(
+        ScheduledIngestionRun,
+        on_delete=models.CASCADE,
+        related_name="costs",
+        null=True,
+        blank=True,
+        help_text="Associated ingestion run (if applicable)",
+    )
+    storage_cost_usd = models.DecimalField(
+        max_digits=10, decimal_places=4, default=0.0, help_text="Storage cost in USD"
+    )
+    compute_cost_usd = models.DecimalField(
+        max_digits=10, decimal_places=4, default=0.0, help_text="Compute cost in USD"
+    )
+    network_cost_usd = models.DecimalField(
+        max_digits=10, decimal_places=4, default=0.0, help_text="Network/transfer cost in USD"
+    )
+    total_cost_usd = models.DecimalField(
+        max_digits=10, decimal_places=4, default=0.0, help_text="Total cost in USD"
+    )
+    cost_breakdown_json = models.JSONField(
+        null=True, blank=True, default=dict, help_text="Detailed cost breakdown"
+    )
+    period_start = models.DateTimeField(help_text="Start of cost period")
+    period_end = models.DateTimeField(help_text="End of cost period")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "scheduled_ingestion_costs"
+        ordering = ["-period_start"]
+        indexes = [
+            models.Index(fields=["scheduled_ingestion", "period_start"]),
+            models.Index(fields=["scheduled_ingestion", "period_end"]),
+            models.Index(fields=["run"]),
+        ]
+
+    def __str__(self):
+        return f"Cost: ${self.total_cost_usd} for {self.scheduled_ingestion.name}"
+
+    def save(self, *args, **kwargs):
+        """Override save to calculate total cost"""
+        self.total_cost_usd = self.storage_cost_usd + self.compute_cost_usd + self.network_cost_usd
+        super().save(*args, **kwargs)
+
+
+# IngestionTemplate lives in templates.py (separate file for code cohesion
+# with the template-management logic) but must be re-exported here so
+# Django's app registry discovers it during models-module loading. Without
+# this import Django's autodetector concludes the model was deleted and
+# `makemigrations` keeps generating a spurious DeleteModel migration for
+# it — the drift PR 1's advisory check surfaced on 2026-04-23.
+from hub.apps.scheduled_ingestion.templates import (
+    IngestionTemplate,  # noqa: F401 — model registration re-export
+)
+# Placed at end-of-file so templates.py's own `from .models import ...`
+# sees all the dependencies it needs fully bound before templates.py
+# itself starts executing (standard circular-import dance; works because
+# templates.py only imports names that are defined above this point).

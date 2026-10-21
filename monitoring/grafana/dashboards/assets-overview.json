@@ -1,0 +1,203 @@
+{
+  "title": "Assets Overview",
+  "uid": "assets-overview-277b051",
+  "tags": [
+    "assets",
+    "phase-277b051"
+  ],
+  "timezone": "browser",
+  "editable": true,
+  "refresh": "30s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "tenant_id",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": "label_values(asset_operations_total, tenant_id)",
+        "multi": true,
+        "includeAll": true,
+        "label": "Tenant"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "title": "Asset Operations Rate (by type, 5m)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Phase 277.B.051 \u2014 rate of asset CRUD + lifecycle operations averaged over 5 minutes, stacked by operation type.",
+      "gridPos": {
+        "h": 14,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(asset_operations_total{status=\"success\"}[5m])) by (operation)",
+          "legendFormat": "{{operation}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops/min",
+          "custom": {
+            "fillOpacity": 10,
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        }
+      }
+    },
+    {
+      "title": "Asset Operations by Tenant (rate, 5m)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Per-tenant asset operation rate, filtered by the $tenant_id dashboard variable.",
+      "gridPos": {
+        "h": 14,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(asset_operations_total{status=\"success\", tenant_id=~\"$tenant_id\"}[5m])) by (tenant_id, operation)",
+          "legendFormat": "{{tenant_id}} - {{operation}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops/min"
+        }
+      }
+    },
+    {
+      "title": "Asset Operation Error Rate (10m)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Error rate (non-success) as a fraction of total asset operations over 10 minutes, per-tenant.",
+      "gridPos": {
+        "h": 12,
+        "w": 8,
+        "x": 0,
+        "y": 14
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(asset_operations_total{status!=\"success\"}[10m])) by (tenant_id) / sum(rate(asset_operations_total[10m])) by (tenant_id)",
+          "legendFormat": "{{tenant_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1
+        }
+      }
+    },
+    {
+      "title": "Asset Operations by Status",
+      "type": "bargauge",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Breakdown of operations by status label (success, validation_error, permission_denied, conflict) \u2014 last 1h.",
+      "gridPos": {
+        "h": 12,
+        "w": 8,
+        "x": 8,
+        "y": 14
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(asset_operations_total[$__range])) by (status)",
+          "legendFormat": "{{status}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops/min"
+        }
+      }
+    },
+    {
+      "title": "Create Operations \u2014 Success vs Error",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Total create operations in the selected time range, with success rate.",
+      "gridPos": {
+        "h": 6,
+        "w": 4,
+        "x": 16,
+        "y": 14
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(asset_operations_total{operation=\"create\",status=\"success\"}[$__range]))",
+          "legendFormat": "success",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        }
+      }
+    },
+    {
+      "title": "Create Error Rate",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Create operation error percentage over the selected time range.",
+      "gridPos": {
+        "h": 6,
+        "w": 4,
+        "x": 20,
+        "y": 14
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(asset_operations_total{operation=\"create\",status!=\"success\"}[$__range])) / sum(rate(asset_operations_total{operation=\"create\"}[$__range]))",
+          "legendFormat": "error rate",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        }
+      }
+    }
+  ]
+}

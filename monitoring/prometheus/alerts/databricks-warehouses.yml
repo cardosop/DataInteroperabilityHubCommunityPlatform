@@ -1,0 +1,82 @@
+# Phase 3 (openspec add-databricks-sql-warehouses task 3.8) — Databricks
+# SQL warehouse fleet alerts.
+#
+# Metrics emitted by hub/apps/databricks_admin/metrics.py (the mirror
+# refresh stamps the fleet gauges; the 3.5 pool records the pressure
+# counters on its borrow/release surface):
+#   databricks_warehouse_mirror_last_success_timestamp{tenant_id, workspace_id}
+#   databricks_warehouse_state_count{state, tenant_id, workspace_id}
+#   databricks_warehouse_starting_since_timestamp{warehouse_id, tenant_id, workspace_id}
+#   databricks_warehouse_pool_borrows_total{tenant_id}
+#   databricks_warehouse_pool_exhausted_total{tenant_id}
+#   databricks_warehouse_pool_in_use{tenant_id}
+#
+# Alert definitions:
+#   DatabricksWarehouseMirrorStale     — a workspace's mirror is stale
+#                                        (>24h since the last successful
+#                                        refresh; the fleet refresh is
+#                                        lifecycle-driven — 3.7 refreshes
+#                                        after every action)
+#   DatabricksWarehouseStartingTooLong — a warehouse has been STARTING
+#                                        for more than 10 minutes
+#                                        (warehouses normally start in
+#                                        minutes)
+#   DatabricksWarehousePoolExhausted   — a tenant's connection pool
+#                                        refused a borrow (per-tenant
+#                                        pressure)
+
+groups:
+  - name: databricks_warehouses
+    rules:
+      # ------------------------------------------------------------------
+      # DatabricksWarehouseMirrorStale
+      # A workspace whose warehouse mirror has not refreshed in 24h. The
+      # mirror is refreshed by the lifecycle actions (3.7) — a day
+      # without a refresh means either no lifecycle activity or a
+      # broken refresh path; the UI renders the last-known state with
+      # the freshness marker (the DB-005 precedent).
+      # ------------------------------------------------------------------
+      - alert: DatabricksWarehouseMirrorStale
+        expr: |
+          time() - databricks_warehouse_mirror_last_success_timestamp > 86400
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Databricks warehouse mirror is stale"
+          description: "Workspace {{ $labels.workspace_id }} (tenant {{ $labels.tenant_id }}) has not refreshed its warehouse mirror in {{ $value | humanize }}s (threshold: 24h). Check the workspace connectivity and the warehouse lifecycle surfaces."
+
+      # ------------------------------------------------------------------
+      # DatabricksWarehouseStartingTooLong
+      # A warehouse stuck in STARTING for more than 10 minutes. The
+      # timer anchors at the FIRST refresh that saw STARTING and resets
+      # when the state leaves STARTING (the 3.2 delta-diff transitions).
+      # Operand order matters: `and` returns the LEFT leg as the alert
+      # value — the age leg first makes `$value` the actual elapsed
+      # seconds (a boolean-first expr renders "1s" regardless of age).
+      # ------------------------------------------------------------------
+      - alert: DatabricksWarehouseStartingTooLong
+        expr: |
+          time() - databricks_warehouse_starting_since_timestamp > 600
+          and databricks_warehouse_starting_since_timestamp > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Databricks warehouse is STARTING too long"
+          description: "Warehouse {{ $labels.warehouse_id }} (tenant {{ $labels.tenant_id }}, workspace {{ $labels.workspace_id }}) has been STARTING for {{ $value | humanize }}s (threshold: 10m). Check the compute API's warehouse health."
+
+      # ------------------------------------------------------------------
+      # DatabricksWarehousePoolExhausted
+      # A tenant's borrows hit the per-tenant pool bound (the 3.5
+      # BoundedSemaphore). Tenant-scoped by design — one tenant's
+      # pressure never spills into another's quota.
+      # ------------------------------------------------------------------
+      - alert: DatabricksWarehousePoolExhausted
+        expr: increase(databricks_warehouse_pool_exhausted_total[15m]) > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Databricks warehouse connection pool exhausted"
+          description: "Tenant {{ $labels.tenant_id }} had {{ $value | humanize }} pool-exhaustion refusals in the last 15m. Check the tenant's concurrent query load and the per-tenant pool bound."

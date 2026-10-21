@@ -1,0 +1,43 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DC-001-88290034",
+      "journey_name": "Discover and Purchase Marketplace Asset",
+      "persona": "Data Consumer / Buyer",
+      "status": "failed",
+      "start_time": 1765585792.9624066,
+      "end_time": 1765585794.0598648,
+      "duration": 1.0974581241607666,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": "'Persona4DataConsumerJourneys' object has no attribute '_create_marketplace_listing'",
+      "error_type": "AttributeError",
+      "steps": [
+        {
+          "step_name": "Provider Creates Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765585792.9624152,
+          "end_time": 1765585794.0598567,
+          "duration": 1.0974414348602295,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2025-12-13T00:29:54.059948"
+}

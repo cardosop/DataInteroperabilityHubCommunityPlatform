@@ -1,0 +1,129 @@
+/*
+ * Phase 250.6.B — AssetTypePickerStep styles.
+ *
+ * WCAG 2.1 AA contrast targets: text ≥ 4.5:1; non-text UI
+ * components ≥ 3:1. Selected-state ring uses the existing CSS
+ * custom property ``--color-accent`` so a future theme change
+ * automatically propagates.
+ *
+ * No new color tokens — every value derives from the existing
+ * shared design tokens or falls back to a system default.
+ */
+
+.asset-type-picker-step {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px 0;
+}
+
+.asset-type-picker-step h2 {
+  margin: 0 0 8px 0;
+  font-size: 1.5rem;
+  line-height: 1.3;
+}
+
+.asset-type-picker-step > p {
+  margin: 0 0 24px 0;
+  color: var(--color-text-secondary, #555);
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.asset-type-picker-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.asset-type-picker-option {
+  /* Reset native button so the radio-card layout takes over. */
+  font: inherit;
+  text-align: left;
+  background: var(--color-surface, #ffffff);
+  border: 2px solid var(--color-border, #d0d0d0);
+  border-radius: 8px;
+  padding: 16px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.asset-type-picker-option:hover {
+  border-color: var(--color-accent, #17C6E6);
+}
+
+.asset-type-picker-option:focus-visible {
+  /* WCAG 2.4.7 focus-visible — keyboard users see a clear ring. */
+  outline: 3px solid var(--color-accent, #17C6E6);
+  outline-offset: 2px;
+}
+
+.asset-type-picker-option[data-selected="true"] {
+  border-color: var(--color-accent, #17C6E6);
+  /* Box-shadow as the selected ring; preserves a 3:1 ratio
+   * regardless of theme background. */
+  box-shadow: 0 0 0 1px var(--color-accent, #17C6E6);
+}
+
+.asset-type-picker-option-title {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.asset-type-picker-option-body {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary, #555);
+  line-height: 1.4;
+}
+
+.asset-type-picker-skip {
+  margin-top: 16px;
+  background: transparent;
+  border: 0;
+  color: var(--color-accent, #17C6E6);
+  cursor: pointer;
+  font-size: 0.9rem;
+  text-decoration: underline;
+  padding: 8px 0;
+}
+
+.asset-type-picker-skip:focus-visible {
+  outline: 2px solid var(--color-accent, #17C6E6);
+  outline-offset: 2px;
+}
+
+/* Phase 250.6.D.3 — onboarding-incomplete variant. Vertical layout
+ * (heading + body + single CTA) — no grid because there are no
+ * cards to lay out. Reuses the same accent token so the CTA
+ * feels visually consistent with the picker's normal state. */
+.asset-type-picker-step--blocked {
+  text-align: left;
+}
+
+.asset-type-picker-complete-onboarding {
+  margin-top: 16px;
+  display: inline-block;
+  /* 250.6.F.3 — both colours derive from design-system tokens
+   * defined at root + remapped under [data-theme='dark']. The
+   * fallbacks match the Meshant accent palette in light mode. */
+  background: var(--color-accent, #17C6E6);
+  color: var(--color-on-accent, #ffffff);
+  border: 0;
+  border-radius: 8px;
+  padding: 12px 20px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.asset-type-picker-complete-onboarding:hover {
+  background: var(--color-accent-hover, #0E7A9A);
+}
+
+.asset-type-picker-complete-onboarding:focus-visible {
+  outline: 3px solid var(--color-accent, #17C6E6);
+  outline-offset: 2px;
+}

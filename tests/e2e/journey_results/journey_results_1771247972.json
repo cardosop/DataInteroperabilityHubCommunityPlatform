@@ -1,0 +1,109 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DE-001-5dc45ab6",
+      "journey_name": "Programmatic Contract-First Onboarding",
+      "persona": "Data Engineer / Contract Author",
+      "status": "failed",
+      "start_time": 1771247972.7666903,
+      "end_time": 1771247972.853906,
+      "duration": 0.08721566200256348,
+      "completion_rate": 83.33333333333334,
+      "success_rate": 83.33333333333334,
+      "error_message": "duplicate key value violates unique constraint \"unique_contract_version_per_asset\"\nDETAIL:  Key (tenant_id, asset_id, version)=(d4ad46e5-aec0-475b-8d2e-ed20fa4e2170, c86024c9-b104-4af1-9dd8-9f1436c1e6dc, 1) already exists.\n",
+      "error_type": "IntegrityError",
+      "steps": [
+        {
+          "step_name": "Create Contract via API",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771247972.766695,
+          "end_time": 1771247972.7898777,
+          "duration": 0.02318263053894043,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Validate Contract",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771247972.7898855,
+          "end_time": 1771247972.807552,
+          "duration": 0.01766657829284668,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Normalize Contract",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771247972.8075588,
+          "end_time": 1771247972.810091,
+          "duration": 0.0025322437286376953,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NormalizationStatus"
+          }
+        },
+        {
+          "step_name": "Create Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771247972.8101017,
+          "end_time": 1771247972.824592,
+          "duration": 0.014490365982055664,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Attach Contract to Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771247972.8245978,
+          "end_time": 1771247972.8525531,
+          "duration": 0.027955293655395508,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "ReturnDict"
+          }
+        },
+        {
+          "step_name": "Activate Asset",
+          "status": "StepStatus.FAILED",
+          "start_time": 1771247972.8525612,
+          "end_time": 1771247972.8539023,
+          "duration": 0.001341104507446289,
+          "error_message": "duplicate key value violates unique constraint \"unique_contract_version_per_asset\"\nDETAIL:  Key (tenant_id, asset_id, version)=(d4ad46e5-aec0-475b-8d2e-ed20fa4e2170, c86024c9-b104-4af1-9dd8-9f1436c1e6dc, 1) already exists.\n",
+          "error_type": "IntegrityError",
+          "retry_count": 0,
+          "metadata": {
+            "args": "('c86024c9-b104-4af1-9dd8-9f1436c1e6dc',)",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-16T13:19:32.854010"
+}

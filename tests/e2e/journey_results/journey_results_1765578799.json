@@ -1,0 +1,73 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.08498740196228027
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-005-5fe15020",
+      "journey_name": "Manage Asset Versions",
+      "persona": "Data Product Owner",
+      "status": "completed",
+      "start_time": 1765578799.049022,
+      "end_time": 1765578799.1340094,
+      "duration": 0.08498740196228027,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Create Asset with Dataset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765578799.0490277,
+          "end_time": 1765578799.1339862,
+          "duration": 0.08495855331420898,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "tuple"
+          }
+        },
+        {
+          "step_name": "Detect Schema Changes",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765578799.1339967,
+          "end_time": 1765578799.134002,
+          "duration": 5.245208740234375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Create Version",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765578799.134004,
+          "end_time": 1765578799.1340063,
+          "duration": 2.1457672119140625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "016d5308-6264-446c-9a84-cd0454815587",
+        "dataset_id": "a12faaac-4527-4db2-8e58-7cded40dab41",
+        "version_id": null
+      }
+    }
+  ],
+  "exported_at": "2025-12-12T22:33:19.134077"
+}

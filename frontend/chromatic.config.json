@@ -1,0 +1,46 @@
+{
+  "_comment": "Phase 250.6.F.4 — Chromatic visual-regression config.",
+  "_comment_long": [
+    "Storybook is NOT yet installed in this repo — the stories at",
+    "src/**/*.stories.tsx are authored forward-compatibly (CSF 8) so",
+    "when Storybook lands, Chromatic snapshots flow without",
+    "rewriting story files. This config file pins the snapshot",
+    "scope + expected-changed thresholds so the cross-cutting",
+    "Storybook phase only needs to add the `chromatic` CLI dep +",
+    "a CHROMATIC_PROJECT_TOKEN secret to start running.",
+    "",
+    "When Chromatic is wired:",
+    "    npx chromatic --project-token=$CHROMATIC_PROJECT_TOKEN",
+    "",
+    "The CI workflow at .github/workflows/chromatic.yml runs this",
+    "on every PR. The workflow self-skips when CHROMATIC_PROJECT_TOKEN",
+    "is not set (e.g. forks, or before the secret is provisioned),",
+    "so this config + workflow can land NOW without breaking CI.",
+    "",
+    "Snapshot scope (250.6.F.4): the AssetTypePickerStep stories",
+    "(default + 4 selected variants + skippable + future blocked",
+    "variant), the SchemaDriftBanner stories, and the KYC error UX",
+    "in PublicResourcesPage. Other components are out-of-scope for",
+    "the 250.6 phase but pick up snapshot coverage automatically",
+    "as their stories are added (Chromatic snapshots EVERY story",
+    "by default — the explicit allowlist below is a CI-time",
+    "filter, not an exclusion at story-author time)."
+  ],
+  "projectId": null,
+  "buildScriptName": "build-storybook",
+  "storybookBuildDir": "storybook-static",
+  "exitZeroOnChanges": true,
+  "exitOnceUploaded": false,
+  "onlyChanged": true,
+  "externals": [
+    "src/shared/i18n/locales/en.ts",
+    "src/shared/design-tokens/tokens.css",
+    "src/index.css"
+  ],
+  "skip": "dependabot/**",
+  "_phase_250_6_F_4_target_stories": [
+    "src/features/assets/components/AssetTypePickerStep.stories.tsx",
+    "src/features/assets/components/SchemaDriftBanner.stories.tsx",
+    "src/features/auth/components/PublicResourcesPage.stories.tsx"
+  ]
+}

@@ -1,0 +1,32 @@
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.app-main {
+  flex: 1;
+  max-width: var(--layout-content-max-width);
+  margin: 0 auto;
+  overflow-y: auto;
+  padding: var(--spacing-lg);
+  background-color: var(--color-neutral-50);
+}
+
+/* Phase 224.5 — responsive layout.
+   At ≤ tablet, the sidebar becomes an absolutely-positioned overlay and
+   the main content gets the full viewport width. The overlay state is
+   driven by `.app-shell--sidebar-open` (React-owned, not :target or
+   :focus-within, so it survives route changes cleanly). */
+@media (max-width: 768px) {
+  .app-main {
+    padding: var(--spacing-md);
+  }
+}

@@ -1,0 +1,7 @@
+Warehouse Export Failed
+
+Your scheduled export to {{ destination }} has failed.
+
+Error: {{ error }}
+
+View in Dashboard: {{ dashboard_url }}

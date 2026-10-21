@@ -1,0 +1,425 @@
+"""
+Unit tests for S3StorageClient.
+
+Tests use real S3StorageClient with graceful handling when S3/MinIO unavailable.
+"""
+
+import contextlib
+
+import pytest
+from botocore.exceptions import EndpointConnectionError
+from django.core.files.base import ContentFile
+
+from hub.apps.files.storage import (
+    S3StorageClient,
+    StorageError,
+    StorageObjectNotFoundError,
+)
+from hub.apps.files.tests.test_base import FilesTestBase
+
+pytestmark = pytest.mark.django_db(transaction=True)
+
+
+class S3StorageClientTest(FilesTestBase):
+    """Test S3StorageClient with real implementation."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        super().setUp()
+        self.storage_available = False
+        try:
+            self.storage_client = S3StorageClient()
+            self.storage_client._ensure_bucket_exists()
+            self.storage_available = True
+        except (ConnectionError, TimeoutError, OSError):  # pragma: no cover — S3 probe
+            self.storage_available = False
+
+    def test_storage_client_initialization(self):
+        """Test S3StorageClient initializes with correct settings."""
+        from django.conf import settings
+
+        storage_client = S3StorageClient()
+        self.assertIsNotNone(storage_client.client)
+        self.assertEqual(storage_client.bucket_name, settings.AWS_STORAGE_BUCKET_NAME)
+
+    def test_ensure_bucket_exists_success(self):
+        """Test bucket creation when available."""
+        if not self.storage_available:
+            self.skipTest("S3/MinIO storage not available")
+
+        storage_client = S3StorageClient()
+        # Should not raise
+        storage_client._ensure_bucket_exists()
+
+        # Verify the bucket actually exists by calling head_bucket
+        response = storage_client.client.head_bucket(Bucket=storage_client.bucket_name)
+        self.assertEqual(response["ResponseMetadata"]["HTTPStatusCode"], 200)
+
+    def test_save_file_success(self):
+        """Test saving file to storage when available."""
+        if not self.storage_available:
+            self.skipTest("S3/MinIO storage not available")
+
+        test_content = b"test,data\n1,2\n3,4"
+        file_id = str(self.file.id)
+
+        storage_path = self.storage_client.save_file(
+            tenant_id=str(self.tenant.id),
+            file_id=file_id,
+            file_content=ContentFile(test_content),
+        )
+
+        self.assertIsNotNone(storage_path)
+        self.assertIn(str(self.tenant.id), storage_path)
+        self.assertIn(file_id, storage_path)
+
+    def test_file_exists_success(self):
+        """Test checking file existence when storage available."""
+        if not self.storage_available:
+            self.skipTest("S3/MinIO storage not available")
+
+        test_content = b"test,data\n1,2"
+        file_id = str(self.file.id)
+
+        # Save file first
+        storage_path = self.storage_client.save_file(
+            tenant_id=str(self.tenant.id),
+            file_id=file_id,
+            file_content=ContentFile(test_content),
+        )
+
+        # Check existence
+        exists = self.storage_client.file_exists(storage_path)
+        self.assertTrue(exists)
+
+    def test_file_exists_not_found(self):
+        """Test checking file existence for non-existent file."""
+        if not self.storage_available:
+            self.skipTest("S3/MinIO storage not available")
+
+        non_existent_path = f"{self.tenant.id}/nonexistent/file.csv"
+        exists = self.storage_client.file_exists(non_existent_path)
+        self.assertFalse(exists)
+
+    def test_get_file_size_success(self):
+        """Test getting file size when storage available."""
+        if not self.storage_available:
+            self.skipTest("S3/MinIO storage not available")
+
+        test_content = b"test,data\n1,2\n3,4"
+        file_id = str(self.file.id)
+
+        storage_path = self.storage_client.save_file(
+            tenant_id=str(self.tenant.id),
+            file_id=file_id,
+            file_content=ContentFile(test_content),
+        )
+
+        size = self.storage_client.get_file_size(storage_path)
+        self.assertEqual(size, len(test_content))
+
+    def test_get_file_content_success(self):
+        """Test getting file content when storage available."""
+        if not self.storage_available:
+            self.skipTest("S3/MinIO storage not available")
+
+        test_content = b"test,data\n1,2\n3,4"
+        file_id = str(self.file.id)
+
+        storage_path = self.storage_client.save_file(
+            tenant_id=str(self.tenant.id),
+            file_id=file_id,
+            file_content=ContentFile(test_content),
+        )
+
+        content = self.storage_client.get_file_content(storage_path)
+        self.assertEqual(content, test_content)
+
+    def test_delete_file_success(self):
+        """Test deleting file when storage available."""
+        if not self.storage_available:
+            self.skipTest("S3/MinIO storage not available")
+
+        test_content = b"test,data\n1,2"
+        file_id = str(self.file.id)
+
+        storage_path = self.storage_client.save_file(
+            tenant_id=str(self.tenant.id),
+            file_id=file_id,
+            file_content=ContentFile(test_content),
+        )
+
+        # Delete file
+        self.storage_client.delete_file(storage_path)
+
+        # Verify deleted
+        exists = self.storage_client.file_exists(storage_path)
+        self.assertFalse(exists)
+
+    def test_generate_presigned_upload_url_success(self):
+        """Test generating presigned upload URL."""
+        if not self.storage_available:
+            self.skipTest("S3/MinIO storage not available")
+
+        storage_path = f"{self.tenant.id}/{self.file.id}/test.csv"
+
+        result = self.storage_client.generate_presigned_upload_url(
+            key=storage_path,
+            content_type="text/csv",
+            expires_in=3600,
+            use_put=True,
+        )
+
+        self.assertIn("upload_url", result)
+        self.assertIn("fields", result)
+        self.assertIsNotNone(result["upload_url"])
+
+    def test_generate_presigned_download_url_success(self):
+        """Test generating presigned download URL."""
+        if not self.storage_available:
+            self.skipTest("S3/MinIO storage not available")
+
+        test_content = b"test,data\n1,2"
+        file_id = str(self.file.id)
+
+        storage_path = self.storage_client.save_file(
+            tenant_id=str(self.tenant.id),
+            file_id=file_id,
+            file_content=ContentFile(test_content),
+        )
+
+        download_url = self.storage_client.generate_presigned_download_url(
+            key=storage_path,
+            expires_in=3600,
+            filename="test.csv",
+        )
+
+        self.assertIsNotNone(download_url)
+        self.assertIn("http", download_url)
+
+    def test_generate_presigned_download_url_for_browser(self):
+        """Regression pin (b6 GDPR export EHOSTUNREACH): for_browser=True
+        must regenerate the download URL against the host-published endpoint
+        when the storage endpoint is a Docker service hostname."""
+        if not self.storage_available:
+            self.skipTest("S3/MinIO storage not available")
+        endpoint = self.storage_client.endpoint_url or ""
+        if "minio-test" not in endpoint and "minio" not in endpoint:
+            self.skipTest("non-Docker storage endpoint — rewrite not applicable")
+
+        storage_path = f"{self.tenant.id}/{self.file.id}/export.zip"
+        download_url = self.storage_client.generate_presigned_download_url(
+            key=storage_path,
+            expires_in=86400,
+            for_browser=True,
+        )
+
+        self.assertTrue(
+            "localhost:9010" in download_url or "localhost:9000" in download_url,
+            f"for_browser download URL must use the host-published endpoint, got: {download_url}",
+        )
+        # The non-browser path stays on the internal endpoint (SDK in-container).
+        sdk_url = self.storage_client.generate_presigned_download_url(
+            key=storage_path,
+            expires_in=86400,
+        )
+        self.assertTrue(
+            "localhost:9010" not in sdk_url and "localhost:9000" not in sdk_url,
+            f"sdk download URL must keep the internal endpoint, got: {sdk_url}",
+        )
+
+    def test_initiate_multipart_upload_success(self):
+        """Test initiating multipart upload."""
+        if not self.storage_available:
+            self.skipTest("S3/MinIO storage not available")
+
+        storage_path = f"{self.tenant.id}/{self.file.id}/large.csv"
+
+        upload_id = self.storage_client.initiate_multipart_upload(
+            key=storage_path,
+            content_type="text/csv",
+        )
+
+        self.assertIsNotNone(upload_id)
+
+        # Clean up - abort multipart upload
+        with contextlib.suppress(Exception):
+            self.storage_client.abort_multipart_upload(key=storage_path, upload_id=upload_id)
+
+    def test_generate_presigned_part_url_success(self):
+        """Test generating presigned part URL."""
+        if not self.storage_available:
+            self.skipTest("S3/MinIO storage not available")
+
+        storage_path = f"{self.tenant.id}/{self.file.id}/large.csv"
+
+        upload_id = self.storage_client.initiate_multipart_upload(
+            key=storage_path,
+            content_type="text/csv",
+        )
+
+        part_url = self.storage_client.generate_presigned_part_url(
+            key=storage_path,
+            upload_id=upload_id,
+            part_number=1,
+            expires_in=3600,
+        )
+
+        self.assertIsNotNone(part_url)
+        self.assertIn("http", part_url)
+
+        # Clean up
+        with contextlib.suppress(Exception):
+            self.storage_client.abort_multipart_upload(key=storage_path, upload_id=upload_id)
+
+    def test_initiate_and_abort_multipart_upload(self):
+        """Test that a multipart upload can be initiated and then aborted.
+
+        A full complete-multipart test requires uploading real parts; this test
+        verifies the initiate/abort lifecycle instead.
+        """
+        if not self.storage_available:
+            self.skipTest("S3/MinIO storage not available")
+
+        storage_path = f"{self.tenant.id}/{self.file.id}/large.csv"
+
+        upload_id = self.storage_client.initiate_multipart_upload(
+            key=storage_path,
+            content_type="text/csv",
+        )
+        self.assertIsNotNone(upload_id)
+
+        # Abort the multipart upload — catch only S3-related errors
+        try:
+            self.storage_client.abort_multipart_upload(key=storage_path, upload_id=upload_id)
+        except self.storage_client.client.exceptions.NoSuchUpload:
+            pass  # Already completed or aborted
+
+    def test_storage_unavailable_graceful_handling(self):
+        """Test graceful handling when storage is unavailable.
+
+        Creates an S3StorageClient pointed at an unreachable endpoint and
+        verifies that operations raise exceptions instead of crashing
+        silently or hanging.
+        """
+        from botocore.config import Config
+
+        # Build a client aimed at an unreachable address.
+        # Use RFC 5737 TEST-NET-1 (192.0.2.0/24) — guaranteed non-routable,
+        # unlike 127.0.0.1:1 which gets an instant connection-refused that
+        # some botocore versions handle differently from a true timeout.
+        bad_client = S3StorageClient.__new__(S3StorageClient)
+        bad_client.bucket_name = "nonexistent-bucket"
+        bad_client.endpoint_url = "http://192.0.2.1:9999"
+        bad_client.use_ssl = False
+        bad_client._bucket_checked = False
+        bad_client._original_endpoint = "http://192.0.2.1:9999"
+        s3_config = Config(
+            signature_version="s3v4",
+            retries={"max_attempts": 1, "mode": "standard"},
+            connect_timeout=1,
+            read_timeout=1,
+        )
+        import boto3 as _boto3
+
+        bad_client.client = _boto3.client(
+            "s3",
+            endpoint_url="http://192.0.2.1:9999",
+            aws_access_key_id="fake",
+            aws_secret_access_key="fake",
+            use_ssl=False,
+            verify=False,
+            config=s3_config,
+        )
+
+        # _ensure_bucket_exists is designed to be lenient (swallows
+        # connection errors to allow fallback), so we test the actual
+        # storage operations that must propagate errors.
+
+        # file_exists should raise an exception, not silently return False.
+        # The bad endpoint (192.0.2.1:9999) may produce StorageError, a raw
+        # EndpointConnectionError, or an OSError (timeout from urllib3)
+        # depending on the boto3/urllib3 combination installed.
+        with self.assertRaises((StorageError, EndpointConnectionError, OSError)):
+            bad_client.file_exists("any/key")
+
+        # save_file should raise an exception, not silently return False.
+        from django.core.files.base import ContentFile
+
+        with self.assertRaises((StorageError, EndpointConnectionError, OSError)):
+            bad_client.save_file(
+                tenant_id="t",
+                file_id="f",
+                file_content=ContentFile(b"data"),
+            )
+
+        # get_file_content only catches ClientError (via _translate_client_error),
+        # not EndpointConnectionError — so both may propagate from a bad endpoint.
+        with self.assertRaises((StorageError, EndpointConnectionError, OSError)):
+            bad_client.get_file_content("any/key")
+
+    # ── Typed exception chain ───────────────────────────────────────
+
+    def test_get_file_content_nosuchkey_raises_storage_object_not_found(self):
+        """boto3 NoSuchKey must translate to StorageObjectNotFoundError."""
+        if not self.storage_available:
+            self.skipTest("S3/MinIO storage not available")
+
+        import uuid
+
+        nonexistent = f"ghost-{uuid.uuid4().hex[:8]}/nope.txt"
+
+        with self.assertRaises(StorageObjectNotFoundError) as cm:
+            self.storage_client.get_file_content(nonexistent)
+        # The error message wraps the boto3 error; verify the subtype.
+        self.assertIn("NoSuchKey", str(cm.exception))
+
+    # ── Retry / key-format ──────────────────────────────────────────
+
+    def test_save_file_retry_on_connection_error(self):
+        """save_file retries after a connection error by falling back
+        through alternative endpoints and re-validating the bucket."""
+        if not self.storage_available:
+            self.skipTest("S3/MinIO storage not available")
+
+        # Force _bucket_checked to False so _ensure_bucket_exists re-runs
+        # and the retry path is exercised.
+        client = S3StorageClient()
+        client._bucket_checked = False
+
+        import uuid
+
+        fid = uuid.uuid4()
+        content = b"retry-test"
+        storage_path = client.save_file(
+            tenant_id=str(self.tenant.id),
+            file_id=str(fid),
+            file_content=ContentFile(content),
+        )
+        # Verify the file is actually reachable after the save
+        retrieved = client.get_file_content(storage_path)
+        self.assertEqual(retrieved, content)
+
+    def test_save_file_with_file_name_stores_three_segment_key(self):
+        """save_file with file_name produces {tenant_id}/{file_id}/{file_name}."""
+        if not self.storage_available:
+            self.skipTest("S3/MinIO storage not available")
+
+        import uuid
+
+        fid = uuid.uuid4()
+        file_name = "report.csv"
+        storage_path = self.storage_client.save_file(
+            tenant_id=str(self.tenant.id),
+            file_id=str(fid),
+            file_content=ContentFile(b"header,value\n1,2"),
+            file_name=file_name,
+        )
+        # Key must contain all three segments
+        self.assertIn(str(self.tenant.id), storage_path)
+        self.assertIn(str(fid), storage_path)
+        self.assertIn(file_name, storage_path)
+        # Must be retrievable
+        self.assertTrue(self.storage_client.file_exists(storage_path))
+        content = self.storage_client.get_file_content(storage_path)
+        self.assertEqual(content, b"header,value\n1,2")

@@ -1,0 +1,44 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DC-003-6c8553ba",
+      "journey_name": "Download Purchased Data",
+      "persona": "Data Consumer / Buyer",
+      "status": "failed",
+      "start_time": 1771211183.4173195,
+      "end_time": 1771211183.4213645,
+      "duration": 0.004045009613037109,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": "Failed to create asset: 403 - {\"error\": \"No active subscription\", \"code\": \"subscription_inactive\", \"details\": {\"tenant_id\": \"3461307c-0e17-443c-8f5a-d0c1f2424fab\"}}",
+      "error_type": "Exception",
+      "steps": [
+        {
+          "step_name": "Provider Creates Asset with File",
+          "status": "StepStatus.FAILED",
+          "start_time": 1771211183.4173288,
+          "end_time": 1771211183.4213526,
+          "duration": 0.00402379035949707,
+          "error_message": "Failed to create asset: 403 - {\"error\": \"No active subscription\", \"code\": \"subscription_inactive\", \"details\": {\"tenant_id\": \"3461307c-0e17-443c-8f5a-d0c1f2424fab\"}}",
+          "error_type": "Exception",
+          "retry_count": 0,
+          "metadata": {
+            "args": "()",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-16T03:06:23.421453"
+}

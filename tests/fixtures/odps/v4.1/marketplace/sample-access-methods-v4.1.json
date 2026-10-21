@@ -1,0 +1,88 @@
+{
+  "schema": "https://opendataproducts.org/schema/v4.1",
+  "version": "4.1",
+  "product": {
+    "details": {
+      "en": {
+        "productID": "marketplace-access-product-v4.1",
+        "name": "Marketplace Product with Access Methods",
+        "description": "A comprehensive ODPS 4.1 sample demonstrating various access methods including API, download, streaming, webhook, and database access."
+      }
+    },
+    "marketplace": {
+      "accessMethods": {
+        "api": {
+          "endpoint": "https://api.example.com/v1/products/marketplace-access-product",
+          "version": "v1",
+          "authentication": {
+            "type": "bearer",
+            "description": "Bearer token authentication required"
+          },
+          "rateLimits": {
+            "requestsPerMinute": 60,
+            "requestsPerHour": 1000,
+            "requestsPerDay": 10000
+          },
+          "documentation": "https://docs.example.com/api/v1"
+        },
+        "download": {
+          "url": "https://download.example.com/products/marketplace-access-product",
+          "format": "zip",
+          "size": "2.5GB",
+          "checksum": {
+            "algorithm": "SHA256",
+            "value": "a1b2c3d4e5f6..."
+          },
+          "description": "Complete dataset download in ZIP format"
+        },
+        "streaming": {
+          "endpoint": "wss://stream.example.com/v1/products/marketplace-access-product",
+          "protocol": "websocket",
+          "format": "json",
+          "description": "Real-time data streaming via WebSocket"
+        },
+        "webhook": {
+          "endpoint": "https://webhook.example.com/v1/products/marketplace-access-product",
+          "method": "POST",
+          "authentication": {
+            "type": "signature",
+            "algorithm": "HMAC-SHA256"
+          },
+          "description": "Push data updates via webhook"
+        },
+        "database": {
+          "type": "postgresql",
+          "host": "db.example.com",
+          "port": 5432,
+          "database": "marketplace_access_product",
+          "authentication": {
+            "type": "credentials",
+            "description": "Database credentials provided upon subscription"
+          },
+          "sslRequired": true,
+          "description": "Direct database access for high-volume users"
+        },
+        "sftp": {
+          "host": "sftp.example.com",
+          "port": 22,
+          "path": "/data/marketplace-access-product",
+          "authentication": {
+            "type": "ssh-key",
+            "description": "SSH key authentication required"
+          },
+          "description": "SFTP access for automated data transfers"
+        },
+        "s3": {
+          "bucket": "marketplace-access-product-data",
+          "region": "us-east-1",
+          "authentication": {
+            "type": "aws-credentials",
+            "description": "AWS credentials with read-only access"
+          },
+          "description": "S3 bucket access for cloud storage integration"
+        }
+      }
+    }
+  }
+}
+

@@ -1,0 +1,32 @@
+# Scheduled ingestion (Prefect worker) alerts
+# Run stuck: run in RUNNING for too long (scheduled_ingestion_runs_running not decremented).
+# Prefect worker down: no runs started when active ingestions exist.
+groups:
+  - name: scheduled_ingestion
+    interval: 30s
+    rules:
+      # Run stuck: at least one run has been in RUNNING state for longer than 2 hours
+      # (scheduled_ingestion_runs_running is incremented on run create and decremented on complete/fail/cancel)
+      - alert: ScheduledIngestionRunStuck
+        expr: scheduled_ingestion_runs_running > 0
+        for: 2h
+        labels:
+          severity: high
+          component: scheduled-ingestion
+        annotations:
+          summary: "Scheduled ingestion run appears stuck (RUNNING > 2h)"
+          description: "At least one scheduled ingestion run has been in RUNNING state for more than 2 hours. Check Prefect worker and hub run status; consider marking run FAILED or restarting worker. See runbooks for remediation."
+
+      # Prefect worker down / no runs: active ingestions exist but no run started in the last hour
+      - alert: ScheduledIngestionNoRunsStarted
+        expr: |
+          (scheduled_ingestion_active_count > 0)
+          and
+          (sum(rate(scheduled_ingestion_runs_total[1h])) == 0 or absent(rate(scheduled_ingestion_runs_total[1h])))
+        for: 1h
+        labels:
+          severity: medium
+          component: scheduled-ingestion
+        annotations:
+          summary: "No scheduled ingestion runs started in the last hour"
+          description: "There are active scheduled ingestions but no run has started in the last hour. Prefect worker may be down or schedules may not be triggering. Check Prefect worker and deployment sync."

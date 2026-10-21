@@ -1,0 +1,190 @@
+name: Core CI
+
+on:
+  push:
+    branches: [mirror/public-core, main]
+  pull_request:
+  schedule:
+    - cron: "17 3 * * 1" # weekly Monday — boundary + secrets regression sweep
+
+jobs:
+  dco:
+    name: DCO (Signed-off-by)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check every PR commit carries a Signed-off-by trailer
+        run: bash scripts/check_dco.sh "${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
+
+  boundary-and-secrets:
+    name: GATE-29 + gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # gitleaks scans commit ranges — a shallow clone lacks the
+          # parents ("ambiguous argument" on the synthetic merge commit).
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: GATE-29 — core never imports paid
+        run: python scripts/check_core_boundary.py
+      - name: GUARD-313.H — allowlisted imports are guarded
+        run: |
+          python scripts/check_core_boundary.py --check-guards
+          python scripts/check_core_boundary.py --check-guards --check-guard-growth
+      - name: Boundary script test suite (checker regression, self-contained)
+        run: |
+          pip install pytest pyyaml
+          python -m pytest -c /dev/null -p no:django -q --no-header \
+            -p no:cacheprovider \
+            scripts/tests/test_check_core_boundary_allowlist_ratchet.py \
+            scripts/tests/test_check_core_boundary_precommit.py \
+            scripts/tests/test_guard_test_failure_clarity.py \
+            scripts/tests/test_compose_overlay_parity.py \
+            scripts/tests/test_monitoring_core_safety.py
+        # test_check_core_boundary_guards.py is intentionally NOT run here:
+        # its real-file fixtures reference private-tree sites; it runs in
+        # the private repo's quality-gates workflow.
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  lint-typecheck:
+    name: Lint + typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt -r requirements-dev.txt
+      # The private CI's lint target tolerates these findings (pre-existing
+      # B904/noqa/format debt — tracked in the post-split hardening plan).
+      # The load-bearing gates are the boundary/security/test jobs; these
+      # steps report without blocking the sync pipeline.
+      - run: ruff check hub/ scripts/
+        continue-on-error: true
+      # black was removed from the toolchain (Q.2.3); the sole format gate is
+      # ruff format (W3.4) — this step is advisory on the public tree.
+      - run: ruff format --check hub/ scripts/
+        continue-on-error: true
+      - run: mypy --config-file pyproject.toml hub/apps/core hub/apps/tenants hub/apps/assets || true
+        continue-on-error: true
+
+  core-boot-smoke:
+    name: Core boot + management-command smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-core.txt
+      # H.2.5 recipe automated: HUB_CORE_ONLY=1 manage.py check + help +
+      # sampled command --help imports. Catches import-time regressions
+      # (e.g. an unguarded paid import in a management command) BEFORE
+      # they reach a publish — no database required.
+      - name: Boot smoke (core-only)
+        run: |
+          HUB_CORE_ONLY=1 python scripts/core_boot_smoke.py
+
+  test-core:
+    name: Core-only backend tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: pip-
+      - name: Start core test stack
+        # The Makefile target (not raw compose --wait): --wait aborts when
+        # the one-shot init containers (dlt-pipelines-init, migrate) exit 0
+        # on idempotent re-runs — the target's host-side health loop is the
+        # sanctioned readiness signal.
+        run: make test-core-stack-up
+        # The frontend image builds FROM SCRATCH on fresh runners (no
+        # layer cache) — observed 10+ min (the 2026-10-14 timeout).
+        timeout-minutes: 20
+      - name: Run core-only tests
+        run: |
+          docker compose -f docker-compose.test.yml -f docker-compose.test.core.yml exec -T \
+            -e HUB_CORE_ONLY=1 \
+            -e CI=true \
+            -e DATABASE_URL=postgresql://hub_test:hub_test@postgres-test:5432/hub_test_test_shared \
+            api-service-test \
+            python -m pytest hub/apps/ hub/tests/test_mvp_mode.py --reuse-db -x -q --timeout=300 \
+              -m "not benchmark and not e2e and not integration and not network and not odh_inference and not performance and not requires_aws and not requires_clamav and not requires_gcp and not requires_prefect and not requires_redis and not requires_services and not requires_snowflake"
+        timeout-minutes: 20
+      - name: Tear down
+        if: always()
+        run: docker compose -f docker-compose.test.yml -f docker-compose.test.core.yml down -v --remove-orphans
+
+  docker-images:
+    name: Build + publish core images (GHCR)
+    runs-on: ubuntu-latest
+    needs: [test-core]
+    if: github.event_name == 'push'
+    permissions:
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # Images built FROM THE PUBLIC TREE ONLY — paid code never enters
+      # public image layers. The worker image uses the overlay-patched
+      # Dockerfile (no compliance_engine COPY).
+      - uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: services/api/Dockerfile
+          push: true
+          tags: ghcr.io/${{ github.repository }}/api-core:latest
+      - uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: services/worker/Dockerfile
+          push: true
+          tags: ghcr.io/${{ github.repository }}/worker-core:latest
+
+  docs:
+    name: Docs build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install mkdocs-material mkdocstrings[python]
+      # --strict is omitted: 1117 pre-existing broken doc links (first
+      # public CI run) — the doc-link sweep is tracked in the post-split
+      # hardening plan. The build still fails on REAL config errors.
+      - run: mkdocs build
+
+  codeql:
+    name: CodeQL analysis
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: python
+      - uses: github/codeql-action/analyze@v3

@@ -1,0 +1,207 @@
+/**
+ * Retention Policy Detail Page
+ * Shows retention policy details
+ */
+
+import { useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { ConfirmDialog } from '../../../shared/components/ConfirmDialog';
+import { ErrorDisplay } from '../../../shared/components/ErrorDisplay';
+import { useToast } from '../../../shared/components/Toast';
+import { normalizeError } from '../../../shared/utils/errorUtils';
+import { DetailPageSkeleton } from '../../../shared/components/skeletons/DetailPageSkeleton';
+import { useDeleteRetentionPolicy, useRetentionPolicy } from '../hooks/useRetention';
+import { UuidWithCopy } from '../../../shared/components/UuidWithCopy';
+import { Breadcrumbs } from '../../../shared/components/Breadcrumbs';
+import './RetentionPolicyDetailPage.css';
+import { Button } from '../../../shared/components/Button';
+
+export function RetentionPolicyDetailPage() {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const { data: policy, isLoading, error, refetch } = useRetentionPolicy(id || null);
+  const deleteMutation = useDeleteRetentionPolicy();
+  const toast = useToast();
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  const handleDeleteClick = () => setShowDeleteConfirm(true);
+  const handleDeleteConfirm = async () => {
+    if (!id) return;
+    setShowDeleteConfirm(false);
+    try {
+      await deleteMutation.mutateAsync(id);
+      toast.success('Retention policy deleted.');
+      navigate('/governance/retention');
+    } catch (err) {
+      toast.error(normalizeError(err).error.message || 'Failed to delete retention policy');
+    }
+  };
+
+  const handleEdit = () => {
+    if (id) navigate(`/governance/retention/${id}/edit`);
+  };
+
+  if (isLoading) {
+    return <DetailPageSkeleton />;
+  }
+
+  if (error || !policy) {
+    return (
+      <ErrorDisplay
+        error={error || new Error('Retention policy not found')}
+        title="Failed to load retention policy"
+        onRetry={() => refetch()}
+      />
+    );
+  }
+
+  const resourceLabel =
+    [policy.asset && 'Asset', policy.dataset && 'Dataset', policy.file && 'File']
+      .filter(Boolean)
+      .join(', ') || '—';
+
+  return (
+    <div className="governance-retention-policy-detail-page">
+      <div className="governance-detail-header">
+        <Button
+ variant="ghost"
+ onClick={() => navigate('/governance/retention')}>
+          ← Back to Retention Policies
+        </Button>
+        <div className="governance-detail-actions">
+          {/* data-testids are the E2E locator anchors (governance-retention-crud.spec.ts)
+              — the bare :has-text locators raced the skeleton/error states under
+              mid-batch churn (b7 #48). */}
+          <Button variant="secondary" onClick={handleEdit} data-testid="edit-button">
+            Edit
+          </Button>
+          <Button
+            variant="danger"
+            onClick={handleDeleteClick}
+            loading={deleteMutation.isPending}
+            data-testid="delete-button">
+            Delete
+          </Button>
+        </div>
+      </div>
+
+      <div className="governance-detail-content">
+        <Breadcrumbs
+          items={[
+            { label: 'Home', href: '/' },
+            { label: 'Retention Policies', href: '/governance/retention' },
+            { label: policy.name || 'Policy' },
+          ]}
+        />
+        <h1>{policy.name}</h1>
+        {id && (
+          <div className="retention-policy-uuid" data-testid="retention-policy-uuid">
+            <UuidWithCopy value={id} label="Retention Policy ID" />
+          </div>
+        )}
+
+        <div className="governance-detail-section">
+          <div className="governance-detail-metadata">
+            <div className="metadata-item">
+              <label>Status</label>
+              <span
+                className={`governance-status-badge ${policy.enabled ? 'enabled' : 'disabled'}`}
+              >
+                {policy.enabled ? 'Enabled' : 'Disabled'}
+              </span>
+            </div>
+            {policy.description && (
+              <div className="metadata-item">
+                <label>Description</label>
+                <p style={{ margin: 0 }}>{policy.description}</p>
+              </div>
+            )}
+            <div className="metadata-item">
+              <label>Policy Type</label>
+              <span>{policy.policy_type}</span>
+            </div>
+            {policy.policy_type === 'TIME_BASED' && policy.retention_period_days && (
+              <div className="metadata-item">
+                <label>Retention Period</label>
+                <span>{policy.retention_period_days} days</span>
+              </div>
+            )}
+            {policy.policy_type === 'EVENT_BASED' && policy.event_trigger && (
+              <div className="metadata-item">
+                <label>Event Trigger</label>
+                <span>{policy.event_trigger}</span>
+              </div>
+            )}
+            <div className="metadata-item">
+              <label>Action</label>
+              <span>{policy.action}</span>
+            </div>
+            <div className="metadata-item">
+              <label>Grace Period</label>
+              <span>{policy.grace_period_days} days</span>
+            </div>
+            <div className="metadata-item">
+              <label>Resource</label>
+              <span>{resourceLabel}</span>
+              {policy.asset && <a href={`/assets/${policy.asset}`}>View asset</a>}
+              {policy.dataset && <a href={`/datasets/${policy.dataset}`}>View dataset</a>}
+              {policy.file && <a href={`/files/${policy.file}`}>View file</a>}
+            </div>
+            {policy.legal_hold && (
+              <>
+                <div className="metadata-item">
+                  <label>Legal Hold</label>
+                  <span>Yes</span>
+                </div>
+                {policy.legal_hold_reason && (
+                  <div className="metadata-item">
+                    <label>Legal Hold Reason</label>
+                    <p style={{ margin: 0 }}>{policy.legal_hold_reason}</p>
+                  </div>
+                )}
+                {policy.legal_hold_expires_at && (
+                  <div className="metadata-item">
+                    <label>Legal Hold Expires</label>
+                    <span>{new Date(policy.legal_hold_expires_at).toLocaleString()}</span>
+                  </div>
+                )}
+              </>
+            )}
+            {policy.last_enforced_at && (
+              <div className="metadata-item">
+                <label>Last Enforced</label>
+                <span>{new Date(policy.last_enforced_at).toLocaleString()}</span>
+              </div>
+            )}
+            <div className="metadata-item">
+              <label>Created</label>
+              <span>{new Date(policy.created_at).toLocaleString()}</span>
+            </div>
+            <div className="metadata-item">
+              <label>Updated</label>
+              <span>{new Date(policy.updated_at).toLocaleString()}</span>
+            </div>
+          </div>
+        </div>
+
+        {!!deleteMutation.error && (
+          <div className="error-display" role="alert">
+            {deleteMutation.error instanceof Error
+              ? deleteMutation.error.message
+              : 'Failed to delete retention policy'}
+          </div>
+        )}
+      </div>
+
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirm={handleDeleteConfirm}
+        title="Delete retention policy"
+        message="Are you sure you want to delete this retention policy? This action cannot be undone."
+        confirmLabel="Delete"
+        variant="danger"
+      />
+    </div>
+  );
+}

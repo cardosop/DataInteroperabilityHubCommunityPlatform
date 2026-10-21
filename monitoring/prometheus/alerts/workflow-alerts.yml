@@ -1,0 +1,204 @@
+groups:
+  - name: workflow_orchestration
+    interval: 30s
+    rules:
+      # Workflow Timeout Alert
+      - alert: WorkflowTimeout
+        expr: |
+          (
+            sum(workflow_instances_running) by (workflow_name, workflow_instance_id)
+            and
+            (time() - workflow_instance_started_at_timestamp) > 3600
+          ) > 0
+        for: 5m
+        labels:
+          severity: high
+          component: workflow-orchestration
+        annotations:
+          summary: "Workflow {{ $labels.workflow_name }} has exceeded timeout threshold"
+          description: "Workflow instance {{ $labels.workflow_instance_id }} ({{ $labels.workflow_name }}) has been running for more than 1 hour"
+
+      # Workflow Failure Rate Alert
+      - alert: WorkflowHighFailureRate
+        expr: |
+          (
+            sum(rate(workflow_instances_failed_total[15m])) by (workflow_name)
+            /
+            sum(rate(workflow_instances_started_total[15m])) by (workflow_name)
+          ) > 0.1
+        for: 5m
+        labels:
+          severity: high
+          component: workflow-orchestration
+        annotations:
+          summary: "High failure rate for workflow {{ $labels.workflow_name }}"
+          description: "Workflow {{ $labels.workflow_name }} has failure rate above 10% in the last 15 minutes"
+
+      # Workflow Retry Exhaustion Alert
+      - alert: WorkflowRetryExhaustion
+        expr: |
+          sum(workflow_instances_failed_current) by (workflow_name, workflow_instance_id, retry_count) > 0 and on(workflow_name, workflow_instance_id) workflow_instances_failed_current{retry_count!=""} >= 3
+        for: 1m
+        labels:
+          severity: critical
+          component: workflow-orchestration
+        annotations:
+          summary: "Workflow {{ $labels.workflow_name }} has exhausted retry attempts"
+          description: "Workflow instance {{ $labels.workflow_instance_id }} ({{ $labels.workflow_name }}) has exhausted all retry attempts"
+
+      # Stuck Workflow Alert
+      - alert: WorkflowStuck
+        expr: |
+          (
+            sum(workflow_instances_running) by (workflow_name, workflow_instance_id)
+            and
+            (time() - workflow_instance_updated_at_timestamp) > 1800
+          ) > 0
+        for: 5m
+        labels:
+          severity: medium
+          component: workflow-orchestration
+        annotations:
+          summary: "Workflow {{ $labels.workflow_name }} appears stuck"
+          description: "Workflow instance {{ $labels.workflow_instance_id }} ({{ $labels.workflow_name }}) has not made progress for 30 minutes"
+
+      # Step Failure Rate Alert
+      - alert: StepHighFailureRate
+        expr: |
+          (
+            sum(rate(workflow_steps_failed_total[60m])) by (workflow_name, step_name)
+            /
+            sum(rate(workflow_steps_started_total[60m])) by (workflow_name, step_name)
+          ) > 0.5
+        for: 10m
+        labels:
+          severity: high
+          component: workflow-orchestration
+        annotations:
+          summary: "High failure rate for step {{ $labels.step_name }} in workflow {{ $labels.workflow_name }}"
+          description: "Step {{ $labels.step_name }} in workflow {{ $labels.workflow_name }} has failure rate above 50% in the last hour"
+
+      # Workflow Success Rate Alert
+      - alert: WorkflowLowSuccessRate
+        expr: |
+          (
+            sum(rate(workflow_instances_completed_total{status="COMPLETED"}[15m])) by (workflow_name)
+            /
+            sum(rate(workflow_instances_started_total[15m])) by (workflow_name)
+          ) < 0.8
+        for: 10m
+        labels:
+          severity: high
+          component: workflow-orchestration
+        annotations:
+          summary: "Low success rate for workflow {{ $labels.workflow_name }}"
+          description: "Workflow {{ $labels.workflow_name }} has success rate below 80% in the last 15 minutes"
+
+      # High Workflow Execution Duration Alert
+      - alert: WorkflowHighExecutionDuration
+        expr: |
+          histogram_quantile(0.95, sum(rate(workflow_execution_duration_seconds_bucket[15m])) by (workflow_name, le)) > 300
+        for: 10m
+        labels:
+          severity: medium
+          component: workflow-orchestration
+        annotations:
+          summary: "High execution duration for workflow {{ $labels.workflow_name }}"
+          description: "Workflow {{ $labels.workflow_name }} has P95 execution duration above 5 minutes"
+
+      # High Number of Failed Workflows Alert
+      - alert: HighFailedWorkflowCount
+        expr: |
+          sum(workflow_instances_failed_current) by (workflow_name) > 10
+        for: 5m
+        labels:
+          severity: high
+          component: workflow-orchestration
+        annotations:
+          summary: "High number of failed workflows for {{ $labels.workflow_name }}"
+          description: "Workflow {{ $labels.workflow_name }} has more than 10 failed instances"
+
+      # Workflow Timeout Rate Alert
+      - alert: WorkflowHighTimeoutRate
+        expr: |
+          (
+            sum(rate(workflow_instances_timed_out_total[15m])) by (workflow_name)
+            /
+            sum(rate(workflow_instances_started_total[15m])) by (workflow_name)
+          ) > 0.05
+        for: 10m
+        labels:
+          severity: high
+          component: workflow-orchestration
+        annotations:
+          summary: "High timeout rate for workflow {{ $labels.workflow_name }}"
+          description: "Workflow {{ $labels.workflow_name }} has timeout rate above 5% in the last 15 minutes"
+
+      # Business Rules Validation Failure Rate Alert
+      - alert: WorkflowBusinessRulesValidationHighFailureRate
+        expr: |
+          (
+            sum(rate(workflow_business_rules_validations_total{status="invalid"}[15m])) by (workflow_name, rule_name)
+            /
+            sum(rate(workflow_business_rules_validations_total[15m])) by (workflow_name, rule_name)
+          ) > 0.1
+        for: 10m
+        labels:
+          severity: high
+          component: workflow-orchestration
+          subcomponent: business-rules-validation
+        annotations:
+          summary: "High business rules validation failure rate for workflow {{ $labels.workflow_name }}"
+          description: "Workflow {{ $labels.workflow_name }} using rule {{ $labels.rule_name }} has validation failure rate above 10% in the last 15 minutes"
+
+      # Business Rules Validation High Invalid Rate (critical when sustained)
+      - alert: WorkflowBusinessRulesValidationHighInvalidRate
+        expr: |
+          (
+            sum(rate(workflow_business_rules_validations_total{status="invalid"}[15m])) by (workflow_name, rule_name)
+            /
+            sum(rate(workflow_business_rules_validations_total[15m])) by (workflow_name, rule_name)
+          ) > 0.25
+        for: 5m
+        labels:
+          severity: critical
+          component: workflow-orchestration
+          subcomponent: business-rules-validation
+        annotations:
+          summary: "Critical business rules validation failure rate for workflow {{ $labels.workflow_name }}"
+          description: "Workflow {{ $labels.workflow_name }} using rule {{ $labels.rule_name }} has validation failure rate above 25% in the last 15 minutes"
+
+      # Business Rules Validation High Duration Alert
+      - alert: WorkflowBusinessRulesValidationHighDuration
+        expr: |
+          histogram_quantile(0.95, sum(rate(workflow_business_rules_validation_duration_seconds_bucket[15m])) by (workflow_name, rule_name, le)) > 0.1
+        for: 10m
+        labels:
+          severity: medium
+          component: workflow-orchestration
+          subcomponent: business-rules-validation
+        annotations:
+          summary: "High business rules validation duration for workflow {{ $labels.workflow_name }}"
+          description: "Workflow {{ $labels.workflow_name }} using rule {{ $labels.rule_name }} has P95 validation duration above 100ms in the last 15 minutes"
+
+      # Business Rules Validation Low Cache Hit Rate Alert
+      - alert: WorkflowBusinessRulesValidationLowCacheHitRate
+        expr: |
+          (
+            sum(rate(workflow_business_rules_validation_cache_hits_total[15m])) by (workflow_name, rule_name)
+            /
+            (
+              sum(rate(workflow_business_rules_validation_cache_hits_total[15m])) by (workflow_name, rule_name)
+              +
+              sum(rate(workflow_business_rules_validation_cache_misses_total[15m])) by (workflow_name, rule_name)
+            )
+          ) < 0.5
+        for: 15m
+        labels:
+          severity: low
+          component: workflow-orchestration
+          subcomponent: business-rules-validation
+        annotations:
+          summary: "Low cache hit rate for business rules validation in workflow {{ $labels.workflow_name }}"
+          description: "Workflow {{ $labels.workflow_name }} using rule {{ $labels.rule_name }} has cache hit rate below 50% in the last 15 minutes"
+

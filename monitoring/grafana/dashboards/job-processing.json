@@ -1,0 +1,99 @@
+{
+  "title": "Job Processing",
+  "tags": [
+    "hub",
+    "jobs",
+    "processing"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 16,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Job Throughput",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "sum(rate(jobs_completed_total[5m])) by (job_type, status)",
+          "legendFormat": "{{job_type}} {{status}}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": 2,
+      "title": "Job Success Rate",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "(sum(rate(jobs_completed_total{status=\"COMPLETED\"}[5m])) by (job_type) / sum(rate(jobs_started_total[5m])) by (job_type)) * 100",
+          "legendFormat": "{{job_type}}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      }
+    },
+    {
+      "id": 3,
+      "title": "Queue Depth",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "sum(job_queue_length) by (job_type, queue_name)",
+          "legendFormat": "{{job_type}} {{queue_name}}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      }
+    },
+    {
+      "id": 4,
+      "title": "Job Duration",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(job_duration_seconds_bucket[5m])) by (job_type, le))",
+          "legendFormat": "{{job_type}} P95"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      }
+    },
+    {
+      "id": 5,
+      "title": "Job Failure Rate",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "sum(rate(jobs_failed_total[5m])) by (job_type, error_code)",
+          "legendFormat": "{{job_type}} {{error_code}}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      }
+    }
+  ]
+}

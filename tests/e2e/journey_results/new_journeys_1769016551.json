@@ -1,0 +1,108 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 3.0517578125e-05
+  },
+  "journeys": [
+    {
+      "journey_id": "DE-008-85db099d",
+      "journey_name": "Integrate AI Schema Matching into Workflow",
+      "persona": "Data Engineer",
+      "status": "completed",
+      "start_time": 1769016551.882434,
+      "end_time": 1769016551.8824644,
+      "duration": 3.0517578125e-05,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Configure AI Service",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769016551.8824406,
+          "end_time": 1769016551.8824468,
+          "duration": 6.198883056640625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "bool"
+          }
+        },
+        {
+          "step_name": "Integrate Schema Matching API",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769016551.8824496,
+          "end_time": 1769016551.882452,
+          "duration": 2.384185791015625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "bool"
+          }
+        },
+        {
+          "step_name": "Test Schema Matching",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769016551.8824532,
+          "end_time": 1769016551.882455,
+          "duration": 1.9073486328125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "bool"
+          }
+        },
+        {
+          "step_name": "Configure Acceptance Rules",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769016551.8824563,
+          "end_time": 1769016551.882458,
+          "duration": 1.6689300537109375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "bool"
+          }
+        },
+        {
+          "step_name": "Deploy Workflow",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769016551.8824592,
+          "end_time": 1769016551.8824608,
+          "duration": 1.6689300537109375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "bool"
+          }
+        },
+        {
+          "step_name": "Monitor Performance",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769016551.8824618,
+          "end_time": 1769016551.8824635,
+          "duration": 1.6689300537109375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "bool"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-01-21T17:29:11.882548"
+}

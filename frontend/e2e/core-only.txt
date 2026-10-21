@@ -1,0 +1,45 @@
+# Phase 313.4 — core-only E2E subset (public frontend-core.yml weekly job +
+# private frontend-ci.yml e2e-core job; run locally via npm run test:e2e:core).
+#
+# Grep-style list: each line is a substring matched against Playwright
+# spec titles (--grep). Every entry MUST match at least one spec — validate
+# after edits with:
+#   E2E_CORE_ONLY=1 npx playwright test --project=chromium-core --list \
+#     --grep "$(tr '\n' '|' < e2e/core-only.txt | sed 's/|$//')"
+# (comments and blank lines are stripped by scripts/run-e2e-core.sh)
+#
+# Personas: the 7 core personas of the 13 canonical set (persona specs
+# aggregate the journey specs and are testIgnore'd by the plain chromium
+# project — the chromium-core project runs them).
+Persona RBAC: Visitor
+Persona RBAC: Data Engineer
+Persona RBAC: Platform Admin
+Persona RBAC: Auditor
+Persona RBAC: Compliance Officer
+Persona RBAC: Data Analyst
+Persona RBAC: Data Mesh Domain Owner
+# Core feature areas (describe-level substrings — paid surfaces like
+# marketplace search / NL search / saved searches are deliberately NOT here).
+Feature: Assets
+JOURNEY-DPO-003: Manage Asset Lifecycle
+Asset Type Picker
+Feature: Dataset
+Data Quality
+Governance Retention Policy
+Unified Approval Inbox
+Feature: Files
+Standalone /files lifecycle
+Webhooks
+Notifications
+Feature: Search
+Search Global
+Scheduled Ingestion
+Scheduled Export
+Integrations, Jobs
+# Cross-cutting core dimensions
+Authenticated Pages A11y
+Security Headers
+Security: CSP
+# P.6 — paid-surface redirect behaviour (core-only paid routes must
+# bounce to /unavailable; core routes must not).
+Core mode: paid surfaces redirect to /unavailable

@@ -1,0 +1,86 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 6.821965456008911
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-003-390c3047",
+      "journey_name": "Update Asset Contract",
+      "persona": "Data Product Owner",
+      "status": "completed",
+      "start_time": 1765573179.777023,
+      "end_time": 1765573186.5989885,
+      "duration": 6.821965456008911,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Create Asset with Contract",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765573179.7770286,
+          "end_time": 1765573180.916461,
+          "duration": 1.139432430267334,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "tuple"
+          }
+        },
+        {
+          "step_name": "Update Contract",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765573180.9164708,
+          "end_time": 1765573180.9170845,
+          "duration": 0.0006136894226074219,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Validate Updated Contract",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765573180.917087,
+          "end_time": 1765573186.3579443,
+          "duration": 5.440857172012329,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Update Asset with New Contract",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765573186.3579547,
+          "end_time": 1765573186.598985,
+          "duration": 0.24103021621704102,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "ReturnDict"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "acbf5ccb-bd7d-4d46-9414-aaf49ae5e95f",
+        "original_contract_id": "3db103b8-78cb-4236-bfcd-4485d4f26eec",
+        "updated_contract_id": "3db103b8-78cb-4236-bfcd-4485d4f26eec"
+      }
+    }
+  ],
+  "exported_at": "2025-12-12T20:59:46.599057"
+}

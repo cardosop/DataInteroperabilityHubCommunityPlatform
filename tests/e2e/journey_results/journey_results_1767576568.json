@@ -1,0 +1,84 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.003924846649169922
+  },
+  "journeys": [
+    {
+      "journey_id": "DEV-004-e4ebc469",
+      "journey_name": "Set Up Webhooks",
+      "persona": "External Developer / Integrator",
+      "status": "completed",
+      "start_time": 1767576568.7920132,
+      "end_time": 1767576568.795938,
+      "duration": 0.003924846649169922,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Create Webhook Endpoint",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1767576568.7920191,
+          "end_time": 1767576568.792025,
+          "duration": 5.9604644775390625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Register Webhook",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1767576568.792027,
+          "end_time": 1767576568.7944942,
+          "duration": 0.0024671554565429688,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "UUID"
+          }
+        },
+        {
+          "step_name": "Configure Events",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1767576568.7945,
+          "end_time": 1767576568.7959259,
+          "duration": 0.0014257431030273438,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "UUID"
+          }
+        },
+        {
+          "step_name": "Test Webhook",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1767576568.7959309,
+          "end_time": 1767576568.795935,
+          "duration": 4.0531158447265625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        }
+      ],
+      "metadata": {
+        "webhook_id": "255ff989-5863-4c64-90f9-b7862724464b"
+      }
+    }
+  ],
+  "exported_at": "2026-01-05T01:29:28.796016"
+}

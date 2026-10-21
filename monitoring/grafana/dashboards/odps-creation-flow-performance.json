@@ -1,0 +1,631 @@
+{
+  "title": "ODPS Creation Flow Performance",
+  "tags": [
+    "odps",
+    "creation",
+    "workflow",
+    "performance",
+    "task-6.6.7"
+  ],
+  "timezone": "",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Creation Flow Duration (P50, P95, P99)",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(workflow_execution_duration_seconds_bucket{workflow_name=\"product_creation\"}[5m])) by (tenant_id, le))",
+          "legendFormat": "{{tenant_id}} P50",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(workflow_execution_duration_seconds_bucket{workflow_name=\"product_creation\"}[5m])) by (tenant_id, le))",
+          "legendFormat": "{{tenant_id}} P95",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(workflow_execution_duration_seconds_bucket{workflow_name=\"product_creation\"}[5m])) by (tenant_id, le))",
+          "legendFormat": "{{tenant_id}} P99",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "barAlignment": 0,
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "spanNulls": false,
+            "insertNulls": false,
+            "showPoints": "never",
+            "pointSize": 5,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "axisPlacement": "auto",
+            "axisLabel": "",
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "hideFrom": {
+              "tooltip": false,
+              "viz": false,
+              "legend": false
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": null,
+                "color": "green"
+              }
+            ]
+          },
+          "unit": "s",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "yaxes": [
+        {
+          "format": "s",
+          "label": "Duration (seconds)"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "xaxis": {
+        "mode": "time"
+      },
+      "description": "ODPS creation flow duration percentiles (P50, P95, P99) over time. Tracks the time taken to complete the entire product creation workflow."
+    },
+    {
+      "id": 2,
+      "title": "Creation Flow Success Rate",
+      "type": "stat",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "(sum(rate(workflow_instances_completed_total{workflow_name=\"product_creation\", status=\"COMPLETED\"}[5m])) by (tenant_id) / sum(rate(workflow_instances_started_total{workflow_name=\"product_creation\"}[5m])) by (tenant_id)) * 100",
+          "legendFormat": "{{tenant_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": 0,
+                "color": "red"
+              },
+              {
+                "value": 80,
+                "color": "yellow"
+              },
+              {
+                "value": 95,
+                "color": "green"
+              }
+            ]
+          },
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "graphMode": "area",
+        "colorMode": "value",
+        "justifyMode": "auto",
+        "orientation": "auto"
+      },
+      "description": "ODPS creation flow success rate percentage. Calculated as completed workflows / started workflows * 100. Target: >95%"
+    },
+    {
+      "id": 3,
+      "title": "Creation Flow Error Rate",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "(sum(rate(workflow_instances_failed_total{workflow_name=\"product_creation\"}[5m])) by (tenant_id, error_type) / sum(rate(workflow_instances_started_total{workflow_name=\"product_creation\"}[5m])) by (tenant_id)) * 100",
+          "legendFormat": "{{tenant_id}} - {{error_type}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "barAlignment": 0,
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "spanNulls": false,
+            "insertNulls": false,
+            "showPoints": "never",
+            "pointSize": 5,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "axisPlacement": "auto",
+            "axisLabel": "",
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "hideFrom": {
+              "tooltip": false,
+              "viz": false,
+              "legend": false
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": null,
+                "color": "green"
+              }
+            ]
+          },
+          "unit": "percent",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "yaxes": [
+        {
+          "format": "percent",
+          "label": "Error Rate (%)"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "xaxis": {
+        "mode": "time"
+      },
+      "description": "ODPS creation flow error rate over time, broken down by error type. Calculated as failed workflows / started workflows * 100."
+    },
+    {
+      "id": 4,
+      "title": "Step-by-Step Performance (P95 Duration)",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 16
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(workflow_step_execution_duration_seconds_bucket{workflow_name=\"product_creation\", step_name=\"parse_odps\"}[5m])) by (tenant_id, le))",
+          "legendFormat": "{{tenant_id}} - parse_odps",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(workflow_step_execution_duration_seconds_bucket{workflow_name=\"product_creation\", step_name=\"resolve_refs\"}[5m])) by (tenant_id, le))",
+          "legendFormat": "{{tenant_id}} - resolve_refs",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(workflow_step_execution_duration_seconds_bucket{workflow_name=\"product_creation\", step_name=\"extract_contract\"}[5m])) by (tenant_id, le))",
+          "legendFormat": "{{tenant_id}} - extract_contract",
+          "refId": "C"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(workflow_step_execution_duration_seconds_bucket{workflow_name=\"product_creation\", step_name=\"validate_odcs\"}[5m])) by (tenant_id, le))",
+          "legendFormat": "{{tenant_id}} - validate_odcs",
+          "refId": "D"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(workflow_step_execution_duration_seconds_bucket{workflow_name=\"product_creation\", step_name=\"normalize_odcs\"}[5m])) by (tenant_id, le))",
+          "legendFormat": "{{tenant_id}} - normalize_odcs",
+          "refId": "E"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(workflow_step_execution_duration_seconds_bucket{workflow_name=\"product_creation\", step_name=\"normalize_odps\"}[5m])) by (tenant_id, le))",
+          "legendFormat": "{{tenant_id}} - normalize_odps",
+          "refId": "F"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(workflow_step_execution_duration_seconds_bucket{workflow_name=\"product_creation\", step_name=\"create_odcs_contract\"}[5m])) by (tenant_id, le))",
+          "legendFormat": "{{tenant_id}} - create_odcs_contract",
+          "refId": "G"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(workflow_step_execution_duration_seconds_bucket{workflow_name=\"product_creation\", step_name=\"create_odps_contract\"}[5m])) by (tenant_id, le))",
+          "legendFormat": "{{tenant_id}} - create_odps_contract",
+          "refId": "H"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(workflow_step_execution_duration_seconds_bucket{workflow_name=\"product_creation\", step_name=\"link_contracts\"}[5m])) by (tenant_id, le))",
+          "legendFormat": "{{tenant_id}} - link_contracts",
+          "refId": "I"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(workflow_step_execution_duration_seconds_bucket{workflow_name=\"product_creation\", step_name=\"link_data_file\"}[5m])) by (tenant_id, le))",
+          "legendFormat": "{{tenant_id}} - link_data_file",
+          "refId": "J"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(workflow_step_execution_duration_seconds_bucket{workflow_name=\"product_creation\", step_name=\"index_for_search\"}[5m])) by (tenant_id, le))",
+          "legendFormat": "{{tenant_id}} - index_for_search",
+          "refId": "K"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(workflow_step_execution_duration_seconds_bucket{workflow_name=\"product_creation\", step_name=\"semantic_mapping\"}[5m])) by (tenant_id, le))",
+          "legendFormat": "{{tenant_id}} - semantic_mapping",
+          "refId": "L"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "barAlignment": 0,
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "spanNulls": false,
+            "insertNulls": false,
+            "showPoints": "never",
+            "pointSize": 5,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "axisPlacement": "auto",
+            "axisLabel": "",
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "hideFrom": {
+              "tooltip": false,
+              "viz": false,
+              "legend": false
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": null,
+                "color": "green"
+              }
+            ]
+          },
+          "unit": "s",
+          "decimals": 3
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi"
+        },
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "mean",
+            "max",
+            "last"
+          ]
+        }
+      },
+      "yaxes": [
+        {
+          "format": "s",
+          "label": "Duration (seconds)"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "xaxis": {
+        "mode": "time"
+      },
+      "description": "P95 duration for each step in the ODPS creation flow. Shows performance of individual workflow steps: parse_odps, resolve_refs, extract_contract, validate_odcs, normalize_odcs, normalize_odps, create_odcs_contract, create_odps_contract, link_contracts, link_data_file, index_for_search, semantic_mapping."
+    },
+    {
+      "id": 5,
+      "title": "Total Creation Flows Started",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 24
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(workflow_instances_started_total{workflow_name=\"product_creation\"}[$__range])) by (tenant_id)",
+          "legendFormat": "{{tenant_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": null,
+                "color": "green"
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "graphMode": "none",
+        "colorMode": "value",
+        "justifyMode": "auto",
+        "orientation": "auto"
+      },
+      "description": "Total number of ODPS creation flows started in the selected time range"
+    },
+    {
+      "id": 6,
+      "title": "Total Creation Flows Completed",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 24
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(workflow_instances_completed_total{workflow_name=\"product_creation\", status=\"COMPLETED\"}[$__range])) by (tenant_id)",
+          "legendFormat": "{{tenant_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": null,
+                "color": "green"
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "graphMode": "none",
+        "colorMode": "value",
+        "justifyMode": "auto",
+        "orientation": "auto"
+      },
+      "description": "Total number of ODPS creation flows completed successfully in the selected time range"
+    },
+    {
+      "id": 7,
+      "title": "Total Creation Flows Failed",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 24
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(workflow_instances_failed_total{workflow_name=\"product_creation\"}[$__range])) by (tenant_id)",
+          "legendFormat": "{{tenant_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": 0,
+                "color": "green"
+              },
+              {
+                "value": 1,
+                "color": "yellow"
+              },
+              {
+                "value": 5,
+                "color": "red"
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "graphMode": "none",
+        "colorMode": "value",
+        "justifyMode": "auto",
+        "orientation": "auto"
+      },
+      "description": "Total number of ODPS creation flows that failed in the selected time range"
+    },
+    {
+      "id": 8,
+      "title": "Current Running Creation Flows",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 24
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(workflow_instances_running{workflow_name=\"product_creation\"}) by (tenant_id)",
+          "legendFormat": "{{tenant_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": null,
+                "color": "green"
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "graphMode": "none",
+        "colorMode": "value",
+        "justifyMode": "auto",
+        "orientation": "auto"
+      },
+      "description": "Current number of ODPS creation flows currently running"
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "tenant_id",
+        "type": "query",
+        "label": "Tenant ID",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": "label_values(workflow_instances_started_total{workflow_name=\"product_creation\"}, tenant_id)",
+        "multi": true,
+        "includeAll": true,
+        "allValue": null
+      }
+    ]
+  },
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "links": [],
+  "liveNow": false,
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "weekStart": ""
+}

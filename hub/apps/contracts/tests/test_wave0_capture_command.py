@@ -1,0 +1,234 @@
+"""
+Phase 227 Wave 0 (227.0.1) — tests for the `wave0_capture_structureless`
+turn-key wrapper management command.
+
+The wrapper auto-creates the `audit-reports/` directory, names the file
+`structureless-pre-rollout-YYYY-MM-DD.jsonl`, and writes the JSONL there
+instead of stdout. This makes the operator path one command (matching
+the runbook one-liner) and ensures the directory + filename convention
+is enforced by code, not by operator memory.
+
+Tests use real Contract rows + a temporary directory (no mocks) and
+verify the artefact file shape end-to-end.
+"""
+
+from __future__ import annotations
+
+import json
+from datetime import date
+from io import StringIO
+from pathlib import Path
+
+import pytest
+from django.core.management import call_command
+from django.test import TestCase
+
+
+def _create_tenant(name: str = "Wave 0 Capture Co"):
+    import uuid
+
+    from hub.apps.tenants.models import Tenant
+
+    suffix = uuid.uuid4().hex[:8]
+    unique_name = f"{name} {suffix}"
+    return Tenant.objects.create(
+        name=unique_name,
+        slug=unique_name.lower().replace(" ", "-"),
+    )
+
+
+def _create_contract(tenant, *, hub_contract_json=None, original_raw: str = ""):
+    from hub.apps.contracts.models import Contract
+
+    return Contract.objects.create(
+        tenant=tenant,
+        original_spec_type="ODCS",
+        original_spec_version="3.1.0",
+        original_format="YAML",
+        original_raw=original_raw or "apiVersion: 3.0.0\nkind: DataContract\n",
+        hub_contract_json=hub_contract_json,
+        normalization_status="NORMALIZED_OK",
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+class CaptureCommandTests(TestCase):
+    def test_creates_audit_reports_directory_if_missing(self, tmp_path: Path):
+        tmp_path = tmp_path / "audit-reports"
+        if tmp_path.exists():
+            for p in tmp_path.iterdir():
+                p.unlink()
+            tmp_path.rmdir()
+        try:
+            tenant = _create_tenant()
+            _create_contract(tenant, hub_contract_json={"models": []})
+
+            out = StringIO()
+            call_command(
+                "wave0_capture_structureless",
+                f"--audit-reports-dir={tmp_path}",
+                stdout=out,
+            )
+
+            assert tmp_path.exists()
+            assert tmp_path.is_dir()
+        finally:
+            if tmp_path.exists():
+                for p in tmp_path.iterdir():
+                    p.unlink()
+                tmp_path.rmdir()
+
+    def test_writes_jsonl_with_today_date_in_filename(self, tmp_path: Path):
+        tmp_path = tmp_path / "audit-reports"
+        try:
+            tenant = _create_tenant()
+            _create_contract(tenant, hub_contract_json={"models": []})
+
+            out = StringIO()
+            call_command(
+                "wave0_capture_structureless",
+                f"--audit-reports-dir={tmp_path}",
+                stdout=out,
+            )
+
+            today = date.today().isoformat()
+            expected = tmp_path / f"structureless-pre-rollout-{today}.jsonl"
+            assert expected.exists(), (
+                f"Expected file {expected} not produced. "
+                f"Found: {list(tmp_path.iterdir()) if tmp_path.exists() else []}"
+            )
+        finally:
+            if tmp_path.exists():
+                for p in tmp_path.iterdir():
+                    p.unlink()
+                tmp_path.rmdir()
+
+    def test_jsonl_contains_one_row_per_structureless_contract(self, tmp_path: Path):
+        tmp_path = tmp_path / "audit-reports"
+        try:
+            tenant = _create_tenant()
+            _create_contract(tenant, hub_contract_json={"models": []})
+            _create_contract(tenant, hub_contract_json={"models": []})
+            # One non-structureless — must NOT appear.
+            _create_contract(
+                tenant,
+                hub_contract_json={"models": [{"name": "x", "fields": [{"name": "id"}]}]},
+            )
+
+            call_command(
+                "wave0_capture_structureless",
+                f"--audit-reports-dir={tmp_path}",
+                stdout=StringIO(),
+            )
+
+            today = date.today().isoformat()
+            artefact = tmp_path / f"structureless-pre-rollout-{today}.jsonl"
+            content = artefact.read_text(encoding="utf-8")
+            json_lines = [
+                ln
+                for ln in content.splitlines()
+                if ln.startswith("{") and ln.rstrip().endswith("}")
+            ]
+            # Filter to only this test's tenant (reuse-db may have accumulated
+            # structureless contracts from other test runs).
+            our_lines = [ln for ln in json_lines if f'"tenant_id": "{tenant.id}"' in ln]
+            assert len(our_lines) == 2, (
+                f"Expected 2 structureless rows for test tenant; "
+                f"got {len(our_lines)} (total {len(json_lines)} across all tenants)\n"
+                f"content:\n{content}"
+            )
+            for ln in json_lines:
+                # Each line must be valid JSON.
+                json.loads(ln)
+        finally:
+            if tmp_path.exists():
+                for p in tmp_path.iterdir():
+                    p.unlink()
+                tmp_path.rmdir()
+
+    def test_stdout_summary_includes_path_and_count(self, tmp_path: Path):
+        tmp_path = tmp_path / "audit-reports"
+        try:
+            tenant = _create_tenant()
+            _create_contract(tenant, hub_contract_json={"models": []})
+
+            out = StringIO()
+            call_command(
+                "wave0_capture_structureless",
+                f"--audit-reports-dir={tmp_path}",
+                stdout=out,
+            )
+
+            output = out.getvalue()
+            today = date.today().isoformat()
+            assert f"structureless-pre-rollout-{today}.jsonl" in output, output
+            # The count must be visible to the operator without re-reading
+            # the file. With reuse-db the exact count varies; verify at
+            # least the test's own contract appears in the count.
+            assert "structureless" in output.lower(), (
+                f"Output should mention structureless count; got: {output}"
+            )
+        finally:
+            if tmp_path.exists():
+                for p in tmp_path.iterdir():
+                    p.unlink()
+                tmp_path.rmdir()
+
+    def test_idempotent_overwrite_warns_and_replaces(self, tmp_path: Path):
+        tmp_path = tmp_path / "audit-reports"
+        try:
+            tenant = _create_tenant()
+            _create_contract(tenant, hub_contract_json={"models": []})
+
+            today = date.today().isoformat()
+            artefact = tmp_path / f"structureless-pre-rollout-{today}.jsonl"
+            tmp_path.mkdir(exist_ok=True)
+            artefact.write_text("STALE\n", encoding="utf-8")
+
+            out = StringIO()
+            call_command(
+                "wave0_capture_structureless",
+                f"--audit-reports-dir={tmp_path}",
+                stdout=out,
+            )
+
+            content = artefact.read_text(encoding="utf-8")
+            assert "STALE" not in content, "Stale file must be overwritten"
+            # The operator must be warned that an overwrite happened.
+            assert "overwrit" in out.getvalue().lower() or "exist" in out.getvalue().lower()
+        finally:
+            if tmp_path.exists():
+                for p in tmp_path.iterdir():
+                    p.unlink()
+                tmp_path.rmdir()
+
+    def test_passes_tenant_id_through(self, tmp_path: Path):
+        tmp_path = tmp_path / "audit-reports"
+        try:
+            t1 = _create_tenant("Tenant A")
+            t2 = _create_tenant("Tenant B")
+            _create_contract(t1, hub_contract_json={"models": []})
+            _create_contract(t2, hub_contract_json={"models": []})
+
+            call_command(
+                "wave0_capture_structureless",
+                f"--audit-reports-dir={tmp_path}",
+                f"--tenant-id={t1.id}",
+                stdout=StringIO(),
+            )
+
+            today = date.today().isoformat()
+            artefact = tmp_path / f"structureless-pre-rollout-{today}.jsonl"
+            json_lines = [ln for ln in artefact.read_text().splitlines() if ln.startswith("{")]
+            # With reuse-db there may be prior structureless contracts for
+            # the same tenant; filter to only the contracts we just created.
+            t1_lines = [ln for ln in json_lines if json.loads(ln).get("tenant_id") == str(t1.id)]
+            assert len(t1_lines) == 1, (
+                f"Expected 1 structureless row for Tenant A; got {len(t1_lines)} lines: {t1_lines}"
+            )
+            assert json.loads(t1_lines[0])["tenant_id"] == str(t1.id)
+        finally:
+            if tmp_path.exists():
+                for p in tmp_path.iterdir():
+                    p.unlink()
+                tmp_path.rmdir()

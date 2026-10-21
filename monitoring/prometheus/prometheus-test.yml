@@ -1,0 +1,148 @@
+# Prometheus configuration for Meshant TEST stack
+# Uses -test service names (api-service-test, etc.)
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'hub'
+    environment: 'test'
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager-test:9093
+
+rule_files:
+  - 'alerts.yml'
+  - 'alerts/workflow-alerts.yml'
+  - 'alerts/event-bus-alerts.yml'
+  - 'alerts/service-layer-alerts.yml'
+  - 'alerts/odps-alerts.yml'
+  - 'alerts/odcs-alerts.yml'
+  - 'alerts/removal-monitoring.yml'
+  - 'alerts/mesh-alerts.yml'
+  - 'alerts/redis-alerts.yml'
+  - 'alerts/marketplace-alerts.yml'
+  - 'alerts/scheduled-ingestion-alerts.yml'
+  - 'alerts/lineage-alerts.yml'
+  # Phase 260.A.5 — cross-tenant denial burst alert
+  - 'alerts/auth-tenancy.yml'
+  # Phase 240.1.B.1 — DQ alert rules (8 alerts)
+  - 'alerts/dq.yml'
+  # Databricks control-plane estate (openspec add-databricks-control-plane)
+  - 'alerts/databricks-uc-sync.yml'
+  - 'alerts/databricks-uc-approvals.yml'
+  - 'alerts/databricks-warehouses.yml'
+  - 'alerts/databricks-jobs.yml'
+  - 'alerts/databricks-cost-budget.yml'
+  - 'alerts/databricks-dlt.yml'
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'api-service'
+    static_configs:
+      - targets: ['api-service-test:8000']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+
+  - job_name: 'worker-service'
+    static_configs:
+      - targets: ['worker-service-test:8080']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+
+  - job_name: 'semantic-service'
+    static_configs:
+      - targets: ['semantic-service-test:8081']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+
+  - job_name: 'dq-service'
+    static_configs:
+      - targets: ['dq-service-test:8083']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+
+  - job_name: 'compliance-service'
+    static_configs:
+      - targets: ['compliance-service-test:8082']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+
+  - job_name: 'datacontract-service'
+    static_configs:
+      - targets: ['datacontract-service-test:8080']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+
+  - job_name: 'prefect-integration-service'
+    static_configs:
+      - targets: ['prefect-integration-service-test:8084']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+
+  # search-service, observability-service, webhook-service: no Prometheus /metrics endpoint
+  - job_name: 'redis-cache'
+    static_configs:
+      - targets: ['redis-exporter-cache-test:9121']
+        labels:
+          redis_instance: 'cache'
+          redis_port: '6379'
+    scrape_interval: 30s
+
+  - job_name: 'redis-queue'
+    static_configs:
+      - targets: ['redis-exporter-queue-test:9121']
+        labels:
+          redis_instance: 'queue'
+          redis_port: '6380'
+    scrape_interval: 30s
+
+  - job_name: 'redis-events'
+    static_configs:
+      - targets: ['redis-exporter-events-test:9121']
+        labels:
+          redis_instance: 'events'
+          redis_port: '6381'
+    scrape_interval: 30s
+
+  - job_name: 'redis-channels'
+    static_configs:
+      - targets: ['redis-exporter-channels-test:9121']
+        labels:
+          redis_instance: 'channels'
+          redis_port: '6382'
+    scrape_interval: 30s
+
+  # FIXME: The following four services are not yet defined in any docker-compose
+  # file.  Their scrape targets are commented out to prevent continuous
+  # "connection refused" errors in the Prometheus test stack.  Uncomment when
+  # docker-compose service definitions are added for these services.
+  #
+  # - job_name: 'event-bus-health-service'
+  #   static_configs:
+  #     - targets: ['event-bus-health-service-test:8090']
+  #   metrics_path: '/metrics'
+  #   scrape_interval: 15s
+  #
+  # - job_name: 'workflow-engine-service'
+  #   static_configs:
+  #     - targets: ['workflow-engine-service-test:8088']
+  #   metrics_path: '/metrics'
+  #   scrape_interval: 15s
+  #
+  # - job_name: 'workflow-registry-service'
+  #   static_configs:
+  #     - targets: ['workflow-registry-service-test:8089']
+  #   metrics_path: '/metrics'
+  #   scrape_interval: 15s
+  #
+  # - job_name: 'event-schema-registry-service'
+  #   static_configs:
+  #     - targets: ['event-schema-registry-service-test:8091']
+  #   metrics_path: '/metrics'
+  #   scrape_interval: 15s

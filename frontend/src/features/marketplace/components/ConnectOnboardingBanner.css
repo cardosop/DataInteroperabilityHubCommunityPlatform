@@ -1,0 +1,44 @@
+/* ConnectOnboardingBanner — Phase 271.3.6 */
+
+.connect-onboarding-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 8px;
+  background: var(--color-warning-bg, #fff8e1);
+  border: 1px solid var(--color-warning-border, #ffc107);
+  color: var(--color-warning-text, #795548);
+}
+
+.connect-onboarding-banner__icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--color-warning-icon, #ff9800);
+}
+
+.connect-onboarding-banner__content {
+  flex: 1;
+  min-width: 0;
+}
+
+.connect-onboarding-banner__title {
+  font-weight: 600;
+  margin: 0 0 4px 0;
+}
+
+.connect-onboarding-banner__reason {
+  margin: 0 0 8px 0;
+  font-size: 0.875rem;
+  opacity: 0.85;
+}
+
+.connect-onboarding-banner__body {
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.connect-onboarding-banner__cta {
+  flex-shrink: 0;
+  align-self: center;
+}

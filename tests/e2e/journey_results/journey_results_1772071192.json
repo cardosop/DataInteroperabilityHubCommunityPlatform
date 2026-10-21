@@ -1,0 +1,84 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.010793685913085938
+  },
+  "journeys": [
+    {
+      "journey_id": "DEV-001-2fdb2c4c",
+      "journey_name": "Build Custom Integration",
+      "persona": "External Developer / Integrator",
+      "status": "completed",
+      "start_time": 1772071192.9010975,
+      "end_time": 1772071192.9118912,
+      "duration": 0.010793685913085938,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Authenticate with API",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772071192.9011037,
+          "end_time": 1772071192.901108,
+          "duration": 4.291534423828125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Explore API Endpoints",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772071192.90111,
+          "end_time": 1772071192.9062953,
+          "duration": 0.005185365676879883,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Test API Calls",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772071192.9062994,
+          "end_time": 1772071192.911878,
+          "duration": 0.005578756332397461,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Implement Integration",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772071192.9118814,
+          "end_time": 1772071192.91189,
+          "duration": 8.58306884765625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        }
+      ],
+      "metadata": {
+        "integration_id": "e606b605-8c80-4f74-9de8-fb20058694f2"
+      }
+    }
+  ],
+  "exported_at": "2026-02-26T01:59:52.911957"
+}

@@ -1,0 +1,43 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.012415647506713867
+  },
+  "journeys": [
+    {
+      "journey_id": "DS-002-b779afd3",
+      "journey_name": "Use AI Schema Matching",
+      "persona": "Data Scientist",
+      "status": "completed",
+      "start_time": 1769087922.8025265,
+      "end_time": 1769087922.8149421,
+      "duration": 0.012415647506713867,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Match Schemas",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769087922.802534,
+          "end_time": 1769087922.8149385,
+          "duration": 0.012404441833496094,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-01-22T13:18:42.814998"
+}

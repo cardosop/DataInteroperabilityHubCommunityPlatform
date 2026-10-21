@@ -1,0 +1,34 @@
+/* Skeleton — Phase 40 (38.1) */
+
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--skeleton-base, #EEEEEE) 25%,
+    var(--skeleton-highlight, #F5F5F5) 50%,
+    var(--skeleton-base, #EEEEEE) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer var(--skeleton-animation-duration, 1.5s) infinite ease-in-out;
+}
+
+.skeleton-line {
+  border-radius: var(--border-radius-sm, 4px);
+}
+
+.skeleton-circle {
+  border-radius: var(--border-radius-full, 9999px);
+  flex-shrink: 0;
+}
+
+.skeleton-block {
+  border-radius: var(--border-radius-md, 8px);
+}

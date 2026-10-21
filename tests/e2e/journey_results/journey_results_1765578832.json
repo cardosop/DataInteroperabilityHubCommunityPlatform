@@ -1,0 +1,58 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.0012619495391845703
+  },
+  "journeys": [
+    {
+      "journey_id": "MPA-002-3225589d",
+      "journey_name": "Process Marketplace Orders",
+      "persona": "Platform Admin / Marketplace Operator",
+      "status": "completed",
+      "start_time": 1765578832.6478362,
+      "end_time": 1765578832.6490982,
+      "duration": 0.0012619495391845703,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "List Orders",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765578832.6478417,
+          "end_time": 1765578832.6490862,
+          "duration": 0.0012445449829101562,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "list"
+          }
+        },
+        {
+          "step_name": "Filter Orders",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765578832.6490915,
+          "end_time": 1765578832.649097,
+          "duration": 5.4836273193359375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "list"
+          }
+        }
+      ],
+      "metadata": {
+        "orders_count": 0
+      }
+    }
+  ],
+  "exported_at": "2025-12-12T22:33:52.649178"
+}

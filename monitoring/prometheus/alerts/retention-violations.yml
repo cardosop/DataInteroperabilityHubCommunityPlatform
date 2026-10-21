@@ -1,0 +1,59 @@
+# 281.B.4.6 — Data Retention Violation Alerts.
+#
+# Fires when the retention enforcement management command
+# (enforce_retention.py) finds data past its retention period,
+# or when the command fails to run for >26 hours (missed daily run).
+groups:
+  - name: retention_alerts
+    rules:
+
+      # ── Data past retention period (violation detected) ────────────
+      - alert: RetentionViolationHigh
+        expr: |
+          retention_enforcement_total{action="dry_run_overdue"} > 0
+        for: 1h
+        labels:
+          severity: warning
+          component: compliance
+        annotations:
+          summary: "Data retention violations detected ({{ $value }} records overdue)"
+          description: |
+            The retention enforcement command found {{ $value }} records in
+            category {{ $labels.category }} that exceed the configured
+            retention period. These records should have been auto-deleted.
+            Check the enforce_retention management command output.
+          runbook_url: "docs/compliance/data-retention-schedule.md"
+
+      # ── Retention enforcement job missed ───────────────────────────
+      - alert: RetentionEnforcementJobMissed
+        expr: |
+          time() - retention_enforcement_last_run_timestamp_seconds > 93600
+        for: 5m
+        labels:
+          severity: critical
+          component: compliance
+        annotations:
+          summary: "Retention enforcement job has not run in >26 hours"
+          description: |
+            The `enforce_retention` management command is scheduled daily
+            at 03:00 UTC. It has not completed successfully in >26 hours.
+            This means expired data may be accumulating past its retention
+            period, violating GDPR Article 5(1)(e) (storage limitation).
+            Check the cron job and the management command logs.
+          runbook_url: "docs/compliance/data-retention-schedule.md"
+
+      # ── Retention enforcement failed ───────────────────────────────
+      - alert: RetentionEnforcementFailed
+        expr: |
+          retention_enforcement_total{action="error"} > 0
+        for: 5m
+        labels:
+          severity: critical
+          component: compliance
+        annotations:
+          summary: "Retention enforcement job failed ({{ $value }} errors)"
+          description: |
+            The retention enforcement management command encountered errors
+            while attempting to delete expired data. Check the command
+            output and database connectivity.
+          runbook_url: "docs/compliance/data-retention-schedule.md"

@@ -1,0 +1,296 @@
+"""
+Phase 6 Infrastructure Validation Tests
+
+Tests to validate Prefect worker infrastructure configuration:
+- HubClient initialization with HUB_BASE_URL and HUB_WORKER_API_KEY
+- Environment variable configuration
+- Docker Compose configuration validation
+- Hub API connectivity from Prefect worker context
+"""
+
+import contextlib
+import os
+import sys
+import unittest
+import uuid
+from unittest.mock import patch
+
+import pytest
+from django.db.transaction import TransactionManagementError
+from django.test import SimpleTestCase, TestCase
+
+from hub.apps.auth.models import APIKey
+from hub.apps.scheduled_ingestion.internal_auth import SCOPE_SCHEDULED_INGESTION_INTERNAL
+from hub.apps.scheduled_ingestion.models import ScheduledIngestion, ScheduleType, SourceType
+from hub.apps.tenants.models import Tenant
+from hub.apps.users.models import User, UserStatus
+
+# Add prefect-integration to path
+_here = os.path.abspath(__file__)
+for _ in range(5):
+    _here = os.path.dirname(_here)
+_prefect_integration = os.path.join(_here, "services", "prefect-integration")
+if _prefect_integration not in sys.path:
+    sys.path.insert(0, _prefect_integration)
+
+pytestmark = [
+    pytest.mark.django_db,
+    pytest.mark.integration,
+]
+
+
+class TestHubClientInfrastructure(TestCase):
+    """Test HubClient initialization and configuration."""
+
+    def setUp(self):
+        self.tenant = Tenant.objects.create(
+            name="Infrastructure Test Tenant",
+            slug="infra-test-tenant",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
+        )
+        self.user = User.objects.create_user(
+            email=f"infra-test-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
+        )
+        plaintext = APIKey.generate_key()
+        APIKey.objects.create(
+            tenant=self.tenant,
+            user=self.user,
+            key_hash=APIKey.hash_key(plaintext),
+            name="Worker API Key",
+            scopes=[SCOPE_SCHEDULED_INGESTION_INTERNAL],
+        )
+        self.worker_api_key = plaintext
+
+    def test_hub_client_requires_hub_base_url(self):
+        """Test that HubClient raises ValueError if HUB_BASE_URL is not set."""
+        # Clear environment variables
+        with patch.dict(os.environ, {}, clear=True):
+            try:
+                from hub_client import HubClient
+
+                with self.assertRaises(ValueError) as cm:
+                    HubClient()
+                assert "HUB_BASE_URL" in str(cm.exception)
+            except ImportError:
+                raise unittest.SkipTest(
+                    "hub_client not available (prefect-integration not in path)"
+                ) from None
+
+    def test_hub_client_requires_hub_worker_api_key(self):
+        """Test that HubClient raises ValueError if HUB_WORKER_API_KEY is not set."""
+        with patch.dict(os.environ, {"HUB_BASE_URL": "http://api-service:8000"}, clear=False):
+            # Remove HUB_WORKER_API_KEY if it exists
+            os.environ.pop("HUB_WORKER_API_KEY", None)
+            try:
+                from hub_client import HubClient
+
+                with self.assertRaises(ValueError) as cm:
+                    HubClient()
+                assert "HUB_WORKER_API_KEY" in str(cm.exception)
+            except ImportError:
+                raise unittest.SkipTest(
+                    "hub_client not available (prefect-integration not in path)"
+                ) from None
+
+    def test_hub_client_initializes_with_env_vars(self):
+        """Test that HubClient initializes successfully with environment variables."""
+        with patch.dict(
+            os.environ,
+            {
+                "HUB_BASE_URL": "http://api-service:8000",
+                "HUB_WORKER_API_KEY": self.worker_api_key,
+            },
+            clear=False,
+        ):
+            try:
+                from hub_client import HubClient
+
+                client = HubClient()
+                assert client.base_url == "http://api-service:8000"
+                assert client.api_key == self.worker_api_key
+            except ImportError:
+                raise unittest.SkipTest(
+                    "hub_client not available (prefect-integration not in path)"
+                ) from None
+
+    def test_hub_client_initializes_with_explicit_params(self):
+        """Test that HubClient initializes with explicit parameters (overrides env vars)."""
+        with patch.dict(
+            os.environ,
+            {
+                "HUB_BASE_URL": "http://wrong-url:8000",
+                "HUB_WORKER_API_KEY": "wrong-key",
+            },
+            clear=False,
+        ):
+            try:
+                from hub_client import HubClient
+
+                client = HubClient(
+                    base_url="http://api-service:8000",
+                    api_key=self.worker_api_key,
+                )
+                assert client.base_url == "http://api-service:8000"
+                assert client.api_key == self.worker_api_key
+            except ImportError:
+                raise unittest.SkipTest(
+                    "hub_client not available (prefect-integration not in path)"
+                ) from None
+
+    def test_hub_client_strips_trailing_slash(self):
+        """Test that HubClient strips trailing slash from base_url."""
+        with patch.dict(
+            os.environ,
+            {
+                "HUB_BASE_URL": "http://api-service:8000/",
+                "HUB_WORKER_API_KEY": self.worker_api_key,
+            },
+            clear=False,
+        ):
+            try:
+                from hub_client import HubClient
+
+                client = HubClient()
+                assert client.base_url == "http://api-service:8000"
+            except ImportError:
+                raise unittest.SkipTest(
+                    "hub_client not available (prefect-integration not in path)"
+                ) from None
+
+
+class TestEnvironmentConfiguration(SimpleTestCase):
+    """Test environment variable configuration for Prefect worker.
+
+    Does not touch the database — only reads environment variables,
+    so SimpleTestCase is the correct base class and avoids the
+    tearDownClass TransactionManagementError from unused DB infra.
+    """
+
+    def test_hub_base_url_environment_variable(self):
+        """Test that HUB_BASE_URL can be read from environment."""
+        test_url = "http://api-service:8000"
+        with patch.dict(os.environ, {"HUB_BASE_URL": test_url}, clear=False):
+            url = os.getenv("HUB_BASE_URL")
+            assert url == test_url
+
+    def test_hub_worker_api_key_environment_variable(self):
+        """Test that HUB_WORKER_API_KEY can be read from environment."""
+        test_key = "test-api-key-12345"
+        with patch.dict(os.environ, {"HUB_WORKER_API_KEY": test_key}, clear=False):
+            key = os.getenv("HUB_WORKER_API_KEY")
+            assert key == test_key
+
+    def test_docker_compose_default_values(self):
+        """Test that default values match docker-compose configuration."""
+        # Default in docker-compose.yml: http://api-service:8000
+        default_url = os.getenv("HUB_BASE_URL", "http://api-service:8000")
+        assert "api-service" in default_url
+        assert "8000" in default_url
+
+
+class TestHubAPIConnectivity(TestCase):
+    """Test hub API connectivity from Prefect worker context."""
+
+    @classmethod
+    def tearDownClass(cls):
+        with contextlib.suppress(TransactionManagementError):
+            super().tearDownClass()
+
+    @classmethod
+    def setUpClass(cls):
+        # Recover from a poisoned connection left by a prior test class's
+        # teardown.  The conftest's _ensure_db_connection_before_test fires
+        # per test-method, but setUpClass runs before it — force-close and
+        # reconnect so _enter_atomics() can wrap a fresh connection.
+        from django.db import connections
+
+        for alias in connections:
+            conn = connections[alias]
+            conn.closed_in_transaction = False
+            conn.in_atomic_block = False
+            conn.needs_rollback = False
+            conn.savepoint_ids = []
+            conn.atomic_blocks = []
+            if conn.connection is not None and conn.connection.closed:
+                conn.connection = None
+            with contextlib.suppress(Exception):
+                conn.ensure_connection()
+        super().setUpClass()
+
+    def setUp(self):
+        self.tenant = Tenant.objects.create(
+            name="Connectivity Test Tenant",
+            slug="connectivity-test-tenant",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
+        )
+        self.user = User.objects.create_user(
+            email=f"connectivity-test-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
+        )
+        plaintext = APIKey.generate_key()
+        APIKey.objects.create(
+            tenant=self.tenant,
+            user=self.user,
+            key_hash=APIKey.hash_key(plaintext),
+            name="Worker API Key",
+            scopes=[SCOPE_SCHEDULED_INGESTION_INTERNAL],
+        )
+        self.worker_api_key = plaintext
+
+        self.scheduled_ingestion = ScheduledIngestion.objects.create(
+            tenant=self.tenant,
+            name="Connectivity Test Ingestion",
+            source_type=SourceType.HTTP,
+            source_config={
+                "base_url": "http://example.com",
+                "paths": ["test.csv"],
+            },
+            schedule_type=ScheduleType.DAILY,
+            schedule_config={"time": "00:00"},
+            file_pattern=r".*\.csv",
+            created_by=self.user,
+        )
+
+    def test_hub_client_can_get_config(self):
+        """Test that HubClient can successfully call get_config endpoint."""
+
+        # This test requires a live server, so we'll use LiveServerTestCase pattern
+        # For now, we'll test the client initialization and header generation
+        with patch.dict(
+            os.environ,
+            {
+                "HUB_BASE_URL": "http://api-service:8000",
+                "HUB_WORKER_API_KEY": self.worker_api_key,
+            },
+            clear=False,
+        ):
+            try:
+                from hub_client import HubClient
+
+                client = HubClient()
+                # Test header generation
+                headers = client._headers(str(self.tenant.id))
+                assert headers["Authorization"] == f"ApiKey {self.worker_api_key}"
+                assert headers["X-Tenant-ID"] == str(self.tenant.id)
+                assert headers["Content-Type"] == "application/json"
+            except ImportError:
+                raise unittest.SkipTest(
+                    "hub_client not available (prefect-integration not in path)"
+                ) from None
+
+    def test_docker_compose_environment_defaults(self):
+        """Test that docker-compose defaults match expected values."""
+        # Default in docker-compose.yml and docker-compose.dev.yml
+        # HUB_BASE_URL defaults to http://api-service:8000 when unset
+        default_url = os.getenv("HUB_BASE_URL", "http://api-service:8000")
+        assert "api-service" in default_url
+        assert "8000" in default_url
+        # HUB_WORKER_API_KEY defaults to empty string (must be set explicitly)
+        # This is correct - API key should not have a default

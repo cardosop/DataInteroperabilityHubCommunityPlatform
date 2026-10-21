@@ -1,0 +1,31 @@
+name: Feature request
+description: Propose a new capability or improvement.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Feature requests are triaged against the openspec change process
+        (openspec/changes/) — the strongest proposals already sketch the
+        scenarios and the pins that would enforce them.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: The user need or gap this addresses.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: The shape of the change (endpoints, components, config).
+    validations:
+      required: true
+  - type: textarea
+    id: contract
+    attributes:
+      label: Verifiable contract
+      description: The scenarios / pins a reviewer could test (the repo convention: claims cite a test or gate).
+    validations:
+      required: false

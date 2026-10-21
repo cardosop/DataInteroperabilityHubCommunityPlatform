@@ -1,0 +1,179 @@
+{
+  "title": "ODPS Adoption (Marketplace)",
+  "tags": [
+    "odps",
+    "marketplace",
+    "adoption",
+    "task-6.2.5"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 16,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "ODPS Ingestion Rate (Marketplace)",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(odps_ingestion_total{source=\"marketplace\"}[5m])) by (tenant_id)",
+          "legendFormat": "{{tenant_id}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "reqps",
+          "label": "Ingestions/sec"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "description": "Rate of ODPS document ingestion from marketplace source"
+    },
+    {
+      "id": 2,
+      "title": "Total ODPS Ingestions (Marketplace)",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(odps_ingestion_total{source=\"marketplace\"}[1h])) by (tenant_id)",
+          "legendFormat": "{{tenant_id}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "short",
+          "label": "Total Ingestions"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "description": "Total number of ODPS documents ingested from marketplace in the last hour"
+    },
+    {
+      "id": 3,
+      "title": "ODPS Adoption by Tenant",
+      "type": "piechart",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(odps_ingestion_total{source=\"marketplace\"}[24h])) by (tenant_id)",
+          "legendFormat": "{{tenant_id}}",
+          "refId": "A"
+        }
+      ],
+      "description": "Distribution of ODPS adoption across tenants (last 24 hours)"
+    },
+    {
+      "id": 4,
+      "title": "ODPS Ingestion Trend",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(odps_ingestion_total{source=\"marketplace\"}[5m]))",
+          "legendFormat": "Total Marketplace Ingestion Rate",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "reqps",
+          "label": "Ingestions/sec"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "description": "Overall ODPS marketplace ingestion trend over time"
+    },
+    {
+      "id": 5,
+      "title": "ODPS vs ODCS Ingestion Comparison",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(odps_ingestion_total{source=\"marketplace\"}[5m]))",
+          "legendFormat": "ODPS (Marketplace)",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(odcs_ingestion_total{source=\"technical\"}[5m]))",
+          "legendFormat": "ODCS (Technical)",
+          "refId": "B"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "reqps",
+          "label": "Ingestions/sec"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "description": "Comparison of ODPS marketplace vs ODCS technical ingestion rates"
+    },
+    {
+      "id": 6,
+      "title": "ODPS Adoption Growth Rate",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "targets": [
+        {
+          "expr": "deriv(sum(increase(odps_ingestion_total{source=\"marketplace\"}[1h]))[1h:])",
+          "legendFormat": "Growth Rate",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "short",
+          "label": "Growth Rate"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "description": "Rate of change in ODPS adoption (derivative of ingestion count)"
+    }
+  ]
+}

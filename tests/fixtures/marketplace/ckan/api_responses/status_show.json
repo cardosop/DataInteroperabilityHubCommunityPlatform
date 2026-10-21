@@ -1,0 +1,11 @@
+{
+  "success": true,
+  "result": {
+    "site_title": "Test CKAN Instance",
+    "site_description": "Test CKAN instance for integration testing",
+    "site_url": "https://data.example.com",
+    "ckan_version": "2.10.1",
+    "error_emails_to": "admin@example.com"
+  }
+}
+

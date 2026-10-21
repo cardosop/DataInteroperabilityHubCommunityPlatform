@@ -1,0 +1,61 @@
+{% extends "notifications/emails/base.html" %}
+
+{% block title %}Schema editor is now available — triage your contracts{% endblock %}
+
+{% block content %}
+<h2>Schema editor is now available in {{ tenant_name }}</h2>
+
+<p>Hi{% if admin_first_name %} {{ admin_first_name }}{% else %} there{% endif %},</p>
+
+<p>
+  As part of the {{ app_name }} <strong>structureless-contract remediation
+  programme</strong> (Phase 227), the new <strong>Schema editor</strong> tab on every
+  contract is now live for all users with edit permission in {{ tenant_name }}.
+  No feature-flag opt-in is required — open any contract and click the
+  <em>Schema</em> tab to start.
+</p>
+
+<p>
+  <strong>What's changed for your tenant:</strong>
+</p>
+<ul>
+  <li>Contracts that have no resolvable models or schema fields can now be
+      fixed in-product without a YAML/JSON round trip.</li>
+  <li>The <strong>Contract Health</strong> page lists every structureless
+      contract in {{ tenant_name }} with a one-click deep link into the editor.</li>
+  <li>From your next contract save onward, the structural-floor invariant is
+      enforced server-side — empty contracts are rejected at the API edge with
+      a typed <code>STRUCTURELESS_CONTRACT</code> error and an actionable
+      remediation hint.</li>
+</ul>
+
+<h3>What we recommend</h3>
+
+<ol>
+  <li>Open <a href="{{ contract_health_url }}"><strong>Contract Health</strong></a>.</li>
+  <li>For each row, click <em>Open Schema editor</em> and add at least one
+      model with one field.</li>
+  <li>Save. The editor uses optimistic concurrency (ETag / If-Match) so a
+      teammate's concurrent edit will surface a conflict dialog, not silently
+      overwrite your changes.</li>
+</ol>
+
+<p>
+  <a href="{{ contract_health_url }}"
+     style="display: inline-block; background: #0e6eff; color: #fff; padding: 10px 16px; border-radius: 4px; text-decoration: none;">
+    Open Contract Health →
+  </a>
+</p>
+
+<h3>Need help?</h3>
+
+<p>
+  If you have questions about the editor, the structural-floor invariant, or
+  the migration plan, reply to this email or reach out to your customer
+  success contact. Engineering tracks adoption metrics — we'll proactively
+  reach out if anything looks stuck.
+</p>
+
+<p>Thank you,<br>
+The {{ app_name }} team</p>
+{% endblock %}

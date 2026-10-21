@@ -1,0 +1,110 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 8.844838380813599
+  },
+  "journeys": [
+    {
+      "journey_id": "CPO-010-e1f0a189",
+      "journey_name": "Review AI Auto-Classification Results",
+      "persona": "Compliance Officer",
+      "status": "completed",
+      "start_time": 1772135238.1445622,
+      "end_time": 1772135246.9894006,
+      "duration": 8.844838380813599,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Select Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772135238.1445692,
+          "end_time": 1772135246.9730227,
+          "duration": 8.828453540802002,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "View Classification Results",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772135246.9730327,
+          "end_time": 1772135246.9774015,
+          "duration": 0.004368782043457031,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Review Classifications",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772135246.9774063,
+          "end_time": 1772135246.9774106,
+          "duration": 4.291534423828125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "bool"
+          }
+        },
+        {
+          "step_name": "Validate Classifications",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772135246.9817152,
+          "end_time": 1772135246.9817202,
+          "duration": 5.0067901611328125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Update Rules",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772135246.9859855,
+          "end_time": 1772135246.9859893,
+          "duration": 3.814697265625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Generate Report",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772135246.9893956,
+          "end_time": 1772135246.989399,
+          "duration": 3.337860107421875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "ec0104f9-3a90-4f3b-a485-92c4828d39b3"
+      }
+    }
+  ],
+  "exported_at": "2026-02-26T19:47:26.989474"
+}

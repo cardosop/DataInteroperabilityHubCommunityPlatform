@@ -1,0 +1,86 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.10837483406066895
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-003-4900c305",
+      "journey_name": "Update Asset Contract",
+      "persona": "Data Product Owner",
+      "status": "completed",
+      "start_time": 1771904203.2431877,
+      "end_time": 1771904203.3515625,
+      "duration": 0.10837483406066895,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Create Asset with Contract",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771904203.243191,
+          "end_time": 1771904203.3065476,
+          "duration": 0.06335663795471191,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "tuple"
+          }
+        },
+        {
+          "step_name": "Update Contract",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771904203.306558,
+          "end_time": 1771904203.3071172,
+          "duration": 0.0005593299865722656,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Validate Updated Contract",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771904203.30712,
+          "end_time": 1771904203.323838,
+          "duration": 0.016717910766601562,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Update Asset with New Contract",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771904203.3238428,
+          "end_time": 1771904203.351559,
+          "duration": 0.02771615982055664,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "ReturnDict"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "23c7da63-208b-405a-b14f-7ba2c499f766",
+        "original_contract_id": "79d86fdc-fe1e-4095-97f0-dc89c8d77ac9",
+        "updated_contract_id": "79d86fdc-fe1e-4095-97f0-dc89c8d77ac9"
+      }
+    }
+  ],
+  "exported_at": "2026-02-24T03:36:43.351642"
+}

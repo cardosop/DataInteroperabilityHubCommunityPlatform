@@ -1,0 +1,95 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.012222528457641602
+  },
+  "journeys": [
+    {
+      "journey_id": "TA-006-8f8f32d6",
+      "journey_name": "Set Up Advanced Governance",
+      "persona": "Tenant Admin",
+      "status": "completed",
+      "start_time": 1769087916.6292784,
+      "end_time": 1769087916.641501,
+      "duration": 0.012222528457641602,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Note: Automated Compliance Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769087916.63429,
+          "end_time": 1769087916.6342947,
+          "duration": 4.76837158203125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Retention Policies Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769087916.637718,
+          "end_time": 1769087916.6377213,
+          "duration": 3.337860107421875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Consent Management Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769087916.6414886,
+          "end_time": 1769087916.6414933,
+          "duration": 4.76837158203125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Test Governance Features",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769087916.6414957,
+          "end_time": 1769087916.6414974,
+          "duration": 1.6689300537109375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "bool"
+          }
+        },
+        {
+          "step_name": "Deploy and Monitor",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769087916.6414986,
+          "end_time": 1769087916.6415002,
+          "duration": 1.6689300537109375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "bool"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-01-22T13:18:36.641570"
+}

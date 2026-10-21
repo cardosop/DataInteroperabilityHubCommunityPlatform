@@ -1,0 +1,63 @@
+{
+  "apiVersion": "odcs.io/v3.0.2",
+  "kind": "DataContract",
+  "id": "manual-test-quality-contract",
+  "name": "Manual Test Contract with Quality Rules",
+  "version": "1.0.0",
+  "description": "ODCS contract with quality rules for manual testing. Use for contract intake with DQ validation.",
+  "schema": {
+    "fields": [
+      {
+        "name": "id",
+        "type": "string",
+        "nullable": false,
+        "description": "Unique identifier"
+      },
+      {
+        "name": "email",
+        "type": "string",
+        "nullable": true,
+        "format": "email",
+        "description": "Email address"
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp",
+        "nullable": false,
+        "description": "Creation timestamp"
+      }
+    ]
+  },
+  "info": {
+    "owners": [
+      {
+        "name": "Data Product Owner",
+        "email": "e2e_test@example.com"
+      }
+    ],
+    "tags": ["manual-test", "quality-rules"]
+  },
+  "quality": {
+    "type": "soda",
+    "specification": "https://specs.soda.io/soda-spec/latest/",
+    "rules": [
+      {
+        "id": "q1",
+        "name": "No null ids",
+        "dimension": "completeness",
+        "type": "not_null",
+        "rule": "id IS NOT NULL",
+        "severity": "error"
+      },
+      {
+        "id": "q2",
+        "name": "Valid email format",
+        "dimension": "validity",
+        "type": "regex",
+        "rule": "email ~ '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$'",
+        "severity": "warning"
+      }
+    ],
+    "default_profile_key": "intake_basic"
+  }
+}

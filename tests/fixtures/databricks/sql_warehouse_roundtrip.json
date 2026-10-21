@@ -1,0 +1,97 @@
+{
+  "create": {
+    "id": "wh-rt-1",
+    "name": "roundtrip-wh",
+    "state": "STARTING",
+    "serverless": false,
+    "size": "S",
+    "auto_stop_mins": 30
+  },
+  "list_starting": {
+    "warehouses": [
+      {
+        "id": "wh-rt-1",
+        "name": "roundtrip-wh",
+        "state": "STARTING",
+        "serverless": false,
+        "size": "S",
+        "auto_stop_mins": 30
+      }
+    ]
+  },
+  "get_starting": {
+    "id": "wh-rt-1",
+    "name": "roundtrip-wh",
+    "state": "STARTING",
+    "serverless": false,
+    "size": "S",
+    "auto_stop_mins": 30
+  },
+  "list_running": {
+    "warehouses": [
+      {
+        "id": "wh-rt-1",
+        "name": "roundtrip-wh",
+        "state": "RUNNING",
+        "serverless": false,
+        "size": "S",
+        "auto_stop_mins": 30
+      }
+    ]
+  },
+  "statement_succeeded": {
+    "statement_id": "s-rt-1",
+    "status": {
+      "state": "SUCCEEDED"
+    },
+    "manifest": {
+      "schema": {
+        "columns": [
+          {
+            "name": "1"
+          }
+        ]
+      }
+    },
+    "result": {
+      "data_array": [
+        [
+          "1"
+        ]
+      ],
+      "chunk_index": 0,
+      "row_count": 1
+    }
+  },
+  "get_running": {
+    "id": "wh-rt-1",
+    "name": "roundtrip-wh",
+    "state": "RUNNING",
+    "serverless": false,
+    "size": "S",
+    "auto_stop_mins": 30
+  },
+  "stop_answer": null,
+  "list_stopping": {
+    "warehouses": [
+      {
+        "id": "wh-rt-1",
+        "name": "roundtrip-wh",
+        "state": "STOPPING",
+        "serverless": false,
+        "size": "S",
+        "auto_stop_mins": 30
+      }
+    ]
+  },
+  "steps": [
+    "create",
+    "list_starting",
+    "get_starting",
+    "list_running",
+    "statement_succeeded",
+    "get_running",
+    "stop_answer",
+    "list_stopping"
+  ]
+}

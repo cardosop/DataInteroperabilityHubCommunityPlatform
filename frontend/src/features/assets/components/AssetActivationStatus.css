@@ -1,0 +1,56 @@
+/* Phase 274.2.4 — AssetActivationStatus styles */
+.asset-activation-status {
+  margin: var(--spacing-md, 1rem) 0;
+  padding: var(--spacing-md, 1rem);
+  border-radius: var(--border-radius-md, 6px);
+  border: 1px solid;
+}
+
+.activation-info {
+  background: var(--color-info-50, #eff6ff);
+  border-color: var(--color-info-200, #bfdbfe);
+  color: var(--color-info-700, #1d4ed8);
+}
+
+.activation-warning {
+  background: var(--color-warning-50, #fffbeb);
+  border-color: var(--color-warning-200, #fde68a);
+  color: var(--color-warning-700, #b45309);
+}
+
+.activation-danger {
+  background: var(--color-danger-50, #fef2f2);
+  border-color: var(--color-danger-200, #fecaca);
+  color: var(--color-danger-700, #b91c1c);
+}
+
+.activation-pill {
+  display: inline-block;
+  padding: 2px var(--spacing-sm, 0.5rem);
+  border-radius: var(--border-radius-full, 9999px);
+  font-size: var(--font-size-sm, 0.8125rem);
+  font-weight: 600;
+}
+
+.activation-info .activation-pill {
+  background: var(--color-info-200, #bfdbfe);
+}
+
+.activation-warning .activation-pill {
+  background: var(--color-warning-200, #fde68a);
+}
+
+.activation-danger .activation-pill {
+  background: var(--color-danger-200, #fecaca);
+}
+
+.activation-message {
+  margin: var(--spacing-sm, 0.5rem) 0 0;
+  font-size: var(--font-size-base, 0.9375rem);
+}
+
+.activation-retry-hint {
+  margin: var(--spacing-xs, 0.25rem) 0 0;
+  font-size: var(--font-size-xs, 0.75rem);
+  opacity: 0.7;
+}

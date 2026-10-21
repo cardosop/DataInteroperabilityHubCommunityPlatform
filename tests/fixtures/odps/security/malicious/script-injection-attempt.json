@@ -1,0 +1,38 @@
+{
+  "schema": "https://opendataproducts.org/schema/v4.1",
+  "version": "4.1",
+  "product": {
+    "details": {
+      "en": {
+        "productID": "malicious-script-injection",
+        "name": "Script Injection Attack Attempt",
+        "description": "<script>alert('XSS')</script>This file contains script injection attempts in various string fields."
+      },
+      "fi": {
+        "productID": "malicious-script-injection",
+        "name": "<img src=x onerror=alert(1)>",
+        "description": "javascript:void(0);alert('XSS')"
+      }
+    },
+    "contract": {
+      "contractURL": "https://example.com/contract?param=<script>alert(document.cookie)</script>"
+    },
+    "marketplace": {
+      "pricingPlans": [
+        {
+          "planID": "malicious",
+          "name": "<svg onload=alert(1)>",
+          "price": 0,
+          "currency": "USD"
+        }
+      ],
+      "accessMethods": {
+        "api": {
+          "endpoint": "https://api.example.com/v1?callback=<script>eval('alert(1)')</script>"
+        }
+      }
+    }
+  },
+  "_security_note": "This file is intentionally malicious for security testing. It contains various script injection attempts (XSS) in string fields."
+}
+

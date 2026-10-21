@@ -1,0 +1,33 @@
+apiVersion: 1
+
+datasources:
+  - name: Loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    uid: loki
+    isDefault: false
+    editable: true
+    jsonData:
+      # Maximum line count returned per query
+      maxLines: 5000
+
+      # Derived fields: extract trace ID from log lines and create a link
+      # to the corresponding trace in Tempo (click-through from logs → traces)
+      derivedFields:
+        - name: TraceID
+          # structlog emits trace_id in JSON; this regex extracts it
+          matcherRegex: '"trace_id":\s*"([a-f0-9]{32})"'
+          url: "$${__value.raw}"
+          datasourceUid: tempo
+          urlDisplayLabel: "View trace in Tempo"
+
+        - name: RequestID
+          matcherRegex: '"request_id":\s*"([^"]+)"'
+          url: "$${__value.raw}"
+          urlDisplayLabel: "Filter logs by request ID"
+
+      # Pre-configured label filters shown in the Loki Explore builder
+      # Maps to the labels emitted by Promtail pipeline
+      alerting:
+        hide: false

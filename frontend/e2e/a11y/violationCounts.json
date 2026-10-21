@@ -1,0 +1,318 @@
+{
+  "_first_run": false,
+  "home": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "asset-list": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "asset-detail-error": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "contracts-list": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "datasets-list": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "marketplace-list": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "compliance": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "data-quality": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "admin-settings": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "login-page": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "login-form-validation": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "register-initial": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "register-filled": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "reset-password": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "sidebar": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "header": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "coming-soon": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "404-not-found": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "login-databricks-sso": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "databricks-workspace-management": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "databricks-wizard-step1": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "contracts-detail-not-found": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "marketplace-list-detail-context": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "governance": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "governance-my-approvals-inbox": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "integrations": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "observability": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "audit-events": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "notifications": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "jobs": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "webhooks": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "search": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "pricing": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "settings-profile": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "settings-sessions": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "settings-api-keys": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "settings-tenant": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "mesh-list": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "virtualization-list": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "files-list": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "communities": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "baas": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "developer-portal": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "scheduled-ingestions-list": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "scheduled-exports-list": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "login-empty": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "login-invalid-email": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "login-wrong-credentials": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "register-empty": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "register-partial-fill": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "user-menu-state": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "asset-list-search-focus": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "asset-detail-error-state": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "marketplace-card-hover": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "settings-no-tabs": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "breadcrumb-page-context": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "my-approvals-inbox": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "keyboard-shortcuts-cheatsheet": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "helptip-popover-open": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "saved-searches-management": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "custom-ontology-manager": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "ldn-settings": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  },
+  "graphql-ld-playground": {
+    "moderate": 0,
+    "minor": 0,
+    "total": 0
+  }
+}

@@ -1,0 +1,275 @@
+{
+  "generated_at": "2026-01-29T20:03:03.724382Z",
+  "workflow_coverage": {
+    "all_workflow_types": [
+      "asset_creation",
+      "contract_creation",
+      "marketplace_publication",
+      "product_creation",
+      "dataset_creation",
+      "scheduled_ingestion",
+      "access_request",
+      "compliance_reporting",
+      "data_quality_check",
+      "data_mesh",
+      "version_creation",
+      "virtualization_query_execution",
+      "api_key_management",
+      "model_training",
+      "model_inference",
+      "marketplace_sync"
+    ],
+    "tested": [
+      "asset_creation",
+      "contract_creation",
+      "marketplace_publication",
+      "product_creation",
+      "dataset_creation",
+      "scheduled_ingestion",
+      "access_request",
+      "compliance_reporting",
+      "data_quality_check",
+      "data_mesh",
+      "version_creation"
+    ],
+    "untested": [
+      "virtualization_query_execution",
+      "api_key_management",
+      "model_training",
+      "model_inference",
+      "marketplace_sync"
+    ],
+    "total": 16,
+    "tested_count": 11,
+    "coverage_pct": 68.8,
+    "details": {
+      "asset_creation": [
+        {
+          "file": "test_workflow_business_rules_e2e.py",
+          "class_or_desc": "TestAssetCreationWorkflowBusinessRulesE2E"
+        },
+        {
+          "file": "test_workflow_use_case_integration_e2e.py",
+          "class_or_desc": "TestUC_AM_001_WorkflowIntegrationE2E"
+        },
+        {
+          "file": "test_workflow_user_journey_integration_e2e.py",
+          "class_or_desc": "DPO-015 product_creation flow"
+        }
+      ],
+      "contract_creation": [
+        {
+          "file": "test_workflow_business_rules_e2e.py",
+          "class_or_desc": "TestContractCreationWorkflowBusinessRulesE2E"
+        },
+        {
+          "file": "test_workflow_error_recovery_compensation_e2e.py",
+          "class_or_desc": "retry/compensation/state recovery"
+        },
+        {
+          "file": "test_workflow_observability_business_rules_e2e.py",
+          "class_or_desc": "metrics/events/logging/tracing"
+        },
+        {
+          "file": "test_workflow_security_business_rules_e2e.py",
+          "class_or_desc": "tenant isolation, auth, input validation"
+        },
+        {
+          "file": "test_workflow_use_case_integration_e2e.py",
+          "class_or_desc": "TestUC_CM_001_WorkflowIntegrationE2E"
+        },
+        {
+          "file": "test_workflow_user_journey_integration_e2e.py",
+          "class_or_desc": "DPO-001, DE-001"
+        }
+      ],
+      "marketplace_publication": [
+        {
+          "file": "test_workflow_business_rules_e2e.py",
+          "class_or_desc": "TestMarketplacePublicationWorkflowBusinessRulesE2E"
+        },
+        {
+          "file": "test_workflow_use_case_integration_e2e.py",
+          "class_or_desc": "TestUC_MKT_001_WorkflowIntegrationE2E"
+        },
+        {
+          "file": "test_workflow_user_journey_integration_e2e.py",
+          "class_or_desc": "DPO-002"
+        }
+      ],
+      "product_creation": [
+        {
+          "file": "test_workflow_business_rules_e2e.py",
+          "class_or_desc": "TestProductCreationWorkflowBusinessRulesE2E"
+        },
+        {
+          "file": "test_workflow_performance_business_rules_e2e.py",
+          "class_or_desc": "TestWorkflowPerformanceBusinessRulesE2E"
+        },
+        {
+          "file": "test_workflow_user_journey_integration_e2e.py",
+          "class_or_desc": "DPO-015, DE-014"
+        }
+      ],
+      "dataset_creation": [
+        {
+          "file": "test_workflow_business_rules_e2e.py",
+          "class_or_desc": "TestDatasetCreationWorkflowBusinessRulesE2E"
+        }
+      ],
+      "scheduled_ingestion": [
+        {
+          "file": "test_workflow_business_rules_e2e.py",
+          "class_or_desc": "TestScheduledIngestionWorkflowBusinessRulesE2E"
+        }
+      ],
+      "access_request": [
+        {
+          "file": "test_workflow_user_journey_integration_e2e.py",
+          "class_or_desc": "TestDataConsumerWorkflowJourneysE2E"
+        }
+      ],
+      "compliance_reporting": [
+        {
+          "file": "test_workflow_user_journey_integration_e2e.py",
+          "class_or_desc": "TestComplianceOfficerWorkflowJourneysE2E"
+        },
+        {
+          "file": "test_workflow_use_case_integration_e2e.py",
+          "class_or_desc": "TestComplianceUseCaseWorkflowE2E"
+        }
+      ],
+      "data_quality_check": [
+        {
+          "file": "test_workflow_user_journey_integration_e2e.py",
+          "class_or_desc": "TestDataQualityWorkflowInJourneysE2E"
+        },
+        {
+          "file": "test_workflow_use_case_integration_e2e.py",
+          "class_or_desc": "TestDataQualityUseCaseWorkflowE2E"
+        }
+      ],
+      "data_mesh": [
+        {
+          "file": "test_workflow_user_journey_integration_e2e.py",
+          "class_or_desc": "TestDataMeshDomainOwnerWorkflowJourneysE2E"
+        }
+      ],
+      "version_creation": [
+        {
+          "file": "test_workflow_use_case_integration_e2e.py",
+          "class_or_desc": "via asset/version flows"
+        }
+      ],
+      "virtualization_query_execution": [],
+      "api_key_management": [],
+      "model_training": [],
+      "model_inference": [],
+      "marketplace_sync": []
+    }
+  },
+  "business_rules_coverage": [
+    {
+      "file": "test_workflow_business_rules_e2e.py",
+      "description": "Product, Contract, Asset, Marketplace, Dataset, Scheduled Ingestion BR"
+    },
+    {
+      "file": "test_workflow_observability_business_rules_e2e.py",
+      "description": "Metrics, events, logging, tracing with BR"
+    },
+    {
+      "file": "test_workflow_security_business_rules_e2e.py",
+      "description": "Tenant isolation, authorization, input validation, BR validation"
+    },
+    {
+      "file": "test_workflow_error_recovery_compensation_e2e.py",
+      "description": "Retry, compensation, state recovery, validation behavior"
+    },
+    {
+      "file": "test_workflow_performance_business_rules_e2e.py",
+      "description": "Validation overhead, throughput with BR"
+    },
+    {
+      "file": "test_workflow_user_journey_integration_e2e.py",
+      "description": "All journey workflows with BR validation"
+    },
+    {
+      "file": "test_workflow_use_case_integration_e2e.py",
+      "description": "All use case workflows with BR validation"
+    }
+  ],
+  "journey_coverage": [
+    {
+      "id": "DPO-001",
+      "description": "Contract creation (Data Product Owner)",
+      "test_class": "TestJOURNEY_DPO_001_WorkflowIntegrationE2E"
+    },
+    {
+      "id": "DPO-002",
+      "description": "Marketplace publication",
+      "test_class": "TestJOURNEY_DPO_002_WorkflowIntegrationE2E"
+    },
+    {
+      "id": "DPO-015",
+      "description": "Product creation (ODPS product-first)",
+      "test_class": "TestJOURNEY_DPO_015_WorkflowIntegrationE2E"
+    },
+    {
+      "id": "DE-001",
+      "description": "Contract creation programmatic",
+      "test_class": "TestJOURNEY_DE_001_WorkflowIntegrationE2E"
+    },
+    {
+      "id": "DE-014",
+      "description": "Product creation via API",
+      "test_class": "TestJOURNEY_DE_014_WorkflowIntegrationE2E"
+    },
+    {
+      "id": "Compliance Officer",
+      "description": "Compliance reporting workflow",
+      "test_class": "TestComplianceOfficerWorkflowJourneysE2E"
+    },
+    {
+      "id": "Data Consumer",
+      "description": "Access request workflow",
+      "test_class": "TestDataConsumerWorkflowJourneysE2E"
+    },
+    {
+      "id": "Data Mesh Domain Owner",
+      "description": "Data mesh workflow",
+      "test_class": "TestDataMeshDomainOwnerWorkflowJourneysE2E"
+    },
+    {
+      "id": "Data Quality",
+      "description": "Data quality check workflow",
+      "test_class": "TestDataQualityWorkflowInJourneysE2E"
+    }
+  ],
+  "use_case_coverage": [
+    {
+      "id": "UC-AM-001",
+      "description": "Create Asset via Data-First Flow",
+      "test_class": "TestUC_AM_001_WorkflowIntegrationE2E"
+    },
+    {
+      "id": "UC-CM-001",
+      "description": "Create Contract",
+      "test_class": "TestUC_CM_001_WorkflowIntegrationE2E"
+    },
+    {
+      "id": "UC-MKT-001",
+      "description": "Publish Asset to Marketplace",
+      "test_class": "TestUC_MKT_001_WorkflowIntegrationE2E"
+    },
+    {
+      "id": "UC-DQ-001",
+      "description": "Data Quality check workflow",
+      "test_class": "TestDataQualityUseCaseWorkflowE2E"
+    },
+    {
+      "id": "UC-COMP-001",
+      "description": "Compliance reporting workflow",
+      "test_class": "TestComplianceUseCaseWorkflowE2E"
+    }
+  ]
+}

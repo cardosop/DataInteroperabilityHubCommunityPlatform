@@ -1,0 +1,67 @@
+{
+  "metadata": {
+    "dbt_schema_version": "https://schemas.getdbt.com/dbt/run-results/v6.json",
+    "dbt_version": "1.9.0",
+    "generated_at": "2026-05-18T10:30:00.000Z",
+    "invocation_id": "test-invocation-uuid"
+  },
+  "results": [
+    {
+      "status": "success",
+      "timing": [
+        {"name": "compile", "started_at": "2026-05-18T10:30:01.000Z", "completed_at": "2026-05-18T10:30:02.500Z"},
+        {"name": "execute", "started_at": "2026-05-18T10:30:02.500Z", "completed_at": "2026-05-18T10:30:05.800Z"}
+      ],
+      "thread_id": "Thread-1",
+      "execution_time": 3.3,
+      "adapter_response": {
+        "rows_affected": 150,
+        "code": "SUCCESS",
+        "_message": "SUCCESS 150"
+      },
+      "message": "SUCCESS 150",
+      "failures": null,
+      "unique_id": "model.sample_dbt.customers"
+    },
+    {
+      "status": "success",
+      "timing": [
+        {"name": "compile", "started_at": "2026-05-18T10:30:05.800Z", "completed_at": "2026-05-18T10:30:06.500Z"},
+        {"name": "execute", "started_at": "2026-05-18T10:30:06.500Z", "completed_at": "2026-05-18T10:30:10.200Z"}
+      ],
+      "thread_id": "Thread-2",
+      "execution_time": 3.7,
+      "adapter_response": {
+        "rows_affected": 320,
+        "code": "SUCCESS",
+        "_message": "SUCCESS 320"
+      },
+      "message": "SUCCESS 320",
+      "failures": null,
+      "unique_id": "model.sample_dbt.orders"
+    },
+    {
+      "status": "error",
+      "timing": [
+        {"name": "compile", "started_at": "2026-05-18T10:30:10.200Z", "completed_at": "2026-05-18T10:30:10.900Z"},
+        {"name": "execute", "started_at": "2026-05-18T10:30:10.900Z", "completed_at": "2026-05-18T10:30:12.100Z"}
+      ],
+      "thread_id": "Thread-3",
+      "execution_time": 1.2,
+      "adapter_response": {
+        "rows_affected": 0,
+        "code": "ERROR",
+        "_message": "Database Error in model broken_model: column 'missing_col' does not exist"
+      },
+      "message": "Database Error in model broken_model",
+      "failures": 1,
+      "unique_id": "model.sample_dbt.broken_model"
+    }
+  ],
+  "elapsed_time": 11.1,
+  "args": {
+    "which": "run",
+    "select": [],
+    "target": "prod"
+  }
+}

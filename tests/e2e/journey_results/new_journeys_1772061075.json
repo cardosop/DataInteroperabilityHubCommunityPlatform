@@ -1,0 +1,69 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.009291887283325195
+  },
+  "journeys": [
+    {
+      "journey_id": "DEV-006-4fa1c097",
+      "journey_name": "Integrate Transformation Pipeline API",
+      "persona": "External Developer",
+      "status": "completed",
+      "start_time": 1772061075.9798222,
+      "end_time": 1772061075.989114,
+      "duration": 0.009291887283325195,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Call Pipeline Creation API",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772061075.9851222,
+          "end_time": 1772061075.9851284,
+          "duration": 6.198883056640625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Call Pipeline Execution API",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772061075.9891067,
+          "end_time": 1772061075.9891098,
+          "duration": 3.0994415283203125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Handle API Responses",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772061075.989112,
+          "end_time": 1772061075.9891133,
+          "duration": 1.430511474609375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "bool"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-25T23:11:15.989174"
+}

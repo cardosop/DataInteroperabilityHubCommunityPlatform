@@ -1,0 +1,40 @@
+/* 278.D.4 — Countdown retry banner (278.C.P0.4 tokenized 2026-05-14) */
+.retry-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 10px 20px;
+  background: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-border);
+  border-radius: 8px;
+  color: var(--color-warning-800);
+  font-size: 0.9rem;
+  margin: 16px 0;
+}
+
+.retry-banner--exhausted {
+  background: var(--color-error-subtle);
+  border-color: var(--color-error);
+  color: var(--color-error-900);
+}
+
+.retry-banner__text {
+  font-weight: 500;
+}
+
+.retry-banner__action {
+  background: var(--color-warning-dark);
+  color: var(--color-text-inverse);
+  border: none;
+  border-radius: 4px;
+  padding: 6px 14px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.retry-banner__action:hover {
+  background: var(--color-warning-700);
+}

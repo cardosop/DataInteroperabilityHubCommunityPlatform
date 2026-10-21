@@ -1,0 +1,28 @@
+{
+  "schema": "https://opendataproducts.org/schema/v4.1",
+  "version": "4.1",
+  "product": {
+    "details": {
+      "en": {
+        "productID": "malicious-url-js",
+        "name": "Malicious URL Attack Attempt",
+        "description": "This file contains a malicious javascript: URL in the contractURL field: javascript:alert(1)"
+      }
+    },
+    "contract": {
+      "contractURL": "javascript:alert(1)"
+    },
+    "marketplace": {
+      "accessMethods": {
+        "api": {
+          "endpoint": "javascript:alert('XSS')"
+        },
+        "download": {
+          "url": "javascript:void(0);alert(document.cookie)"
+        }
+      }
+    }
+  },
+  "_security_note": "This file is intentionally malicious for security testing. It contains javascript: URLs that could execute scripts if not properly sanitized."
+}
+

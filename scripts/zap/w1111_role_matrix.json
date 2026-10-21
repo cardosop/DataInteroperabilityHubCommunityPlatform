@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "target_suffix": "/api/v1/",
+  "surfaces": [
+    {
+      "key": "public",
+      "role": null,
+      "authenticated": false,
+      "report_file": "zap-baseline.json",
+      "baseline": "w1111-public-baseline.json",
+      "description": "Unauthenticated baseline scan of the API origin (the phase-232 public baseline)."
+    },
+    {
+      "key": "PLATFORM_ADMIN",
+      "role": "PLATFORM_ADMIN",
+      "authenticated": true,
+      "report_file": "w1111-auth-PLATFORM_ADMIN.json",
+      "baseline": "w1111-auth-PLATFORM_ADMIN-baseline.json",
+      "description": "Cross-tenant platform administration surface (user/tenant/flag management, impersonation)."
+    },
+    {
+      "key": "TENANT_ADMIN",
+      "role": "TENANT_ADMIN",
+      "authenticated": true,
+      "report_file": "w1111-auth-TENANT_ADMIN.json",
+      "baseline": "w1111-auth-TENANT_ADMIN-baseline.json",
+      "description": "Tenant administration surface (members, roles, billing, governance approvals)."
+    },
+    {
+      "key": "DATA_PROVIDER",
+      "role": "DATA_PROVIDER",
+      "authenticated": true,
+      "report_file": "w1111-auth-DATA_PROVIDER.json",
+      "baseline": "w1111-auth-DATA_PROVIDER-baseline.json",
+      "description": "Data provisioning surface (assets, contracts, datasets, files)."
+    },
+    {
+      "key": "DATA_CONSUMER",
+      "role": "DATA_CONSUMER",
+      "authenticated": true,
+      "report_file": "w1111-auth-DATA_CONSUMER.json",
+      "baseline": "w1111-auth-DATA_CONSUMER-baseline.json",
+      "description": "Data consumption surface (access requests, entitlements, marketplace)."
+    },
+    {
+      "key": "AUDITOR",
+      "role": "AUDITOR",
+      "authenticated": true,
+      "report_file": "w1111-auth-AUDITOR.json",
+      "baseline": "w1111-auth-AUDITOR-baseline.json",
+      "description": "Read-only compliance/DQ/audit surface."
+    }
+  ]
+}

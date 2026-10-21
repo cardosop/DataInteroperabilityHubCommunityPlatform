@@ -1,0 +1,134 @@
+/**
+ * Listings React Query Hooks
+ */
+
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { normalizePaginated } from '../../../shared/utils/paginated';
+import { useMutationWithNotification } from '../../../shared/hooks/useMutationWithNotification';
+import { listingService } from '../services/listingService';
+import type { LineageDetailLevel, ListingLineageGraph } from '../../../shared/types/lineage';
+import type {
+  ListingCreateRequest,
+  ListingUpdateRequest,
+  ListingListFilters,
+} from '../../../shared/types/marketplace';
+
+export function useListings(filters: ListingListFilters = {}) {
+  return useQuery({
+    queryKey: ['marketplace', 'listings', 'list', filters],
+    queryFn: async () => {
+      const data = await listingService.list(filters);
+      return normalizePaginated(data ?? { results: [], count: 0 });
+    },
+  });
+}
+
+export function useSearchListings(query: string, filters: ListingListFilters = {}) {
+  return useQuery({
+    queryKey: ['marketplace', 'listings', 'search', query, filters],
+    queryFn: async () => {
+      const data = await listingService.search(query, filters);
+      return normalizePaginated(data ?? { results: [], count: 0 });
+    },
+    enabled: !!query && query.length > 0,
+  });
+}
+
+export function useListing(id: string | null) {
+  return useQuery({
+    queryKey: ['marketplace', 'listings', 'detail', id],
+    queryFn: () => listingService.getById(id!),
+    enabled: !!id,
+  });
+}
+
+export function useCreateListing() {
+  const queryClient = useQueryClient();
+
+  return useMutationWithNotification({
+    mutationFn: (data: ListingCreateRequest) => listingService.create(data),
+    successMessage: 'Listing created',
+    errorMessage: 'Failed to create listing',
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['marketplace', 'listings'] });
+    },
+  });
+}
+
+export function useUpdateListing() {
+  const queryClient = useQueryClient();
+
+  return useMutationWithNotification({
+    mutationFn: ({ id, data }: { id: string; data: ListingUpdateRequest }) =>
+      listingService.update(id, data),
+    successMessage: 'Listing updated',
+    errorMessage: 'Failed to update listing',
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['marketplace', 'listings'] });
+      queryClient.invalidateQueries({
+        queryKey: ['marketplace', 'listings', 'detail', variables.id],
+      });
+    },
+  });
+}
+
+export function useDeleteListing() {
+  const queryClient = useQueryClient();
+
+  return useMutationWithNotification({
+    mutationFn: (id: string) => listingService.delete(id),
+    successMessage: 'Listing deleted',
+    errorMessage: 'Failed to delete listing',
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['marketplace', 'listings'] });
+    },
+  });
+}
+
+export function useDownloadListing() {
+  return useMutationWithNotification({
+    mutationFn: (id: string) => listingService.download(id),
+    successMessage: 'Listing downloaded',
+    errorMessage: 'Failed to download listing',
+  });
+}
+
+export function usePreviewListing() {
+  return useMutationWithNotification({
+    mutationFn: ({ id, format }: { id: string; format?: string }) =>
+      listingService.preview(id, format),
+    successMessage: 'Listing preview loaded',
+    errorMessage: 'Failed to preview listing',
+  });
+}
+
+/**
+ * Phase 228.F1.11 — useListingLineage hook.
+ *
+ * Fetches the cross-tenant lineage graph for a listing.  The
+ * `detail` argument selects the response tier — the caller decides
+ * which tier to request based on the user's entitlement state (the
+ * `ListingLineagePanel` component derives this from
+ * `useHasActiveEntitlement(asset_id)` upstream).
+ *
+ * The query key includes `detail` so the post-purchase `full`
+ * response doesn't share a cache slot with the pre-purchase `summary`
+ * — otherwise a buyer's CTA-confirmation purchase would still see
+ * the cached summary tier.
+ *
+ * 60s `staleTime` matches the server's `Cache-Control: private,
+ * max-age=60`; React Query's stale-while-revalidate plays well with
+ * the conditional-request ETag the backend ships.
+ */
+export function useListingLineage(
+  listingId: string | null,
+  detail: LineageDetailLevel = 'summary',
+  maxDepth: number = 3
+) {
+  return useQuery<ListingLineageGraph>({
+    queryKey: ['marketplace', 'listings', 'lineage', listingId, detail, maxDepth],
+    queryFn: () => listingService.getLineage(listingId!, { detail, max_depth: maxDepth }),
+    enabled: !!listingId,
+    staleTime: 60 * 1000, // mirror server Cache-Control: max-age=60
+  });
+}

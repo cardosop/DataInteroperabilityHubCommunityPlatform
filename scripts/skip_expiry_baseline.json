@@ -1,0 +1,8 @@
+{
+  "generated_at": "2026-10-13T20:46:49.711007+00:00",
+  "python_skip_sites": 1286,
+  "python_skipif_sites": 326,
+  "ts_skip_sites": 1053,
+  "python_placeholder_tests": 2,
+  "ts_placeholder_tests": 146
+}

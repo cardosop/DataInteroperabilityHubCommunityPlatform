@@ -1,0 +1,51 @@
+/* Phase 228 F5 (228.F5.12 + DoD-G8) — time-travel controls layout. */
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm, 0.75rem);
+  align-items: flex-end;
+  padding: var(--spacing-sm, 0.75rem) var(--spacing-md, 1rem);
+  border: 1px solid var(--mds-color-border-default, #e0e0e0);
+  border-radius: 8px;
+  background-color: var(--mds-color-surface-subtle, #fafbfc);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+}
+
+.label {
+  font-size: 0.85rem;
+  margin-bottom: var(--spacing-xs, 0.25rem);
+}
+
+.input,
+.select {
+  padding: var(--spacing-xs, 0.4rem) var(--spacing-sm, 0.5rem);
+}
+
+.help {
+  font-size: 0.75rem;
+  color: var(--mds-color-text-subtle, #555);
+  margin-top: 0.2rem;
+}
+
+.applyButton {
+  padding: var(--spacing-sm, 0.5rem) var(--spacing-md, 1rem);
+  background-color: var(--mds-color-primary, #2257d6);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.resetButton {
+  padding: var(--spacing-sm, 0.5rem) var(--spacing-md, 1rem);
+  background-color: transparent;
+  color: var(--mds-color-text-default, #1a1a1a);
+  border: 1px solid var(--mds-color-border-default, #d0d0d0);
+  border-radius: 4px;
+  cursor: pointer;
+}

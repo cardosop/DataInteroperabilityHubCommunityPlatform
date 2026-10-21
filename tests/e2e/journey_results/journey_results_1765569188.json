@@ -1,0 +1,44 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-001-802d19a7",
+      "journey_name": "Onboard New Asset via Data-First Flow",
+      "persona": "Data Product Owner",
+      "status": "failed",
+      "start_time": 1765569187.7455838,
+      "end_time": 1765569188.2421393,
+      "duration": 0.4965555667877197,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": "expected an indented block after 'else' statement on line 576 (schema.py, line 578)",
+      "error_type": "IndentationError",
+      "steps": [
+        {
+          "step_name": "Create Asset (Draft)",
+          "status": "StepStatus.FAILED",
+          "start_time": 1765569187.745592,
+          "end_time": 1765569188.2421312,
+          "duration": 0.4965391159057617,
+          "error_message": "expected an indented block after 'else' statement on line 576 (schema.py, line 578)",
+          "error_type": "IndentationError",
+          "retry_count": 0,
+          "metadata": {
+            "args": "()",
+            "kwargs": "{'key': 'customer-orders-dpo-001', 'name': 'Customer Orders', 'description': 'Customer order data for DPO journey test'}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2025-12-12T19:53:08.242313"
+}

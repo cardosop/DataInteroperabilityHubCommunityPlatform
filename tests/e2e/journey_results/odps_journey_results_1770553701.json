@@ -1,0 +1,44 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "ODPS-005-9098c455",
+      "journey_name": "ODPS Product Strategy Journey",
+      "persona": "Data Product Owner",
+      "status": "failed",
+      "start_time": 1770553701.2118602,
+      "end_time": 1770553701.2311578,
+      "duration": 0.01929759979248047,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": "Failed to create asset: 500 - {'error': {'code': 'PLAN_NOT_FOUND', 'message': 'No plan assigned to tenant and default FREE plan not found', 'http_status': 500, 'request_id': '60f340cd-ead4-470b-aa85-03fe56820174', 'timestamp': '2026-02-08T12:28:21.222625+00:00'}}",
+      "error_type": "Exception",
+      "steps": [
+        {
+          "step_name": "Create Asset",
+          "status": "StepStatus.FAILED",
+          "start_time": 1770553701.2118745,
+          "end_time": 1770553701.231149,
+          "duration": 0.019274473190307617,
+          "error_message": "Failed to create asset: 500 - {'error': {'code': 'PLAN_NOT_FOUND', 'message': 'No plan assigned to tenant and default FREE plan not found', 'http_status': 500, 'request_id': '60f340cd-ead4-470b-aa85-03fe56820174', 'timestamp': '2026-02-08T12:28:21.222625+00:00'}}",
+          "error_type": "Exception",
+          "retry_count": 0,
+          "metadata": {
+            "args": "()",
+            "kwargs": "{'key': 'odps-strategy-6f00e891', 'name': 'ODPS Product Strategy Test Asset'}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-08T12:28:21.231306"
+}

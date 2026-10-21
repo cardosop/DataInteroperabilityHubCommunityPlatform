@@ -1,0 +1,44 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-005-7c9a2fa2",
+      "journey_name": "Manage Asset Versions",
+      "persona": "Data Product Owner",
+      "status": "failed",
+      "start_time": 1765570818.5681727,
+      "end_time": 1765570818.6489556,
+      "duration": 0.08078289031982422,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": "Dataset() got unexpected keyword arguments: 'kind'",
+      "error_type": "TypeError",
+      "steps": [
+        {
+          "step_name": "Create Asset with Dataset",
+          "status": "StepStatus.FAILED",
+          "start_time": 1765570818.5681794,
+          "end_time": 1765570818.6489508,
+          "duration": 0.08077144622802734,
+          "error_message": "Dataset() got unexpected keyword arguments: 'kind'",
+          "error_type": "TypeError",
+          "retry_count": 0,
+          "metadata": {
+            "args": "()",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2025-12-12T20:20:18.649043"
+}

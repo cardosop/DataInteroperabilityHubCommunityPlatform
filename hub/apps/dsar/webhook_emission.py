@@ -1,0 +1,55 @@
+"""Phase 232.2.12 — webhook fan-out for DSAR lifecycle."""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
+
+import structlog
+
+from hub.apps.webhooks.service import WebhookDeliveryService
+
+if TYPE_CHECKING:
+    from hub.apps.dsar.models import DSARRequest
+    from hub.apps.webhooks.models import WebhookEventType
+
+logger = structlog.get_logger(__name__)
+
+
+def _payload(row: DSARRequest) -> dict[str, Any]:
+    return {
+        "dsar_id": str(row.id),
+        "tenant_id": str(row.tenant_id),
+        "status": row.status,
+        "request_type": row.request_type,
+        "public_reference_token": str(row.public_reference_token),
+        "statutory_fulfil_deadline_utc": (
+            row.statutory_fulfil_deadline_utc.isoformat()
+            if row.statutory_fulfil_deadline_utc
+            else None
+        ),
+    }
+
+
+def publish_dsar_event(row: DSARRequest, event_type: WebhookEventType) -> int:
+    try:
+        return WebhookDeliveryService.trigger_webhook(
+            tenant_id=str(row.tenant_id),
+            event_type=str(event_type),
+            resource_type="DSAR_REQUEST",
+            resource_id=str(row.id),
+            event_data=_payload(row),
+        )
+    except Exception as exc:
+        # Webhook emission is best-effort — a delivery failure must not
+        # crash the caller's DSAR workflow (status transitions, SLA
+        # scans, etc.).  All exception types are caught so programming
+        # errors inside WebhookDeliveryService (e.g. a missing field
+        # in the payload) are surfaced in logs rather than propagated
+        # as 500s to the API consumer.
+        logger.exception(
+            "dsar_webhook_trigger_failed",
+            dsar_id=str(row.id),
+            event_type=str(event_type),
+            error=str(exc),
+        )
+        return 0

@@ -1,0 +1,198 @@
+# Prometheus configuration for Meshant
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'hub'
+    environment: 'development'
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093
+
+# Load alerting rules
+rule_files:
+  - 'alerts.yml'
+  - 'alerts/workflow-alerts.yml'
+  - 'alerts/event-bus-alerts.yml'
+  - 'alerts/service-layer-alerts.yml'
+  - 'alerts/odps-alerts.yml'
+  - 'alerts/odcs-alerts.yml'
+  - 'alerts/removal-monitoring.yml'
+  - 'alerts/mesh-alerts.yml'
+  - 'alerts/redis-alerts.yml'
+  - 'alerts/marketplace-alerts.yml'
+  - 'alerts/scheduled-ingestion-alerts.yml'
+  - 'alerts/lineage-alerts.yml'
+  # Phase 260.A.5 — cross-tenant denial burst alert
+  - 'alerts/auth-tenancy.yml'
+  # Phase 250.0.20 — asset-creation alert rules
+  - 'alerts/asset-creation.yml'
+  # Phase 240.1.B.1 — DQ alert rules (8 alerts)
+  - 'alerts/dq.yml'
+  # Databricks control-plane estate (openspec add-databricks-control-plane)
+  - 'alerts/databricks-uc-sync.yml'
+  - 'alerts/databricks-uc-approvals.yml'
+  - 'alerts/databricks-warehouses.yml'
+  - 'alerts/databricks-jobs.yml'
+  - 'alerts/databricks-cost-budget.yml'
+  - 'alerts/databricks-dlt.yml'
+  - 'alerts/api-slos.yml'  # W7.4 — previously unloaded
+  - 'alerts/asset-operations.yml'  # W7.4 — previously unloaded
+  - 'alerts/audit.yml'  # W7.4 — previously unloaded
+  - 'alerts/billing.yml'  # W7.4 — previously unloaded
+  - 'alerts/breach-sla.yml'  # W7.4 — previously unloaded
+  - 'alerts/compliance.yml'  # W7.4 — previously unloaded
+  - 'alerts/connect.yml'  # W7.4 — previously unloaded
+  - 'alerts/datasets-files.yml'  # W7.4 — previously unloaded
+  - 'alerts/dora.yml'  # W7.4 — previously unloaded
+  - 'alerts/job-worker-health.yml'  # W7.4 — previously unloaded
+  - 'alerts/marketplace-compliance-deltas.yml'  # W7.4 — previously unloaded
+  - 'alerts/pgbouncer.yml'  # W7.4 — previously unloaded
+  - 'alerts/retention-violations.yml'  # W7.4 — previously unloaded
+  - 'alerts/rq-queue.yml'  # W7.4 — previously unloaded
+  - 'alerts/security.yml'  # W7.4 — previously unloaded
+  - 'alerts/synthetic-probes.yml'  # W7.4 — previously unloaded
+  - 'alerts/warehouse.yml'  # W7.4 — previously unloaded
+  - 'alerts/webhook.yml'  # W7.4 — previously unloaded
+  - 'alerts/webhooks.yml'  # W7.4 — previously unloaded
+
+# Scrape configurations
+scrape_configs:
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # API Service (Django)
+  - job_name: 'api-service'
+    static_configs:
+      - targets: ['api-service:8000']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+
+  # Worker Service
+  - job_name: 'worker-service'
+    static_configs:
+      - targets: ['worker-service:8080']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+
+  # Semantic Service (FastAPI)
+  - job_name: 'semantic-service'
+    static_configs:
+      - targets: ['semantic-service:8081']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+
+  # DQ Service (FastAPI)
+  - job_name: 'dq-service'
+    static_configs:
+      - targets: ['dq-service:8083']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+
+  # Compliance Service (FastAPI)
+  - job_name: 'compliance-service'
+    static_configs:
+      - targets: ['compliance-service:8082']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+
+  # DataContract Service (FastAPI)
+  - job_name: 'datacontract-service'
+    static_configs:
+      - targets: ['datacontract-service:8080']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+
+  # Prefect Integration Service (FastAPI)
+  - job_name: 'prefect-integration-service'
+    static_configs:
+      - targets: ['prefect-integration-service:8084']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+
+  # Search Service (FastAPI)
+  - job_name: 'search-service'
+    static_configs:
+      - targets: ['search-service:8085']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+
+  # observability-service removed: stub; Prometheus scrapes services directly
+  # webhook-service removed: delivery handled by hub RQ worker (hub/apps/webhooks/tasks.py)
+
+  # PostgreSQL exporter (if available)
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+    scrape_interval: 30s
+
+  # Redis Cache Exporter
+  - job_name: 'redis-cache'
+    static_configs:
+      - targets: ['redis-exporter-cache:9121']
+        labels:
+          redis_instance: 'cache'
+          redis_port: '6379'
+    scrape_interval: 30s
+
+  # Redis Queue Exporter
+  - job_name: 'redis-queue'
+    static_configs:
+      - targets: ['redis-exporter-queue:9121']
+        labels:
+          redis_instance: 'queue'
+          redis_port: '6380'
+    scrape_interval: 30s
+
+  # Redis Events Exporter
+  - job_name: 'redis-events'
+    static_configs:
+      - targets: ['redis-exporter-events:9121']
+        labels:
+          redis_instance: 'events'
+          redis_port: '6381'
+    scrape_interval: 30s
+
+  # Redis Channels Exporter
+  - job_name: 'redis-channels'
+    static_configs:
+      - targets: ['redis-exporter-channels:9121']
+        labels:
+          redis_instance: 'channels'
+          redis_port: '6382'
+    scrape_interval: 30s
+
+  # Event Bus Health Service (FastAPI)
+  - job_name: 'event-bus-health-service'
+    static_configs:
+      - targets: ['event-bus-health-service:8090']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+
+  # Workflow Engine Service
+  - job_name: 'workflow-engine-service'
+    static_configs:
+      - targets: ['workflow-engine-service:8088']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+
+  # Workflow Registry Service (FastAPI)
+  - job_name: 'workflow-registry-service'
+    static_configs:
+      - targets: ['workflow-registry-service:8089']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+
+  # Event Schema Registry Service (FastAPI)
+  - job_name: 'event-schema-registry-service'
+    static_configs:
+      - targets: ['event-schema-registry-service:8091']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+

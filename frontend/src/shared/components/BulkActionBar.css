@@ -1,0 +1,73 @@
+.bulk-action-bar {
+  position: sticky;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 20px;
+  background: #1e293b;
+  color: #f1f5f9;
+  font-size: 0.875rem;
+  z-index: 50;
+  border-top: 2px solid #3b82f6;
+  box-shadow: 0 -4px 12px rgba(0,0,0,0.15);
+}
+
+.bulk-action-bar__count {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.bulk-action-bar__actions {
+  display: flex;
+  gap: 8px;
+  flex: 1;
+}
+
+.bulk-action-bar__btn {
+  padding: 5px 14px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  color: #fff;
+}
+
+.bulk-action-bar__btn--default {
+  background: #3b82f6;
+}
+
+.bulk-action-bar__btn--default:hover {
+  background: #2563eb;
+}
+
+.bulk-action-bar__btn--danger {
+  background: #dc2626;
+}
+
+.bulk-action-bar__btn--danger:hover {
+  background: #b91c1c;
+}
+
+.bulk-action-bar__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.bulk-action-bar__clear {
+  background: transparent;
+  border: 1px solid #475569;
+  color: #94a3b8;
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.bulk-action-bar__clear:hover {
+  background: #334155;
+  color: #e2e8f0;
+}

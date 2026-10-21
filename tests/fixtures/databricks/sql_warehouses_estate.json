@@ -1,0 +1,28 @@
+{
+  "warehouses": [
+    {
+      "id": "wh-estate-1",
+      "name": "etl-nightly",
+      "state": "RUNNING",
+      "serverless": true,
+      "size": null,
+      "auto_stop_mins": 30
+    },
+    {
+      "id": "wh-estate-2",
+      "name": "ad-hoc",
+      "state": "STOPPED",
+      "serverless": false,
+      "size": "M",
+      "auto_stop_mins": 15
+    },
+    {
+      "id": "wh-estate-3",
+      "name": "bi-reports",
+      "state": "STARTING",
+      "serverless": false,
+      "size": "S",
+      "auto_stop_mins": 60
+    }
+  ]
+}

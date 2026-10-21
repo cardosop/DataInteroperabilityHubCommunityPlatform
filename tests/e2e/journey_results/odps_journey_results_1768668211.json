@@ -1,0 +1,29 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "ODPS-002-EXISTING-3f79c252",
+      "journey_name": "ODPS Linking - Existing ODPS",
+      "persona": "Data Product Owner",
+      "status": "failed",
+      "start_time": 1768668205.4258335,
+      "end_time": 1768668211.4750357,
+      "duration": 6.04920220375061,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": "'JourneyODPS002ODPSLinkingTest' object has no attribute '_verify_bidirectional_linking'",
+      "error_type": "AttributeError",
+      "steps": [],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-01-17T16:43:31.475105"
+}

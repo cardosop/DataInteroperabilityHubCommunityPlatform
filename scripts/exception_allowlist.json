@@ -1,0 +1,24 @@
+{
+  "files": {
+    "hub/apps/datasets/refresh.py": {
+      "allowed": 2,
+      "reason": "SDK refresh degradation boundary (§1.2 register's named site): schema-inference failure is translated into ServiceValidationError and re-raised; sample-extraction failure degrades to an empty sample so a refresh never 500s on auxiliary data"
+    },
+    "hub/apps/transformation/monitoring.py": {
+      "allowed": 14,
+      "reason": "Prometheus/OTel telemetry emitter — metric and span recording must never fail the pipeline it observes; every catch logs the failure and degrades"
+    },
+    "hub/apps/audit/apps.py": {
+      "allowed": 1,
+      "reason": "Audit-DB outage must never block the response (the search/throttle audit contract); the catch emits a warning and continues without the audit sidecar"
+    },
+    "hub/apps/ai/views.py": {
+      "allowed": 1,
+      "reason": "W11.12 audit emitter for the AI surfaces — an audit-DB outage must never block an AI response (the Phase 273 sidecar boundary)"
+    },
+    "hub/apps/ml/views.py": {
+      "allowed": 1,
+      "reason": "W11.12 audit emitter for the ML predict surfaces — an audit-DB outage must never block a prediction response (the Phase 273 sidecar boundary)"
+    }
+  }
+}

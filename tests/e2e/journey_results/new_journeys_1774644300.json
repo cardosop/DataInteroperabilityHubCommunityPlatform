@@ -1,0 +1,121 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.19758200645446777
+  },
+  "journeys": [
+    {
+      "journey_id": "CPO-006-475b6e1e",
+      "journey_name": "Configure Automated Compliance",
+      "persona": "Compliance Officer",
+      "status": "completed",
+      "start_time": 1774644300.5475366,
+      "end_time": 1774644300.7451186,
+      "duration": 0.19758200645446777,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Define Compliance Rules",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774644300.6122384,
+          "end_time": 1774644300.6122453,
+          "duration": 6.9141387939453125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Note: Automated Compliance API Not Yet Implemented",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774644300.6122873,
+          "end_time": 1774644300.61229,
+          "duration": 2.6226043701171875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Auto-Detection Configuration Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774644300.6382272,
+          "end_time": 1774644300.638236,
+          "duration": 8.821487426757812e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Enforcement Configuration Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774644300.6650634,
+          "end_time": 1774644300.6650727,
+          "duration": 9.298324584960938e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Alerts Configuration Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774644300.6911092,
+          "end_time": 1774644300.6911168,
+          "duration": 7.62939453125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Compliance Testing Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774644300.717279,
+          "end_time": 1774644300.7172875,
+          "duration": 8.58306884765625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Compliance Deployment Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774644300.7451077,
+          "end_time": 1774644300.7451167,
+          "duration": 9.059906005859375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-03-27T20:45:00.745212"
+}

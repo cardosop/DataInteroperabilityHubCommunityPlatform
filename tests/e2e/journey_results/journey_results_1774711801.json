@@ -1,0 +1,85 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.04530000686645508
+  },
+  "journeys": [
+    {
+      "journey_id": "DC-002-01c5fab0",
+      "journey_name": "Request Access to Asset",
+      "persona": "Data Consumer / Buyer",
+      "status": "completed",
+      "start_time": 1774711801.5768507,
+      "end_time": 1774711801.6221507,
+      "duration": 0.04530000686645508,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Provider Creates Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774711801.5768561,
+          "end_time": 1774711801.6007066,
+          "duration": 0.023850440979003906,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Find Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774711801.6007175,
+          "end_time": 1774711801.6193562,
+          "duration": 0.01863861083984375,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Check Access Status",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774711801.619363,
+          "end_time": 1774711801.619368,
+          "duration": 5.0067901611328125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Create Access Request",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774711801.61937,
+          "end_time": 1774711801.6221464,
+          "duration": 0.0027763843536376953,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "UUID"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "8b53b0db-196e-4229-882b-1851bc49d3b2",
+        "request_id": "aa4724d0-ed2c-444c-8a8c-7eb41ba99008"
+      }
+    }
+  ],
+  "exported_at": "2026-03-28T15:30:01.622225"
+}

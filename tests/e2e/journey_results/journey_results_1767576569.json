@@ -1,0 +1,85 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 4.076957702636719e-05
+  },
+  "journeys": [
+    {
+      "journey_id": "AUD-003-fcb1327e",
+      "journey_name": "Export Audit Data",
+      "persona": "Auditor",
+      "status": "completed",
+      "start_time": 1767576569.835171,
+      "end_time": 1767576569.8352118,
+      "duration": 4.076957702636719e-05,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Select Data Range",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1767576569.835177,
+          "end_time": 1767576569.8351955,
+          "duration": 1.8596649169921875e-05,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Configure Export Format",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1767576569.8351982,
+          "end_time": 1767576569.8352,
+          "duration": 1.9073486328125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Generate Export",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1767576569.8352015,
+          "end_time": 1767576569.835208,
+          "duration": 6.4373016357421875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Download Export",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1767576569.8352091,
+          "end_time": 1767576569.8352106,
+          "duration": 1.430511474609375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        }
+      ],
+      "metadata": {
+        "export_id": "081c6b7f-ff7a-456a-b683-640c8380be96",
+        "format": "JSON"
+      }
+    }
+  ],
+  "exported_at": "2026-01-05T01:29:29.835275"
+}

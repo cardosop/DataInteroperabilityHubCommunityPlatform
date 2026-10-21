@@ -1,0 +1,41 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "ERROR-TEST-fae36223",
+      "journey_name": "Error Handling Test",
+      "persona": "Test",
+      "status": "failed",
+      "start_time": 1767576570.5381732,
+      "end_time": 1767576570.5381863,
+      "duration": 1.3113021850585938e-05,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": "Test error",
+      "error_type": "ValueError",
+      "steps": [
+        {
+          "step_name": "Failing Step",
+          "status": "StepStatus.FAILED",
+          "start_time": 1767576570.5381782,
+          "end_time": 1767576570.5381837,
+          "duration": 5.4836273193359375e-06,
+          "error_message": "Test error",
+          "error_type": "ValueError",
+          "retry_count": 0,
+          "metadata": {}
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-01-05T01:29:30.538249"
+}

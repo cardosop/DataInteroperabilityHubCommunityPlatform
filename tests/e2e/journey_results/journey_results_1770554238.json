@@ -1,0 +1,44 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-006-ccb6db29",
+      "journey_name": "Retire Asset",
+      "persona": "Data Product Owner",
+      "status": "failed",
+      "start_time": 1770554238.3995686,
+      "end_time": 1770554238.4143293,
+      "duration": 0.014760732650756836,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": "Failed to create asset: 500 - {'error': {'code': 'PLAN_NOT_FOUND', 'message': 'No plan assigned to tenant and default FREE plan not found', 'http_status': 500, 'request_id': '1f86fefb-0e04-45fd-89c0-cf50c8ab4583', 'timestamp': '2026-02-08T12:37:18.408029+00:00'}}",
+      "error_type": "Exception",
+      "steps": [
+        {
+          "step_name": "Create Active Asset",
+          "status": "StepStatus.FAILED",
+          "start_time": 1770554238.3995774,
+          "end_time": 1770554238.4143226,
+          "duration": 0.014745235443115234,
+          "error_message": "Failed to create asset: 500 - {'error': {'code': 'PLAN_NOT_FOUND', 'message': 'No plan assigned to tenant and default FREE plan not found', 'http_status': 500, 'request_id': '1f86fefb-0e04-45fd-89c0-cf50c8ab4583', 'timestamp': '2026-02-08T12:37:18.408029+00:00'}}",
+          "error_type": "Exception",
+          "retry_count": 0,
+          "metadata": {
+            "args": "()",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-08T12:37:18.414452"
+}

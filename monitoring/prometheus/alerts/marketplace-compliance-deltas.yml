@@ -1,0 +1,156 @@
+groups:
+  - name: marketplace_compliance_deltas
+    interval: 30s
+    rules:
+      # ----------------------------------------------------------------
+      # Phase 270.B.2.6 — AccessRequest SLA breach
+      # ----------------------------------------------------------------
+      # Fires when ANY tenant has at least one PENDING AccessRequest
+      # whose age has crossed the "gt_7d" bucket boundary for an hour
+      # of continuous sustained readings.
+      #
+      # WHY 7d and not the tenant's full SLA (default 14d):
+      # ---------------------------------------------------
+      # The alert is deliberately tighter than the default SLA so ops
+      # sees the queue TRENDING toward SLA breach BEFORE the daily
+      # ``revoke_expired_access`` sweep auto-expires the request.
+      # Catching it at 7d gives the provider's data-owner a full week
+      # of warning. Tenants who reduce their SLA to <7d will see the
+      # alert fire AFTER their internal SLA has already been breached
+      # — that's an explicit operational trade-off; tighten the
+      # alert expr in a per-tenant override file if 7d is too loose
+      # for a regulated tenant.
+      #
+      # WHY ``for: 1h`` not instant:
+      # ----------------------------
+      # The sweep runs daily; the gauge is refreshed once a day. A
+      # 1-hour ``for`` clause adds noise-tolerance for the scrape
+      # window where the cron is mid-flight and the gauge is being
+      # rewritten bucket-by-bucket. With Prometheus scraping every
+      # 30s, 1h gives 120 consecutive non-zero readings before the
+      # alert fires — robust against transient scrape failures.
+      #
+      # Metric source:
+      # --------------
+      # ``governance_access_requests_pending{tenant_id, age_bucket}``
+      # gauge defined in ``hub/apps/governance/metrics.py`` and
+      # refreshed by ``revoke_expired_access`` management command.
+      - alert: AccessRequestSLABreach
+        expr: |
+          governance_access_requests_pending{age_bucket="gt_7d"} > 0
+        for: 1h
+        labels:
+          severity: warning
+          component: governance
+        annotations:
+          summary: "AccessRequest queue past SLA warning threshold"
+          description: |
+            Tenant {{ $labels.tenant_id }} has {{ $value }} PENDING
+            AccessRequest(s) older than 7 days. The default SLA is
+            14 days — these requests are halfway to auto-expiry by
+            the daily ``revoke_expired_access`` sweep. The provider's
+            data-owner queue needs attention; ungating these requests
+            requires either an explicit APPROVE/REJECT decision or
+            an SLA-window extension via the tenant-admin API
+            (``access_request_pending_sla_days`` field).
+
+      # ----------------------------------------------------------------
+      # Phase 270.C.3.4 — INTERNAL_API_KEY rotation overdue
+      # ----------------------------------------------------------------
+      # Fires when the AWS Secrets Manager secret holding the shared
+      # ``INTERNAL_API_KEY`` has NOT been rotated in over 95 days
+      # (5 days past the 90-day cadence). 5 days of grace absorbs
+      # transient rotation-Lambda failures + the 24h overlap window
+      # so a healthy-but-slightly-late rotation doesn't page ops.
+      #
+      # Metric source:
+      # --------------
+      # ``aws_secretsmanager_secret_last_rotated_seconds`` — exposed
+      # by the CloudWatch / AWS Prometheus exporter scraping
+      # Secrets Manager's ``LastRotatedDate`` metadata. ``time()``
+      # is Prometheus's wall-clock function; the expr computes
+      # seconds-since-last-rotation per scrape.
+      #
+      # Why 95 days (90 + 5d grace) and not, say, 100:
+      # ----------------------------------------------
+      # 5 days is the 24h ExternalSecret refresh-interval window
+      # × 5 (gives 5 sync attempts before the alert promotes from
+      # WARN to a P1 incident). Tighter than 100d so a wedged
+      # rotation Lambda surfaces within a week.
+      #
+      # See: ``docs/runbooks/RB-AUTH-004-internal-api-key-rotation.md``
+      # for the on-call response procedure.
+      - alert: KeyRotationOverdue
+        expr: |
+          time() - aws_secretsmanager_secret_last_rotated_seconds{secret_name="internal-api-key"} > 95 * 86400
+        for: 1h
+        labels:
+          severity: warning
+          component: auth
+        annotations:
+          summary: "INTERNAL_API_KEY rotation overdue (>95 days)"
+          description: |
+            The AWS Secrets Manager secret holding the shared
+            INTERNAL_API_KEY (``secret_name=internal-api-key``)
+            has not rotated for more than 95 days — past the
+            90-day rotation cadence plus the 5-day grace window.
+            Likely root causes: rotation Lambda failure (check
+            CloudWatch logs for the Lambda function), IAM permission
+            drift on the Lambda execution role, or AWS SM service
+            throttling.
+            Runbook: docs/runbooks/RB-AUTH-004-internal-api-key-rotation.md
+
+      # ----------------------------------------------------------------
+      # Phase 270.D.7 — Stripe Tax registration required
+      # ----------------------------------------------------------------
+      # Fires when Stripe's ``account.updated`` webhook tells us a
+      # new jurisdiction requires tax registration (the platform's
+      # connected account crossed a threshold for collected
+      # receipts in a country/state, OR a registered jurisdiction
+      # is now "blocked" pending paperwork). The Hub-side webhook
+      # handler emits a structured ``STRIPE_TAX_REGISTRATION_REQUIRED``
+      # audit row when this happens; the Promtail pipeline routes
+      # the audit-action label into the
+      # ``meshant_audit_events_total`` counter; this alert fires
+      # on the counter.
+      #
+      # WHY ``for: 5m`` rather than instant:
+      # ------------------------------------
+      # Webhook delivery has natural jitter. ``5m`` absorbs the
+      # 30s scrape window + a 1-2min retry cycle without
+      # spamming oncall on a single transient event.
+      #
+      # Why warning (not critical):
+      # ---------------------------
+      # Stripe doesn't immediately stop collecting payments in
+      # the affected jurisdiction — it surfaces a "registration
+      # required" status that gives the platform a runway
+      # (typically 30-60 days) to file paperwork. Warning gives
+      # ops time to act WITHOUT a 3am page.
+      # The audit-event counter is exposed as
+      # ``audit_events_total`` (NOT ``meshant_audit_events_total``)
+      # — see ``hub/apps/observability/otel_metrics.py:711``. The
+      # name is platform-prefix-free historically; downstream
+      # dashboards already aggregate on the plain name.
+      - alert: StripeTaxRegistrationRequired
+        expr: |
+          increase(audit_events_total{action="STRIPE_TAX_REGISTRATION_REQUIRED"}[10m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          component: billing
+        annotations:
+          summary: "Stripe Tax: registration required in a new jurisdiction"
+          description: |
+            Stripe sent an ``account.updated`` event indicating
+            that the platform's connected account now requires
+            tax registration in one or more new jurisdictions.
+            Check the audit log for ``STRIPE_TAX_REGISTRATION_REQUIRED``
+            events (filter on ``details_json.country`` +
+            ``details_json.subdivision``) for the specific
+            jurisdiction(s). File the registration paperwork in
+            the Stripe dashboard's Tax → Registrations panel
+            before the deadline Stripe surfaces with the event.
+            Failure to register before Stripe's deadline will
+            cause invoices in that jurisdiction to surface tax
+            errors on collection.

@@ -1,0 +1,198 @@
+{
+  "title": "Phase 231 \u2014 Compliance intake & publish gate",
+  "uid": "compliance-intake-gate-231",
+  "tags": [
+    "compliance",
+    "phase-231",
+    "intake-gate",
+    "webhooks"
+  ],
+  "timezone": "utc",
+  "editable": true,
+  "refresh": "30s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "tenant_id",
+        "label": "Tenant",
+        "type": "query",
+        "datasource": "Prometheus",
+        "query": "label_values(compliance_intake_gate_events_total, tenant_id)",
+        "includeAll": true,
+        "multi": true
+      }
+    ]
+  },
+  "panels": [
+    {
+      "title": "Gate events by type (rate, 5m)",
+      "description": "Phase 231 \u2014 ``compliance_intake_gate_events_total`` from hub.apps.observability.otel_metrics.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "sum by (event) (rate(compliance_intake_gate_events_total[5m]))",
+          "legendFormat": "{{event}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "ops",
+          "label": "events/sec"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "title": "Intake scans enqueued (rate)",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 9
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(compliance_intake_gate_events_total{event=\"SCAN_ENQUEUED\"}[5m]))",
+          "legendFormat": "scan_enqueued",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "ops"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "title": "Publish / activation denials (rate)",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 9
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(compliance_intake_gate_events_total{event=~\"ACTIVATION_GATE_BLOCK|PUBLISH_GATE_NO_ASSET|PUBLISH_GATE_NO_RUN|PUBLISH_GATE_THRESHOLD\"}[5m]))",
+          "legendFormat": "denials",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "ops"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "title": "Webhooks stamped (rate) vs poll timeouts",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 17
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(compliance_intake_gate_events_total{event=\"WEBHOOK_FIRED\"}[5m]))",
+          "legendFormat": "webhook_fired",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(poll_timeout_total{service=\"compliance\"}[5m]))",
+          "legendFormat": "poll_timeout_compliance",
+          "refId": "B"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "ops"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "title": "Compliance-service degraded (circuit OPEN metric)",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 17
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(compliance_intake_gate_events_total{event=\"SERVICE_UNAVAILABLE\"}[5m]))",
+          "legendFormat": "service_unavailable_events",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "ops"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "title": "Compliance audit actions (rate, 15m window)",
+      "description": "Includes ASSET/LISTING/COMPLIANCE_RUN rows \u2014 Phase 231 intake + publish gate audits are not all resource_type=COMPLIANCE_RUN.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 25
+      },
+      "targets": [
+        {
+          "expr": "topk(12, sum by (action, resource_type) (rate(audit_events_total{action=~\"COMPLIANCE_.*\"}[15m])))",
+          "legendFormat": "{{action}} / {{resource_type}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "ops"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 27,
+  "version": 1
+}

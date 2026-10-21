@@ -1,0 +1,13 @@
+# Allowlist for `scripts/lint_queryset_coverage.py` (G3 / W1.4a).
+#
+# Every ViewSet over a tenant-scoped model must filter its queryset by
+# tenant EXPLICITLY before RLS arming (W1.20) — RLS would silently bless
+# implicit scoping. Entries are (file, class, reason): a class may only
+# be allowlisted when its scoping is provable by other means than the
+# lint's markers (e.g. an external filter backend, a per-object
+# permission layer) — the reason must name that mechanism.
+#
+# Adding an entry without a written reason is a lint failure.
+
+version: 1
+entries: []

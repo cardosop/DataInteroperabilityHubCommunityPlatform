@@ -1,0 +1,365 @@
+"""
+Governance management commands.
+"""
+
+
+import click
+
+from ..api_client import api_client
+from ..output import print_json_output
+
+
+@click.group()
+def governance():
+    """Governance management commands"""
+
+
+@governance.group("access-request")
+def access_request():
+    """Access request management commands"""
+
+
+@access_request.command("create")
+@click.option("--asset-id", help="Asset ID to request access for")
+@click.option("--dataset-id", help="Dataset ID to request access for")
+@click.option("--file-id", help="File ID to request access for")
+@click.option("--reason", required=True, help="Reason for access request")
+@click.option(
+    "--access-type",
+    default="READ",
+    type=click.Choice(["READ", "WRITE", "DOWNLOAD"]),
+    help="Type of access requested (default: READ)",
+)
+@click.option("--expires-at", help="Expiration date (ISO format, optional)")
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["json", "table"]),
+    default="table",
+    help="Output format",
+)
+def create_access_request(
+    asset_id: str | None,
+    dataset_id: str | None,
+    file_id: str | None,
+    reason: str,
+    access_type: str,
+    expires_at: str | None,
+    output_format: str,
+):
+    """Create an access request"""
+    # Validate that at least one resource ID is provided
+    if not asset_id and not dataset_id and not file_id:
+        raise click.ClickException(
+            "At least one of --asset-id, --dataset-id, or --file-id must be provided"
+        )
+
+    data = {"reason": reason, "requested_access_type": access_type}
+
+    if asset_id:
+        data["asset_id"] = asset_id
+    if dataset_id:
+        data["dataset_id"] = dataset_id
+    if file_id:
+        data["file_id"] = file_id
+    if expires_at:
+        data["expires_at"] = expires_at
+
+    try:
+        # API endpoint: /api/v1/governance/access-requests/
+        result = api_client.post("governance/access-requests/", json_data=data)
+
+        if output_format == "json":
+            print_json_output(result)
+        else:
+            click.echo("Access request created successfully!")
+            click.echo(f"Access Request ID: {result.get('id')}")
+            click.echo(f"Status: {result.get('status')}")
+            click.echo(f"Requested Access Type: {result.get('requested_access_type')}")
+            if result.get("asset_id"):
+                click.echo(f"Asset ID: {result.get('asset_id')}")
+            if result.get("dataset_id"):
+                click.echo(f"Dataset ID: {result.get('dataset_id')}")
+            if result.get("file_id"):
+                click.echo(f"File ID: {result.get('file_id')}")
+            if result.get("expires_at"):
+                click.echo(f"Expires At: {result.get('expires_at')}")
+    except click.ClickException:
+        raise
+    except Exception as e:
+        raise click.ClickException(f"Failed to create access request: {e}") from e
+
+
+@access_request.command("get")
+@click.argument("access_request_id")
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["json", "table"]),
+    default="table",
+    help="Output format",
+)
+def get_access_request(access_request_id: str, output_format: str):
+    """Get access request details"""
+    try:
+        # API endpoint: /api/v1/governance/access-requests/{id}/
+        data = api_client.get(f"governance/access-requests/{access_request_id}/")
+
+        if output_format == "json":
+            print_json_output(data)
+        else:
+            click.echo(f"Access Request ID: {data.get('id')}")
+            click.echo(f"Status: {data.get('status')}")
+            click.echo(f"Requested Access Type: {data.get('requested_access_type')}")
+            click.echo(f"Reason: {data.get('reason')}")
+
+            if data.get("asset_id"):
+                click.echo(f"Asset ID: {data.get('asset_id')}")
+            if data.get("dataset_id"):
+                click.echo(f"Dataset ID: {data.get('dataset_id')}")
+            if data.get("file_id"):
+                click.echo(f"File ID: {data.get('file_id')}")
+
+            if data.get("approved_by"):
+                click.echo(f"Approved By: {data.get('approved_by')}")
+                click.echo(f"Approved At: {data.get('approved_at')}")
+            if data.get("rejected_by"):
+                click.echo(f"Rejected By: {data.get('rejected_by')}")
+                click.echo(f"Rejected At: {data.get('rejected_at')}")
+                if data.get("rejection_reason"):
+                    click.echo(f"Rejection Reason: {data.get('rejection_reason')}")
+
+            if data.get("expires_at"):
+                click.echo(f"Expires At: {data.get('expires_at')}")
+
+            click.echo(f"Created: {data.get('created_at')}")
+            click.echo(f"Updated: {data.get('updated_at')}")
+    except click.ClickException:
+        raise
+    except Exception as e:
+        raise click.ClickException(f"Failed to get access request: {e}") from e
+
+
+@access_request.command("list")
+@click.option("--asset-id", help="Filter by asset ID")
+@click.option(
+    "--status",
+    type=click.Choice(["PENDING", "APPROVED", "REJECTED", "REVOKED"]),
+    help="Filter by status",
+)
+@click.option("--limit", default=20, help="Limit number of results (default: 20)")
+@click.option("--offset", default=0, help="Offset for pagination (default: 0)")
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["json", "table"]),
+    default="table",
+    help="Output format",
+)
+def list_access_requests(
+    asset_id: str | None, status: str | None, limit: int, offset: int, output_format: str
+):
+    """List access requests"""
+    try:
+        params = {"limit": limit, "offset": offset}
+
+        if asset_id:
+            params["asset_id"] = asset_id
+        if status:
+            params["status"] = status
+
+        # API endpoint: /api/v1/governance/access-requests/
+        data = api_client.get("governance/access-requests/", params=params)
+
+        if output_format == "json":
+            print_json_output(data)
+        else:
+            results = data.get("results", []) if isinstance(data, dict) else data
+            if not isinstance(results, list):
+                results = []
+
+            if not results:
+                click.echo("No access requests found.")
+                return
+
+            click.echo(f"Found {len(results)} access request(s):\n")
+            for req in results:
+                click.echo(f"ID: {req.get('id')}")
+                click.echo(f"  Status: {req.get('status')}")
+                click.echo(f"  Access Type: {req.get('requested_access_type')}")
+                if req.get("asset_id"):
+                    click.echo(f"  Asset ID: {req.get('asset_id')}")
+                if req.get("dataset_id"):
+                    click.echo(f"  Dataset ID: {req.get('dataset_id')}")
+                click.echo(f"  Created: {req.get('created_at')}")
+                click.echo()
+    except click.ClickException:
+        raise
+    except Exception as e:
+        raise click.ClickException(f"Failed to list access requests: {e}") from e
+
+
+@access_request.command("approve")
+@click.argument("access_request_id")
+@click.option("--comments", help="Approval comments (optional)")
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["json", "table"]),
+    default="table",
+    help="Output format",
+)
+def approve_access_request(access_request_id: str, comments: str | None, output_format: str):
+    """Approve an access request"""
+    try:
+        data = {}
+        if comments:
+            data["comments"] = comments
+
+        # API endpoint: /api/v1/governance/access-requests/{id}/approve/
+        result = api_client.post(
+            f"governance/access-requests/{access_request_id}/approve/", json_data=data
+        )
+
+        if output_format == "json":
+            print_json_output(result)
+        else:
+            click.echo("Access request approved successfully!")
+            click.echo(f"Access Request ID: {result.get('id')}")
+            click.echo(f"Status: {result.get('status')}")
+            if result.get("approved_at"):
+                click.echo(f"Approved At: {result.get('approved_at')}")
+    except click.ClickException:
+        raise
+    except Exception as e:
+        raise click.ClickException(f"Failed to approve access request: {e}") from e
+
+
+@access_request.command("reject")
+@click.argument("access_request_id")
+@click.option("--reason", required=True, help="Rejection reason")
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["json", "table"]),
+    default="table",
+    help="Output format",
+)
+def reject_access_request(access_request_id: str, reason: str, output_format: str):
+    """Reject an access request"""
+    try:
+        data = {"reason": reason}
+
+        # API endpoint: /api/v1/governance/access-requests/{id}/reject/
+        result = api_client.post(
+            f"governance/access-requests/{access_request_id}/reject/", json_data=data
+        )
+
+        if output_format == "json":
+            print_json_output(result)
+        else:
+            click.echo("Access request rejected successfully!")
+            click.echo(f"Access Request ID: {result.get('id')}")
+            click.echo(f"Status: {result.get('status')}")
+            if result.get("rejected_at"):
+                click.echo(f"Rejected At: {result.get('rejected_at')}")
+            if result.get("rejection_reason"):
+                click.echo(f"Rejection Reason: {result.get('rejection_reason')}")
+    except click.ClickException:
+        raise
+    except Exception as e:
+        raise click.ClickException(f"Failed to reject access request: {e}") from e
+
+
+# ── 118E.9: governance workflows ─────────────────────────
+
+
+@governance.group("workflows")
+def workflows():
+    """Governance workflow commands"""
+
+
+@workflows.command("list")
+@click.option("--status", "wf_status", help="Filter by status")
+@click.option("--limit", type=int, default=20)
+@click.option("--offset", type=int, default=0)
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["json", "table"]),
+    default="table",
+)
+def list_workflows(wf_status, limit, offset, output_format):
+    """List governance workflows"""
+    params = {"limit": limit, "offset": offset}
+    if wf_status:
+        params["status"] = wf_status
+    try:
+        data = api_client.get("governance/workflows/", params=params)
+        results = (
+            data.get("results", [])
+            if isinstance(data, dict)
+            else data
+            if isinstance(data, list)
+            else []
+        )
+        if output_format == "json":
+            print_json_output(results)
+        else:
+            if not results:
+                click.echo("No workflows found.")
+                return
+            click.echo(f"{'ID':<40} {'Name':<25} {'Status':<12}")
+            click.echo("-" * 77)
+            for w in results:
+                if not isinstance(w, dict):
+                    continue
+                click.echo(
+                    f"{str(w.get('id', ''))[:36]:<40} "
+                    f"{str(w.get('name', ''))[:23]:<25} "
+                    f"{w.get('status', '')!s:<12}"
+                )
+    except click.ClickException:
+        raise
+    except Exception as e:
+        raise click.ClickException(f"Failed to list workflows: {e}") from e
+
+
+@workflows.command("get")
+@click.argument("workflow_id")
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["json", "table"]),
+    default="table",
+)
+def get_workflow(workflow_id, output_format):
+    """Get workflow details"""
+    try:
+        data = api_client.get(f"governance/workflows/{workflow_id}/")
+        if output_format == "json":
+            print_json_output(data)
+        else:
+            click.echo(f"ID: {data.get('id')}")
+            click.echo(f"Name: {data.get('name')}")
+            click.echo(f"Status: {data.get('status')}")
+            click.echo(f"Created: {data.get('created_at')}")
+            click.echo(f"Updated: {data.get('updated_at')}")
+    except click.ClickException:
+        raise
+    except Exception as e:
+        raise click.ClickException(f"Failed to get workflow: {e}") from e
+
+
+@workflows.command("retry")
+@click.argument("workflow_id")
+def retry_workflow(workflow_id):
+    """Retry a failed governance workflow"""
+    try:
+        data = api_client.post(f"governance/workflows/{workflow_id}/retry/")
+        click.echo(f"Workflow {workflow_id} retried.")
+        click.echo(f"Status: {data.get('status')}")
+    except click.ClickException:
+        raise
+    except Exception as e:
+        raise click.ClickException(f"Failed to retry workflow: {e}") from e

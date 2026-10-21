@@ -1,0 +1,67 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 0,
+    "in_progress": 1,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-012-8667622d",
+      "journey_name": "Join Data Community",
+      "persona": "Data Product Owner",
+      "status": "in_progress",
+      "start_time": 1771297249.7356718,
+      "end_time": null,
+      "duration": null,
+      "completion_rate": 66.66666666666666,
+      "success_rate": 66.66666666666666,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Browse Data Communities",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771297249.7356784,
+          "end_time": 1771297250.0816681,
+          "duration": 0.3459897041320801,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Join Community",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771297250.0954125,
+          "end_time": 1771297250.1037412,
+          "duration": 0.008328676223754883,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Participate in Discussions",
+          "status": "StepStatus.IN_PROGRESS",
+          "start_time": 1771297250.103748,
+          "end_time": null,
+          "duration": null,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {}
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-17T03:00:50.139103"
+}

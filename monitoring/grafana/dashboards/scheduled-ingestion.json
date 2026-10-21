@@ -1,0 +1,522 @@
+{
+  "title": "Scheduled Ingestion",
+  "tags": [
+    "scheduled-ingestion",
+    "ingestion",
+    "data-pipeline"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 27,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Active Scheduled Ingestions",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "sum(scheduled_ingestion_active_count)",
+          "legendFormat": "Active Ingestions"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": null,
+                "color": "green"
+              },
+              {
+                "value": 10,
+                "color": "yellow"
+              },
+              {
+                "value": 50,
+                "color": "red"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Ingestion Runs by Status",
+      "type": "piechart",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "sum by (status) (scheduled_ingestion_runs_total)",
+          "legendFormat": "{{status}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Ingestion Run Rate",
+      "type": "graph",
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 0,
+        "y": 4
+      },
+      "targets": [
+        {
+          "expr": "rate(scheduled_ingestion_runs_total[5m])",
+          "legendFormat": "{{status}} - {{scheduled_ingestion_id}}"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "ops",
+          "label": "Runs/sec"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Files Processed",
+      "type": "graph",
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 0,
+        "y": 10
+      },
+      "targets": [
+        {
+          "expr": "rate(scheduled_ingestion_files_processed_total[5m])",
+          "legendFormat": "{{scheduled_ingestion_id}}"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "short",
+          "label": "Files/sec"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Files Failed",
+      "type": "graph",
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "targets": [
+        {
+          "expr": "rate(scheduled_ingestion_files_failed_total[5m])",
+          "legendFormat": "{{scheduled_ingestion_id}}"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "short",
+          "label": "Failures/sec"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Datasets Created",
+      "type": "graph",
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 0,
+        "y": 22
+      },
+      "targets": [
+        {
+          "expr": "rate(scheduled_ingestion_datasets_created_total[5m])",
+          "legendFormat": "{{scheduled_ingestion_id}}"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "short",
+          "label": "Datasets/sec"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Ingestion Duration (P95)",
+      "type": "graph",
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 0,
+        "y": 28
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, rate(scheduled_ingestion_duration_seconds_bucket[5m]))",
+          "legendFormat": "P95 - {{scheduled_ingestion_id}}"
+        },
+        {
+          "expr": "histogram_quantile(0.50, rate(scheduled_ingestion_duration_seconds_bucket[5m]))",
+          "legendFormat": "P50 - {{scheduled_ingestion_id}}"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "s",
+          "label": "Duration"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Files Per Run",
+      "type": "graph",
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 0,
+        "y": 34
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, rate(scheduled_ingestion_files_per_run_bucket[5m]))",
+          "legendFormat": "P95 - {{scheduled_ingestion_id}}"
+        },
+        {
+          "expr": "histogram_quantile(0.50, rate(scheduled_ingestion_files_per_run_bucket[5m]))",
+          "legendFormat": "P50 - {{scheduled_ingestion_id}}"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "short",
+          "label": "Files"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "Success Rate",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(scheduled_ingestion_runs_total{status=\"COMPLETED\"}[5m])) / sum(rate(scheduled_ingestion_runs_total[5m])) * 100",
+          "legendFormat": "Success Rate"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": null,
+                "color": "red"
+              },
+              {
+                "value": 90,
+                "color": "yellow"
+              },
+              {
+                "value": 95,
+                "color": "green"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 10,
+      "title": "Failure Rate",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(scheduled_ingestion_runs_total{status=\"FAILED\"}[5m])) / sum(rate(scheduled_ingestion_runs_total[5m])) * 100",
+          "legendFormat": "Failure Rate"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": null,
+                "color": "green"
+              },
+              {
+                "value": 5,
+                "color": "yellow"
+              },
+              {
+                "value": 10,
+                "color": "red"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 11,
+      "title": "Currently Running Runs",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 40
+      },
+      "targets": [
+        {
+          "expr": "sum(scheduled_ingestion_runs_running)",
+          "legendFormat": "Running Runs"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": null,
+                "color": "green"
+              },
+              {
+                "value": 1,
+                "color": "yellow"
+              },
+              {
+                "value": 5,
+                "color": "red"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 12,
+      "title": "Stuck Runs Alert (RUNNING > 2h)",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 40
+      },
+      "targets": [
+        {
+          "expr": "scheduled_ingestion_runs_running > 0",
+          "legendFormat": "Stuck Runs Detected"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": 0,
+                "color": "green"
+              },
+              {
+                "value": 1,
+                "color": "red"
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        },
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 13,
+      "title": "Prefect Worker Status",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 40
+      },
+      "targets": [
+        {
+          "expr": "up{job=\"prefect-worker\"}",
+          "legendFormat": "Worker Up"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": 0,
+                "color": "red"
+              },
+              {
+                "value": 1,
+                "color": "green"
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        },
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 14,
+      "title": "Runs with Prefect Flow Run ID",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 40
+      },
+      "targets": [
+        {
+          "expr": "count(scheduled_ingestion_runs_total{prefect_flow_run_id!=\"\"})",
+          "legendFormat": "Runs with Prefect ID"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": null,
+                "color": "blue"
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "scheduled_ingestion_id",
+        "type": "query",
+        "label": "Scheduled Ingestion ID",
+        "datasource": "Prometheus",
+        "query": "label_values(scheduled_ingestion_runs_total, scheduled_ingestion_id)",
+        "multi": true,
+        "includeAll": true
+      },
+      {
+        "name": "tenant_id",
+        "type": "query",
+        "label": "Tenant ID",
+        "datasource": "Prometheus",
+        "query": "label_values(scheduled_ingestion_runs_total, tenant_id)",
+        "multi": true,
+        "includeAll": true
+      }
+    ]
+  }
+}

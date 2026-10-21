@@ -1,0 +1,2017 @@
+# Docker Compose configuration for comprehensive test infrastructure
+# This file provides a complete test environment with all services from main compose
+# Usage: docker compose -f docker-compose.test.yml up -d
+# Or with test env: docker compose -f docker-compose.test.yml --env-file .env.test up -d
+#
+# NOTE: Uses POSTGRES_TEST_* vars so .env (POSTGRES_USER=hub) does not override test credentials.
+# Default: hub_test/hub_test/hub_test. Set POSTGRES_TEST_USER etc. in .env.test to override.
+# If postgres was previously initialized with hub/hub from .env, reset: docker compose -f docker-compose.test.yml down -v
+# Frontend is under --profile frontend (has build TS errors; use when fixed)
+#
+# Features:
+# - Isolated test database (hub_test)
+# - All microservices matching docker-compose.yml
+# - Real services (no mocks/stubs)
+# - Health checks for all services
+# - Test-specific configuration
+# Note: version is obsolete in Compose V2 and is ignored.
+
+# Single source of truth for the paid/commercial layer of the TEST stack
+# (compose x- extension — ignored by the engine, read by the overlay parity
+# test and by docker-compose.test.core.yml's design contract). Every service
+# listed here MUST carry `profiles: ["paid-excluded"]` in
+# docker-compose.test.core.yml — the parity test fails loudly otherwise.
+x-paid-services:
+  - postgres-baas-test
+  - redis-baas-test
+  - clamav-test
+  - fuseki-test
+  - datacontract-service-test
+  - dq-service-test
+  - compliance-service-test
+  - compliance-rq-worker-test
+  - semantic-service-test
+  - prefect-server-test
+  - prefect-db-test
+  - ensure-prefect-work-pool
+  - prefect-worker-test
+  - prefect-integration-service-test
+  - ckan-test
+  - ckan-test-db-test
+  - ckan-test-solr-test
+  - ckan-test-redis-test
+  - odh-training-operator-test
+  - odh-inference-scheduler-test
+  - traefik-test
+
+services:
+  # PostgreSQL Database for Testing
+  # Kept stable for full batch run. Exit 137 = OOM kill; reduce shared_buffers/work_mem or
+  # raise deploy.resources.limits.memory if host has RAM. Resilient healthcheck for heavy batches.
+  postgres-test:
+    image: postgres:16-alpine
+    container_name: hub-test-postgres
+    restart: on-failure
+    environment:
+      POSTGRES_USER: ${POSTGRES_TEST_USER:-hub_test}
+      POSTGRES_PASSWORD: ${POSTGRES_TEST_PASSWORD:-hub_test}
+      POSTGRES_DB: ${POSTGRES_TEST_DB:-hub_test}
+      POSTGRES_INITDB_ARGS: "-E UTF8"
+      ENVIRONMENT: test
+      DEBUG: "True"
+      LOG_LEVEL: DEBUG
+    ports:
+      - "${POSTGRES_TEST_PORT:-5434}:5432"
+    volumes:
+      - postgres-test-data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      # pg_isready returns 0 when Postgres accepts connections; -d verifies hub_test DB is ready.
+      # start_period 900s: crash recovery + fsync can take 10-12min on slow disk; 600s was too short.
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_TEST_USER:-hub_test} -d ${POSTGRES_TEST_DB:-hub_test} -t 5"]
+      interval: 15s
+      timeout: 10s
+      retries: 15
+      start_period: 900s
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 512M
+    networks:
+      - hub-test-net
+    command: >
+      postgres
+      -c log_statement=all
+      -c log_duration=on
+      -c log_line_prefix='%t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h '
+      -c shared_buffers=256MB
+      -c work_mem=8MB
+      -c max_connections=500
+      -c statement_timeout=300s
+      -c idle_in_transaction_session_timeout=300s
+      -c fsync=off
+      -c synchronous_commit=off
+      -c full_page_writes=off
+
+  # W3.10 — the dlt pipeline-state volume mounts root-owned; the API and
+  # worker run as appuser (uid 1000) — chown the volume root once so the
+  # non-root processes can create pipeline state inside it.
+  dlt-pipelines-init:
+    image: busybox:1.36
+    container_name: hub-test-dlt-pipelines-init
+    command: ["sh", "-c", "chown -R 1000:1000 /dlt-data/pipelines"]
+    volumes:
+      - dlt-pipelines-test-data:/dlt-data/pipelines
+    restart: "no"
+
+  # One-off: ensure hub_test database exists (handles volumes created without POSTGRES_DB=hub_test)
+  ensure-test-db:
+    image: postgres:16-alpine
+    container_name: hub-test-ensure-db
+    environment:
+      PGHOST: postgres-test
+      PGUSER: ${POSTGRES_TEST_USER:-hub_test}
+      PGPASSWORD: ${POSTGRES_TEST_PASSWORD:-hub_test}
+      PGDATABASE: template1
+    # hub_test_test_shared is created by migrate-test-db (from hub_test template), not here.
+    # phase13: isolation DB for compliance/security, E2E, and dataset-creation-flow tests
+    #          (TEST_DB_SUFFIX=phase13 and TEST_DB_SUFFIX=phase68 both resolve to this DB;
+    #           do not run those test suites concurrently).
+    command: ["sh", "-c", "psql -c \"CREATE DATABASE hub_test;\" 2>/dev/null || true && psql -c \"CREATE DATABASE hub_test_test_phase13;\" 2>/dev/null || true"]
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+    networks:
+      - hub-test-net
+    restart: "no"
+
+  # One-off: run Django migrations for hub_test and hub_test_test_shared.
+  # Runs once before api/workflow-engine; they start runserver/main directly (no migrate).
+  # Speeds up restarts: migrate is fast when already applied; api becomes healthy sooner.
+  migrate-test-db:
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
+      target: dev
+    container_name: hub-test-migrate
+    command: ["sh", "-c", "exec ./scripts/migrate-test-dbs.sh"]
+    volumes:
+      - .:/app
+    environment:
+      POSTGRES_HOST: postgres-test
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: ${POSTGRES_TEST_USER:-hub_test}
+      POSTGRES_PASSWORD: ${POSTGRES_TEST_PASSWORD:-hub_test}
+      POSTGRES_DB: ${POSTGRES_TEST_DB:-hub_test}
+      REDIS_URL: redis://redis-cache-test:6379/0
+      # Split Redis URLs — settings falls back to localhost for each missing
+      # var, which is unreachable from this container at seed time.
+      REDIS_CACHE_URL: redis://redis-cache-test:6379/0
+      REDIS_QUEUE_URL: redis://redis-queue-test:6379/0
+      REDIS_EVENTS_URL: redis://redis-events-test:6379/0
+      REDIS_CHANNELS_URL: redis://redis-channels-test:6379/0
+      PYTHONPATH: /app
+      DJANGO_SETTINGS_MODULE: hub.settings
+      # Without this, settings falls back to .env.dev's ENVIRONMENT=staging
+      # and the paid-config validation (STRIPE/BAAS/ODH guards) fails the
+      # migrate+seed manage.py runs.
+      ENVIRONMENT: test
+      # G12 — explicit keys (test values; CI runners have no .env.dev).
+      SECRET_KEY: ${SECRET_KEY:-test-secret-key-for-pytest-32b}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-test-jwt-secret-key-for-pytest-32b}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-test-encryption-key-for-pytest-32b}
+    depends_on:
+      redis-cache-test:
+        condition: service_healthy
+      ensure-test-db:
+        condition: service_completed_successfully
+      postgres-test:
+        condition: service_healthy
+    networks:
+      - hub-test-net
+    restart: "no"
+
+  # Redis Cache Instance for Testing - Response caching, contract caching, lineage caching
+  redis-cache-test:
+    image: redis:7-alpine
+    container_name: hub-test-redis-cache
+    command: >
+      redis-server
+      --save 900 1
+      --save 300 10
+      --save 60 10000
+      --maxmemory ${REDIS_CACHE_MAX_MEMORY:-512mb}
+      --maxmemory-policy allkeys-lru
+      --tcp-backlog ${REDIS_TCP_BACKLOG:-511}
+      --timeout ${REDIS_TIMEOUT:-300}
+      --tcp-keepalive ${REDIS_TCP_KEEPALIVE:-300}
+    ports:
+      - "${REDIS_CACHE_TEST_PORT:-6479}:6379"
+    volumes:
+      - redis-cache-test-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks:
+      - hub-test-net
+    environment:
+      - REDIS_MAX_MEMORY=${REDIS_CACHE_MAX_MEMORY:-512mb}
+      - REDIS_MAXMEMORY_POLICY=allkeys-lru
+      - ENVIRONMENT=test
+      - DEBUG=True
+      - LOG_LEVEL=DEBUG
+
+  # Redis Queue Instance for Testing - Job queues (RQ)
+  redis-queue-test:
+    image: redis:7-alpine
+    container_name: hub-test-redis-queue
+    # Phase T.4 (W16 infra prerequisite) — AOF removed: the appendonly
+    # file corrupted once under I/O load on this host (the two Redis
+    # services WITHOUT the flag were unaffected). RDB-only persistence
+    # is the durable-enough posture for the test stack.
+    command: >
+      redis-server
+      --maxmemory ${REDIS_QUEUE_MAX_MEMORY:-512mb}
+      --maxmemory-policy noeviction
+      --tcp-backlog ${REDIS_TCP_BACKLOG:-511}
+      --timeout ${REDIS_TIMEOUT:-300}
+      --tcp-keepalive ${REDIS_TCP_KEEPALIVE:-300}
+    ports:
+      - "${REDIS_QUEUE_TEST_PORT:-6480}:6379"
+    volumes:
+      - redis-queue-test-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks:
+      - hub-test-net
+    environment:
+      - REDIS_MAX_MEMORY=${REDIS_QUEUE_MAX_MEMORY:-512mb}
+      - REDIS_MAXMEMORY_POLICY=noeviction
+      - ENVIRONMENT=test
+      - DEBUG=True
+      - LOG_LEVEL=DEBUG
+
+  # Redis Events Instance for Testing - Event bus (Pub/Sub, Streams)
+  redis-events-test:
+    image: redis:7-alpine
+    container_name: hub-test-redis-events
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory ${REDIS_EVENTS_MAX_MEMORY:-512mb}
+      --maxmemory-policy allkeys-lru
+      --tcp-backlog ${REDIS_TCP_BACKLOG:-511}
+      --timeout ${REDIS_TIMEOUT:-300}
+      --tcp-keepalive ${REDIS_TCP_KEEPALIVE:-300}
+    ports:
+      - "${REDIS_EVENTS_TEST_PORT:-6481}:6379"
+    volumes:
+      - redis-events-test-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks:
+      - hub-test-net
+    environment:
+      - REDIS_MAX_MEMORY=${REDIS_EVENTS_MAX_MEMORY:-512mb}
+      - REDIS_MAXMEMORY_POLICY=allkeys-lru
+      - ENVIRONMENT=test
+      - DEBUG=True
+      - LOG_LEVEL=DEBUG
+
+  # Redis Channels Instance for Testing - WebSocket channels (Django Channels)
+  redis-channels-test:
+    image: redis:7-alpine
+    container_name: hub-test-redis-channels
+    command: >
+      redis-server
+      --maxmemory ${REDIS_CHANNELS_MAX_MEMORY:-256mb}
+      --maxmemory-policy allkeys-lru
+      --tcp-backlog ${REDIS_TCP_BACKLOG:-511}
+      --timeout ${REDIS_TIMEOUT:-300}
+      --tcp-keepalive ${REDIS_TCP_KEEPALIVE:-300}
+    ports:
+      - "${REDIS_CHANNELS_TEST_PORT:-6482}:6379"
+    volumes:
+      - redis-channels-test-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks:
+      - hub-test-net
+    environment:
+      - REDIS_MAX_MEMORY=${REDIS_CHANNELS_MAX_MEMORY:-256mb}
+      - REDIS_MAXMEMORY_POLICY=allkeys-lru
+      - ENVIRONMENT=test
+      - DEBUG=True
+      - LOG_LEVEL=DEBUG
+
+  # BaaS dedicated Postgres for Testing (optional; set BAAS_DATABASE_URL to use)
+  postgres-baas-test:
+    image: postgres:16-alpine
+    container_name: hub-test-postgres-baas
+    environment:
+      POSTGRES_USER: ${BAAS_POSTGRES_USER:-hub_baas}
+      POSTGRES_PASSWORD: ${BAAS_POSTGRES_PASSWORD:-hub_baas}
+      POSTGRES_DB: ${BAAS_POSTGRES_DB:-baas}
+      POSTGRES_INITDB_ARGS: "-E UTF8"
+    ports:
+      - "${BAAS_POSTGRES_TEST_PORT:-5435}:5432"
+    volumes:
+      - postgres-baas-test-data:/var/lib/postgresql/data
+    command: postgres -c max_connections=50
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${BAAS_POSTGRES_USER:-hub_baas} -d ${BAAS_POSTGRES_DB:-baas}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - hub-test-net
+
+  # BaaS dedicated Redis for Testing (optional; set BAAS_REDIS_URL to use)
+  redis-baas-test:
+    image: redis:7-alpine
+    container_name: hub-test-redis-baas
+    command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
+    ports:
+      - "${BAAS_REDIS_TEST_PORT:-6384}:6379"
+    volumes:
+      - redis-baas-test-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - hub-test-net
+
+  # Redis Exporters for Testing
+  redis-exporter-cache-test:
+    image: oliver006/redis_exporter:v1.66.0
+    container_name: hub-test-redis-exporter-cache
+    command:
+      - '--redis.addr=redis://redis-cache-test:6379'
+      - '--include-system-metrics'
+    ports:
+      - "${REDIS_EXPORTER_CACHE_TEST_PORT:-9121}:9121"
+    networks:
+      - hub-test-net
+    depends_on:
+      redis-cache-test:
+        condition: service_healthy
+
+  redis-exporter-queue-test:
+    image: oliver006/redis_exporter:v1.66.0
+    container_name: hub-test-redis-exporter-queue
+    command:
+      - '--redis.addr=redis://redis-queue-test:6379'
+      - '--include-system-metrics'
+    ports:
+      - "${REDIS_EXPORTER_QUEUE_TEST_PORT:-9122}:9121"
+    networks:
+      - hub-test-net
+    depends_on:
+      redis-queue-test:
+        condition: service_healthy
+
+  redis-exporter-events-test:
+    image: oliver006/redis_exporter:v1.66.0
+    container_name: hub-test-redis-exporter-events
+    command:
+      - '--redis.addr=redis://redis-events-test:6379'
+      - '--include-system-metrics'
+    ports:
+      - "${REDIS_EXPORTER_EVENTS_TEST_PORT:-9123}:9121"
+    networks:
+      - hub-test-net
+    depends_on:
+      redis-events-test:
+        condition: service_healthy
+
+  redis-exporter-channels-test:
+    image: oliver006/redis_exporter:v1.66.0
+    container_name: hub-test-redis-exporter-channels
+    command:
+      - '--redis.addr=redis://redis-channels-test:6379'
+      - '--include-system-metrics'
+    ports:
+      - "${REDIS_EXPORTER_CHANNELS_TEST_PORT:-9124}:9121"
+    networks:
+      - hub-test-net
+    depends_on:
+      redis-channels-test:
+        condition: service_healthy
+
+  # MinIO (S3-compatible storage) for Testing
+  minio-test:
+    image: cgr.dev/chainguard/minio@sha256:dc455cdd4db6e390b1b26514f15ff37681a777bf8dab41aac445a0259f751e56
+    container_name: hub-test-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio123}
+      ENVIRONMENT: test
+      DEBUG: "True"
+      LOG_LEVEL: DEBUG
+      # Allow browser uploads from E2E frontend (localhost:5173, 5184, etc.)
+      MINIO_API_CORS_ALLOW_ORIGIN: "*"
+    ports:
+      - "${MINIO_TEST_API_PORT:-9010}:9000"
+      - "${MINIO_TEST_CONSOLE_PORT:-9011}:9001"
+    volumes:
+      - minio-test-data:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'mc alias set local http://localhost:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" >/dev/null 2>&1 && mc ready local']
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+    networks:
+      - hub-test-net
+
+  # ClamAV (Phase 203) — optional; not started unless profile clamav-test is enabled.
+  # Example: docker compose -f docker-compose.test.yml --profile clamav-test up -d clamav-test
+  # Then set CLAMAV_ENABLED=true for api-service-test / worker-service-test (or in .env.test).
+  clamav-test:
+    profiles:
+      - clamav-test
+    image: clamav/clamav:1.5
+    container_name: hub-test-clamav
+    ports:
+      - "127.0.0.1:${CLAMAV_TEST_PORT:-13310}:3310"
+    volumes: []
+    # Signature DB in RAM: loading ~950MB from the slow local HDD stalls
+    # clamd for minutes on every start (the host disk is the known
+    # bottleneck — see jbd2 stall notes). tmpfs makes DB loads and
+    # self-checks RAM-fast; the cost is a freshclam re-download (~2-5 min)
+    # after each container recreate.
+    tmpfs:
+      - /var/lib/clamav:size=2g
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+        reservations:
+          memory: 1g
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "echo PING | nc -w2 127.0.0.1 3310 | grep -q PONG",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    networks:
+      - hub-test-net
+
+  # Apache Jena Fuseki (Triple Store) for Testing
+  # Image has curl; $$ so compose passes literal $ to container for $/ping.
+  # start_period 120s: fresh volume init can be slow; avoids "unhealthy" before dependent services start.
+  fuseki-test:
+    image: stain/jena-fuseki:4.8.0
+    container_name: hub-test-fuseki
+    user: root
+    # Phase P.1: the upstream entrypoint writes shiro.ini ONLY when the
+    # persisted file does not exist — the first password on a named volume
+    # wins forever. The prefix re-syncs it to the current ADMIN_PASSWORD on
+    # every start (idempotent; no-op on fresh volumes). Without it, every
+    # authenticated write 401s after a password rotation (measured: 40
+    # semantic test failures). See scripts/fuseki_password_sync.sh.
+    # Note: the trailing fuseki-server argument re-supplies the image CMD,
+    # which an entrypoint override replaces (the upstream entrypoint forks
+    # `exec "$@" &` — with an empty $@ the server never starts).
+    entrypoint:
+      ["sh", "-c", "/scripts/fuseki_password_sync.sh && exec /docker-entrypoint.sh /jena-fuseki/fuseki-server"]
+    environment:
+      FUSEKI_DATASET: ${FUSEKI_DATASET:-hub}
+      # MUST be started with the same env-file as semantic-service-test
+      # (canonical: `--env-file .env.test`, see Makefile.core CORE_COMPOSE).
+      # Recreating one service without it auto-loads `.env` (random
+      # FUSEKI_ADMIN_PASSWORD) → the sync script converges shiro.ini to the
+      # wrong password → semantic writes 401 → mappings DEGRADED → 19 test
+      # skips (batch 10-2i, 2026-10-02). .env.test pins the value explicitly.
+      ADMIN_PASSWORD: ${FUSEKI_ADMIN_PASSWORD:-admin}
+      ENVIRONMENT: test
+      DEBUG: "True"
+      LOG_LEVEL: DEBUG
+      # Phase 18.5: reduce heap — FTS migrated to PostgreSQL, Fuseki is ODPS-only
+      # Batch 10-2i incident (2026-10-02): after ~3 days uptime the JVM
+      # (Temurin 17.0.7) recovered from a SIGSEGV in JIT-compiled code and
+      # every RDF parse then failed with "a fault occurred in a recent
+      # unsafe memory access operation in compiled Java code" (semantic
+      # mappings DEGRADED → 19 test skips). The container's 4G cgroup also
+      # charges the 1G /fuseki tmpfs, so cap native memory explicitly so
+      # exhaustion fails cleanly (OOM) instead of faulting in compiled code.
+      JVM_ARGS: "-Xmx2g -Xms512m -XX:+UseG1GC -XX:MaxMetaspaceSize=512m -XX:ReservedCodeCacheSize=256m"
+    ports:
+      - "${FUSEKI_TEST_PORT:-3031}:3030"
+    volumes:
+      # Phase 21: named-graph dataset config (ja:unionDefaultGraph false)
+      - ./infrastructure/fuseki/config.ttl:/fuseki/configuration/hub.ttl
+      - ./scripts/fuseki_password_sync.sh:/scripts/fuseki_password_sync.sh:ro
+    # Test Fuseki data is ephemeral — keep it on tmpfs so SPARQL UPDATE
+    # fsyncs don't hit the host HDD (measured 7–30s per single-triple
+    # insert on this host, breaking sync perf tests). The dataset is
+    # re-created on demand by the semantic service's ensure_dataset_exists.
+    tmpfs:
+      - /fuseki:size=1g
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f -s -o /dev/null --connect-timeout 5 'http://127.0.0.1:3030/$$/ping' || exit 1"]
+      interval: 15s
+      timeout: 15s
+      retries: 12
+      start_period: 120s
+    networks:
+      - hub-test-net
+    # Fuseki was unbounded and grew to 3+ GiB, triggering OOM kills during E2E batch runs
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 512M
+
+  # Jaeger (all-in-one) for Testing
+  jaeger-test:
+    image: jaegertracing/all-in-one:1.58.0
+    container_name: hub-test-jaeger
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+      - COLLECTOR_ZIPKIN_HOST_PORT=:9411
+    ports:
+      - "${JAEGER_UI_TEST_PORT:-16686}:16686"
+      - "${JAEGER_HTTP_TEST_PORT:-14268}:14268"
+      - "${JAEGER_UDP_TEST_PORT:-6831}:6831/udp"
+    networks:
+      - hub-test-net
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:16686/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Mock Server for Testing marketplace connectors
+  mock-server-test:
+    image: mockserver/mockserver:5.15.0
+    container_name: hub-test-mock-server
+    command: -serverPort 8080 -logLevel INFO
+    ports:
+      - "${MOCK_SERVER_TEST_PORT:-8095}:8080"
+    networks:
+      - hub-test-net
+
+  # MailHog for Testing (local email capture)
+  mailhog-test:
+    image: mailhog/mailhog:v1.0.1
+    container_name: hub-test-mailhog
+    ports:
+      - "${MAILHOG_TEST_PORT:-8025}:8025"
+      - "${MAILHOG_SMTP_TEST_PORT:-1025}:1025"
+    networks:
+      - hub-test-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8025/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # DataContract Service for Testing
+  datacontract-service-test:
+    build:
+      context: .
+      dockerfile: services/datacontract-service/Dockerfile
+    container_name: hub-test-datacontract
+    # Hardened runtime: read-only rootfs; only /tmp (tmpfs) and the
+    # bind-mounted /app volume are writable.
+    read_only: true
+    tmpfs:
+      - /tmp
+    ports:
+      - "${DATACONTRACT_TEST_PORT:-8093}:8080"
+    volumes:
+      # Live-mount all local source files so Phase 9+ changes are picked up
+      # without image rebuilds.  shared/metrics.py is deliberately excluded —
+      # mounting it would re-register Prometheus counters that are already baked
+      # into the image, causing duplicate registration errors.
+      - ./services/datacontract-service/main.py:/app/main.py:ro
+      - ./services/datacontract-service/cache.py:/app/cache.py:ro
+      - ./services/datacontract-service/normalize.py:/app/normalize.py:ro
+      - ./services/datacontract-service/hub_contract.py:/app/hub_contract.py:ro
+      - ./services/datacontract-service/normalize_endpoint.py:/app/normalize_endpoint.py:ro
+      - ./services/shared/auth.py:/app/shared/auth.py:ro
+      - ./services/shared/middleware.py:/app/shared/middleware.py:ro
+      - ./services/shared/__init__.py:/app/shared/__init__.py:ro
+      - ./services/datacontract-service/tests:/app/tests:ro
+    networks:
+      - hub-test-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    environment:
+      ENVIRONMENT: test
+      DEBUG: "True"
+      LOG_LEVEL: DEBUG
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-test-internal-api-key-for-test-env}
+      ODCS_VERSIONS_SUPPORTED: "2.2.2,3.0.0,3.0.1,3.0.2,3.1.0"
+      ODPS_VERSIONS_SUPPORTED: "1.x,2.x,3.x,4.0,4.1,4.2,bitol-0.9.0,bitol-1.0.0"
+      REDIS_CACHE_URL: redis://redis-cache-test:6379/0
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1G
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+
+  # DQ Service for Testing
+  # Heavy imports (pandas, numpy, great_expectations) can delay startup under resource contention
+  dq-service-test:
+    build:
+      context: .
+      dockerfile: services/dq-service/Dockerfile
+    container_name: hub-test-dq
+    # Hardened runtime: read-only rootfs; only /tmp (tmpfs) and the
+    # bind-mounted /app volume are writable.
+    read_only: true
+    tmpfs:
+      - /tmp
+    ports:
+      - "${DQ_TEST_PORT:-8084}:8083"
+    volumes:
+      - ./services/dq-service/main.py:/app/main.py:ro
+      - ./services/shared/auth.py:/app/shared/auth.py:ro
+      - ./services/shared/middleware.py:/app/shared/middleware.py:ro
+      - ./services/shared/__init__.py:/app/shared/__init__.py:ro
+      - ./services/dq-service/tests:/app/tests:ro
+      # Phase 240.3.A — files added/refactored by the Soda engine
+      # work. Bind-mounted so iteration on adapter logic doesn't
+      # require an image rebuild every time. The image still bakes
+      # the previous content at build time as a fallback for any
+      # path that's not in this list.
+      - ./services/dq-service/adapters:/app/adapters:ro
+      - ./services/dq-service/dispatcher.py:/app/dispatcher.py:ro
+      - ./services/dq-service/gx_adapter.py:/app/gx_adapter.py:ro
+      - ./services/dq-service/soda_adapter.py:/app/soda_adapter.py:ro
+      - ./services/dq-service/dq_profile.py:/app/dq_profile.py:ro
+      - ./services/dq-service/pytest.ini:/app/pytest.ini:ro
+    networks:
+      - hub-test-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 16
+      start_period: 150s
+    environment:
+      ENVIRONMENT: test
+      DEBUG: "True"
+      LOG_LEVEL: DEBUG
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-test-internal-api-key-for-test-env}
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minio}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minio123}
+      AWS_S3_ENDPOINT_URL: http://minio-test:9000
+      AWS_STORAGE_BUCKET_NAME: hub-files
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1G
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+
+  # Compliance Service for Testing
+  compliance-service-test:
+    build:
+      context: .
+      dockerfile: services/compliance-service/Dockerfile
+    container_name: hub-test-compliance
+    read_only: true
+    tmpfs:
+      - /tmp
+    ports:
+      - "${COMPLIANCE_TEST_PORT:-8085}:8082"
+    volumes:
+      - ./services/compliance-service/main.py:/app/main.py:ro
+      - ./services/compliance-service/async_scanner.py:/app/async_scanner.py:ro
+      # Phase 270.C strict-mode/tenant-scoping work touches report generation —
+      # mounted so host edits reach the container without image rebuilds.
+      - ./services/compliance-service/compliance_report.py:/app/compliance_report.py:ro
+      - ./services/shared/auth.py:/app/shared/auth.py:ro
+      - ./services/shared/middleware.py:/app/shared/middleware.py:ro
+      - ./services/shared/__init__.py:/app/shared/__init__.py:ro
+      - ./services/compliance-service/tests:/app/tests:ro
+      # Canonical ManualTest CSV (outside /app/tests — tests volume is :ro)
+      - ./ManualTest/Front/05-SUPPORT-MATERIAL/data/sample-upload.csv:/app/manual-test-sample-upload.csv:ro
+      # Mount monitoring configs so test_19_13_observability.py can read alerts.yml
+      # and promtail.yaml; _resolve_project_root() resolves to "/" in-container and
+      # checks for /monitoring/prometheus/alerts.yml
+      - ./monitoring:/monitoring:ro
+    networks:
+      - hub-test-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/health"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    environment:
+      ENVIRONMENT: test
+      DEBUG: "True"
+      LOG_LEVEL: DEBUG
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-test-internal-api-key-for-test-env}
+      REDIS_QUEUE_URL: redis://redis-queue-test:6379/0
+      COMPLIANCE_WORKER_THREADS: "4"
+      COMPLIANCE_SCANNER_WORKERS: "4"
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minio}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minio123}
+      AWS_S3_ENDPOINT_URL: http://minio-test:9000
+      AWS_STORAGE_BUCKET_NAME: hub-files
+    depends_on:
+      redis-queue-test:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1G
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+
+  # RQ worker for compliance-scan queue (processes async scan jobs)
+  compliance-rq-worker-test:
+    build:
+      context: .
+      dockerfile: services/compliance-service/Dockerfile
+    container_name: hub-test-compliance-rq-worker
+    # Hardened runtime: read-only rootfs; only /tmp (tmpfs) and the
+    # bind-mounted /app volume are writable.
+    read_only: true
+    tmpfs:
+      - /tmp
+    restart: on-failure  # auto-restart on crash; warm-shutdown (exit 0) is a one-shot stop
+    command: ["rq", "worker", "compliance-scan", "--url", "redis://redis-queue-test:6379/0"]
+    networks:
+      - hub-test-net
+    environment:
+      ENVIRONMENT: test
+      LOG_LEVEL: DEBUG
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-test-internal-api-key-for-test-env}
+      REDIS_QUEUE_URL: redis://redis-queue-test:6379/0
+      COMPLIANCE_WORKER_THREADS: "4"
+      # G12 — the RQ worker imports hub.settings for compliance tasks;
+      # explicit keys (same contract as api-service-test).
+      SECRET_KEY: ${SECRET_KEY:-test-secret-key-for-pytest-32b}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-test-jwt-secret-key-for-pytest-32b}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-test-encryption-key-for-pytest-32b}
+    depends_on:
+      redis-queue-test:
+        condition: service_healthy
+      compliance-service-test:
+        condition: service_healthy
+    # RQ workers expose no HTTP port — liveness = the worker process running.
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'rq worker' > /dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+        reservations:
+          cpus: "0.1"
+          memory: 128M
+
+  # Semantic Service for Testing
+  semantic-service-test:
+    build:
+      context: .
+      dockerfile: services/semantic-service/Dockerfile
+    container_name: hub-test-semantic
+    # Hardened runtime: read-only rootfs; only /tmp (tmpfs) and the
+    # bind-mounted /app volume are writable.
+    read_only: true
+    tmpfs:
+      - /tmp
+    ports:
+      - "${SEMANTIC_TEST_PORT:-8086}:8081"
+    volumes:
+      # Live-mount all local source files so Phase 9+ changes are picked up
+      # without image rebuilds.  shared/metrics.py is NOT mounted — it is baked
+      # into the image so sparql_query_optimization_total is registered only once
+      # (re-mounting causes duplicate Prometheus counter registration errors).
+      - ./services/semantic-service/main.py:/app/main.py:ro
+      - ./services/semantic-service/fuseki_client.py:/app/fuseki_client.py:ro
+      - ./services/semantic-service/cache.py:/app/cache.py:ro
+      - ./services/semantic-service/mapper.py:/app/mapper.py:ro
+      - ./services/semantic-service/ontology.py:/app/ontology.py:ro
+      - ./services/semantic-service/ontology.ttl:/app/ontology.ttl:ro
+      - ./services/semantic-service/generate_ontology.py:/app/generate_ontology.py:ro
+      - ./services/semantic-service/vocabulary_mappings.py:/app/vocabulary_mappings.py:ro
+      - ./services/semantic-service/uri_generator.py:/app/uri_generator.py:ro
+      - ./services/semantic-service/sparql_utils.py:/app/sparql_utils.py:ro
+      - ./services/semantic-service/odps_query_builder.py:/app/odps_query_builder.py:ro
+      - ./services/semantic-service/shapes:/app/shapes:ro
+      - ./services/shared/auth.py:/app/shared/auth.py:ro
+      - ./services/shared/middleware.py:/app/shared/middleware.py:ro
+      - ./services/shared/__init__.py:/app/shared/__init__.py:ro
+      - ./services/semantic-service/tests:/app/tests:ro
+      - ./services/semantic-service/pytest.ini:/app/pytest.ini:ro
+    environment:
+      FUSEKI_URL: http://fuseki-test:3030
+      FUSEKI_DATASET: ${FUSEKI_DATASET:-hub}
+      FUSEKI_ADMIN_PASSWORD: ${FUSEKI_ADMIN_PASSWORD:-admin}
+      # Phase P.1: Fuseki write latency on a loaded host was measured at up
+      # to 36s for a 6-triple UPDATE — the client's hardcoded 30s timeout
+      # turned those writes into httpx.ReadTimeout and DEGRADED mappings.
+      # Matches SEMANTIC_SERVICE_TIMEOUT above.
+      FUSEKI_HTTP_TIMEOUT: "60"
+      HUB_DOMAIN: ${HUB_DOMAIN:-test.hub.example.com}
+      ENVIRONMENT: test
+      DEBUG: "True"
+      LOG_LEVEL: DEBUG
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-test-internal-api-key-for-test-env}
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    depends_on:
+      fuseki-test:
+        condition: service_healthy
+    networks:
+      - hub-test-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1G
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+
+  # API Service for Testing
+  api-service-test:
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
+      target: dev
+    container_name: hub-test-api
+    # Hardened runtime: read-only rootfs; only /tmp (tmpfs) and the
+    # bind-mounted /app volume are writable.
+    read_only: true
+    tmpfs:
+      - /tmp
+    init: true
+    restart: on-failure
+    command: ["gunicorn", "hub.asgi:application", "--config", "gunicorn.conf.py"]
+    volumes:
+      - .:/app
+      - /var/run/docker.sock:/var/run/docker.sock
+      # W3.10 — the volume-backed dlt pipeline STATE (processed keys,
+      # SQL cursors): survives container re-creates, unlike dlt's /tmp
+      # default which wiped the cursor on every restart.
+      - dlt-pipelines-test-data:/dlt-data/pipelines
+    group_add:
+      - "984"  # host docker group GID — grants appuser access to /var/run/docker.sock
+    ports:
+      - "${API_TEST_PORT:-8001}:8000"
+    env_file:
+      - path: .env.test
+        required: false  # untracked by design (313.0) — optional in fresh clones
+    environment:
+      # Force Python to always read .py source instead of stale .pyc bytecode.
+      # Without this, root-owned .pyc files in __pycache__ persist across runs
+      # and prevent source changes on the host from taking effect in the container.
+      PYTHONDONTWRITEBYTECODE: "1"
+      # In-container probe port. .env.test carries API_TEST_PORT=8001, which
+      # is the HOST-side mapping (host 8001 -> container 8000). Probes that
+      # run INSIDE this container (envpolicy.api_available, E2E suites) must
+      # target the gunicorn port inside the container, so override the
+      # host-side value here. Host-side suites keep their own 8001 default.
+      API_TEST_PORT: "8000"
+      # Ensure ENVIRONMENT=test so _user_lookup_alias() returns "default"
+      # and RLS BYPASSRLS/admin-specific paths are not used for test login.
+      ENVIRONMENT: test
+      # Workflow-backed endpoints (ODPS product-first flow) can exceed the
+      # 120s gunicorn default on this host — a worker kill surfaces to the
+      # client as "server closed the connection unexpectedly". The local
+      # DE-1 budget is 300s; match it.
+      GUNICORN_TIMEOUT: "300"
+      # R2 E2E root cause — disable worker recycling in the test stack.
+      # gunicorn.conf.py defaults to max_requests=1000 (±100 jitter): every
+      # ~1000 requests each worker is killed mid-flight, resetting any
+      # in-flight connection. E2E batches issue thousands of requests, so
+      # workers recycle constantly and random tests die with NETWORK_ERROR
+      # (observed live in the clean-lane batch-7 run: sessions list fetch
+      # reset at 16:47). 0 = never recycle — the memory-accumulation guard
+      # matters for long-lived prod, not short-lived test batches.
+      GUNICORN_MAX_REQUESTS: "0"
+      # Webhook delivery runs INLINE in the API container (the E2E contract
+      # documented in e2e/features/webhook-delivery.spec.ts: the delivery
+      # executor POSTs to http://localhost:8000 — the API's OWN listener —
+      # which is only reachable from inside this container). Without this
+      # the API defaults WEBHOOK_ASYNC_DELIVERY=True (settings.py), delivery
+      # is enqueued to the RQ worker, and the worker's localhost:8000 is
+      # the worker itself → connection refused → every delivery FAILED.
+      # Sync mode also drives the inline retry loop that the
+      # forced-failure subflow (retry + DLQ on persistent 503) depends on.
+      WEBHOOK_ASYNC_DELIVERY: "False"
+      # Smoke-suite admin persona — the E2E platform admin provisioned by
+      # `manage.py ensure_e2e_user_roles` into the shared test DB (same
+      # non-secret values as the E2E persona definitions). Enables the
+      # authenticated smoke tests (admin_session) against the test stack.
+      SMOKE_ADMIN_EMAIL: ${SMOKE_ADMIN_EMAIL:-e2e_platform@example.com}
+      SMOKE_ADMIN_PASSWORD: ${SMOKE_ADMIN_PASSWORD:-TestPass123}
+      # Phase 260.2.B — mirror staging: the DoD.7 PE-as-CSV smoke test
+      # SKIPs when this is off, silently un-exercising the magic-byte gate.
+      MAGIC_BYTE_VALIDATION_ENABLED: ${MAGIC_BYTE_VALIDATION_ENABLED:-true}
+      # DR restore-readiness checks (tests/disaster_recovery/): the test
+      # stack's S3-compatible MinIO doubles as the backup bucket target.
+      BACKUP_S3_BUCKET: ${BACKUP_S3_BUCKET:-hub-backups}
+      BACKUP_ENCRYPTION_KEY: ${BACKUP_ENCRYPTION_KEY:-test-backup-encryption-key-0123456789abcdef}
+      # Phase 231/250 smoke scenario gates — fixtures with deterministic IDs
+      # seeded by `manage.py seed_smoke_fixtures` (see migrate-test-dbs.sh).
+      SMOKE_PHASE231_GATE_ENABLED: ${SMOKE_PHASE231_GATE_ENABLED:-1}
+      SMOKE_PHASE231_CRITICAL_LISTING_ID: ${SMOKE_PHASE231_CRITICAL_LISTING_ID:-aaaaaaaa-1111-4111-8111-111111111111}
+      SMOKE_PHASE250_FEDERATED_IMPORT_ENABLED: ${SMOKE_PHASE250_FEDERATED_IMPORT_ENABLED:-1}
+      SMOKE_PHASE250_FEDERATED_SOURCE_LISTING_ID: ${SMOKE_PHASE250_FEDERATED_SOURCE_LISTING_ID:-bbbbbbbb-2222-4222-8222-222222222222}
+      # Observability: export OTLP spans to the test-stack Tempo; expose
+      # the Tempo/Loki query URLs for the smoke reachability checks.
+      # Service name + sampler rate must be set so the OTel config tests
+      # (tests/preprod01/test_otel_config.py) run instead of skipping.
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-hub-api}
+      OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-0.1}
+      # CSP header for the preprod security-header tests; kept compatible
+      # with the test-stack schema docs UI (inline styles/scripts allowed).
+      CSP_DEFAULT_SRC: "'self','unsafe-inline'"
+      # HSTS: the test stack has no TLS edge, so tests simulate it via
+      # X-Forwarded-Proto: https; the API must then emit the header itself
+      # (defense in depth behind the real Traefik edge on staging/prod).
+      SECURE_HSTS_SECONDS: ${SECURE_HSTS_SECONDS:-31536000}
+      TRUST_X_FORWARDED_PROTO: "true"
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://tempo-test:4317}
+      TEMPO_URL: ${TEMPO_URL:-http://tempo-test:3200}
+      LOKI_URL: ${LOKI_URL:-http://loki-test:3100}
+      # Force create_audit_event(tenant=None) to use the default connection
+      # with row_security=off instead of the admin alias (separate psycopg2
+      # connection unmanaged by TransactionTestCase/TestCase).  Prevents FK
+      # violations during fixture teardown.
+      SKIP_TEST_MIGRATIONS: "1"
+      POSTGRES_HOST: postgres-test
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: ${POSTGRES_TEST_USER:-hub_test}
+      POSTGRES_PASSWORD: ${POSTGRES_TEST_PASSWORD:-hub_test}
+      # Use hub_test_test_shared so gunicorn sees same data as pytest (TEST_DB_SUFFIX=shared)
+      # and Prefect worker API calls (get_export_config, patch_export_run) update the same run the test polls
+      POSTGRES_DB: hub_test_test_shared
+      EMAIL_BACKEND: smtp
+      EMAIL_BASE_URL: ${EMAIL_BASE_URL:-http://localhost:8001}
+      E2E_ENABLE_SMTP: "true"
+      EMAIL_JOB_NOTIFICATIONS_ENABLED: ${EMAIL_JOB_NOTIFICATIONS_ENABLED:-false}
+      SMTP_HOST: ${SMTP_HOST:-mailhog-test}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_USE_TLS: ${SMTP_USE_TLS:-false}
+      SMTP_USE_SSL: ${SMTP_USE_SSL:-false}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-noreply@test.hub.example.com}
+      REDIS_URL: redis://redis-cache-test:6379/0
+      REDIS_HOST: redis-cache-test
+      REDIS_CACHE_URL: redis://redis-cache-test:6379/0
+      REDIS_QUEUE_URL: redis://redis-queue-test:6379/0
+      REDIS_EVENTS_URL: redis://redis-events-test:6379/0
+      REDIS_CHANNELS_URL: redis://redis-channels-test:6379/0
+      BAAS_DATABASE_URL: ${BAAS_DATABASE_URL:-}
+      BAAS_REDIS_URL: ${BAAS_REDIS_URL:-}
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minio}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minio123}
+      AWS_S3_ENDPOINT_URL: http://minio-test:9000
+      AWS_STORAGE_BUCKET_NAME: ${AWS_STORAGE_BUCKET_NAME:-hub-files}
+      DATACONTRACT_SERVICE_URL: http://datacontract-service-test:8080
+      DQ_SERVICE_URL: http://dq-service-test:8083
+      COMPLIANCE_SERVICE_URL: http://compliance-service-test:8082
+      # Reduce retry backoff for test environments — when --no-deps is used
+      # the service is unreachable and every retry adds wasted delay.
+      COMPLIANCE_SERVICE_MAX_RETRIES: "0"
+      COMPLIANCE_SERVICE_BACKOFF_FACTOR: "0"
+      # Phase 26: Supported spec versions
+      ODCS_VERSIONS_SUPPORTED: "2.2.2,3.0.0,3.0.1,3.0.2,3.1.0"
+      ODPS_VERSIONS_SUPPORTED: "1.x,2.x,3.x,4.0,4.1,4.2,bitol-0.9.0,bitol-1.0.0"
+      HUBCONTRACT_BACKFILL_BATCH_SIZE: "200"
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-test-internal-api-key-for-test-env}
+      SEMANTIC_SERVICE_URL: http://semantic-service-test:8081
+      SEMANTIC_SERVICE_TIMEOUT: "60"
+      FUSEKI_URL: http://fuseki-test:3030
+      PREFECT_INTEGRATION_SERVICE_URL: http://prefect-integration-service-test:8084
+      PREFECT_API_URL: http://prefect-server-test:4200/api
+      MOCK_SERVER_URL: http://mock-server-test:8080
+      # Worker service URL for E2E tests (test_worker_service.py) - reachable from api-service-test container
+      WORKER_SERVICE_URL: http://worker-service-test:8080
+      ODH_INFERENCE_SCHEDULER_URL: http://odh-inference-scheduler-test:8080
+      ODH_TRAINING_OPERATOR_URL: http://odh-training-operator-test:8080
+      JAEGER_AGENT_HOST: jaeger-test
+      JAEGER_AGENT_PORT: 6831
+      OPENTELEMETRY_ENABLED: false
+      # Monitoring URLs for integration tests (batch 7, 8) - reachable from api-service-test
+      PROMETHEUS_URL: http://prometheus-test:9090
+      GRAFANA_URL: http://grafana-test:3000
+      JAEGER_URL: http://jaeger-test:16686
+      API_BASE_URL: http://localhost:8000
+      REDIS_EXPORTER_CACHE_URL: http://redis-exporter-cache-test:9121
+      REDIS_EXPORTER_QUEUE_URL: http://redis-exporter-queue-test:9121
+      REDIS_EXPORTER_EVENTS_URL: http://redis-exporter-events-test:9121
+      REDIS_EXPORTER_CHANNELS_URL: http://redis-exporter-channels-test:9121
+      ALERTMANAGER_URL: http://alertmanager-test:9093
+      MINIO_HOST: minio-test
+      MINIO_PORT: "9000"
+      # Phase 203: default off in test stack (no clamav-test unless --profile clamav-test).
+      CLAMAV_ENABLED: ${CLAMAV_ENABLED:-false}
+      CLAMAV_HOST: ${CLAMAV_HOST:-clamav-test}
+      CLAMAV_PORT: ${CLAMAV_PORT:-3310}
+      # Enable the ClamAV live-scanner test (test_scanner.ClamAVScannerLiveTest).
+      RUN_CLAMAV_LIVE_TESTS: "1"
+      CLAMAV_LIVE_TEST_HOST: ${CLAMAV_LIVE_TEST_HOST:-clamav-test}
+      APP_VERSION: ${APP_VERSION:-1.0.0-test}
+      DEBUG: "False"
+      LOG_LEVEL: DEBUG
+      USE_PRODUCTION_DB_FOR_SDK_TESTS: "0"
+      # Shared DB for E2E tests that need prefect-integration to see test data
+      TEST_DB_SUFFIX: "shared"
+      PYTHONPATH: /app
+      DJANGO_SETTINGS_MODULE: hub.settings
+      ALLOWED_HOSTS: localhost,127.0.0.1,api-service,api-service-test,testserver,host.docker.internal  # host.docker.internal: the containerized k6 load client's view of the host (pilot-readiness 4.4)
+      # dlt (data load tool) — suppress verbose output during tests
+      DLT_LOG_LEVEL: ERROR
+      DLT_PIPELINES_DIR: ${DLT_PIPELINES_DIR:-/dlt-data/pipelines}
+      DLT_DEV_MODE: "false"
+      # E2E: relax auth rate limit for parallel Playwright workers (no mocks)
+      RATE_LIMIT_E2E_RELAX: ${RATE_LIMIT_E2E_RELAX:-true}
+      # Disable rate limiting in the test stack so SDK auto-provisioning works.
+      # is_test_env detection only triggers inside pytest, not gunicorn.
+      RATE_LIMIT_ENABLED: "false"
+      # Shared secret for /test/ensure-e2e-* endpoints (must match the
+      # value used by the SDK test suite in E2E_TEST_SECRET env var).
+      E2E_TEST_SECRET: "e2e-test-secret-for-local-dev"
+      # Single worker by default: the app has no prometheus multiprocess
+      # aggregation, so /metrics/ scrapes hit a RANDOM worker's registry
+      # with GUNICORN_WORKERS>1 and counter assertions (e.g. the 260
+      # cross-tenant metric smoke test) become non-monotonic. One worker
+      # keeps metric tests deterministic in the test stack; override via
+      # env (GUNICORN_WORKERS=9) for concurrency-heavy local runs.
+      GUNICORN_WORKERS: ${GUNICORN_WORKERS:-1}
+      # Real scheduled ingestion/export E2E: uses MinIO (S3-compatible) already in this stack
+      REAL_SCHEDULED_E2E: ${REAL_SCHEDULED_E2E:-1}
+      # Stripe keys flow in via env_file (.env.test) — NOT environment: —
+      # because `environment:` ALWAYS overrides env_file values, even when
+      # the ${VAR:-} substitution resolves to an empty string.  The W0.5
+      # de-leak (9ec3c03e7) left the empty defaults in place, which
+      # silently BLANKED the .env.test test keys inside the container —
+      # the backend took the local-only billing path and the
+      # E2E_STRIPE_ENABLED=1 runs could never see a Stripe customer
+      # (root-caused by W2.10).  Same convention as the CKAN/cloud
+      # credentials below: env_file only, never an empty override.
+      # Optional: set STRIPE_WEBHOOK_SECRET (e.g. whsec_...) so webhook signature test runs (test_stripe_webhook_invalid_signature)
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-whsec_test}
+      STRIPE_MARKETPLACE_WEBHOOK_SECRET: ${STRIPE_MARKETPLACE_WEBHOOK_SECRET:-whsec_test_marketplace}
+      # W2.10 (pilot 4.3): the Stripe E2E listener (stripe listen, host-side)
+      # writes its per-session whsec_ into ./.e2e/stripe-webhook-whsec AFTER
+      # this container boots — /app is the repo bind mount, so the backend
+      # reads it per request (billing.views._webhook_secret_candidates).
+      # Missing file = env secrets only; a stale file never breaks them.
+      STRIPE_WEBHOOK_SECRET_FILE: ${STRIPE_WEBHOOK_SECRET_FILE:-/app/.e2e/stripe-webhook-whsec}
+      # --- Marketplace connector credentials (from .env.test) ---
+      # CKAN: local instance in this compose stack
+      CKAN_TEST_URL: http://ckan-test:5000
+      # NB: CKAN_TEST_API_KEY, DADOS_GOV_BR_API_KEY, CKAN_DADOS_GOV_BR_API_KEY,
+      # AWS_DATA_EXCHANGE_*, Snowflake, GCP, Azure, and Databricks credentials
+      # are loaded exclusively via env_file (.env.test).  Do NOT repeat them
+      # here with ${VAR:-} empty defaults — the environment: section always
+      # overrides the env_file values, even when the substitution resolves to
+      # an empty string.
+      GCP_LOCATION: ${GCP_LOCATION:-US}
+      # G12 — explicit keys (test values; CI runners have no .env.dev).
+      SECRET_KEY: ${SECRET_KEY:-test-secret-key-for-pytest-32b}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-test-jwt-secret-key-for-pytest-32b}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-test-encryption-key-for-pytest-32b}
+      # Use HS256 in the test container (no RSA key pair available); RS256 is for production.
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+      # Worker API key for scheduled export/ingestion internal endpoints (E2E test default)
+      HUB_WORKER_API_KEY: ${HUB_WORKER_API_KEY:-e2e-test-worker-key-scheduled-export}
+    depends_on:
+      dlt-pipelines-init:
+        condition: service_completed_successfully
+      migrate-test-db:
+        condition: service_completed_successfully
+      ensure-test-db:
+        condition: service_completed_successfully
+      postgres-test:
+        condition: service_healthy
+      redis-cache-test:
+        condition: service_healthy
+      redis-queue-test:
+        condition: service_healthy
+      redis-events-test:
+        condition: service_healthy
+      redis-channels-test:
+        condition: service_healthy
+      minio-test:
+        condition: service_healthy
+      datacontract-service-test:
+        condition: service_healthy
+      dq-service-test:
+        condition: service_healthy
+      compliance-service-test:
+        condition: service_healthy
+      semantic-service-test:
+        condition: service_healthy
+      jaeger-test:
+        condition: service_healthy
+      mock-server-test:
+        condition: service_started
+      mailhog-test:
+        condition: service_started
+      ckan-test:
+        condition: service_healthy
+      # worker-service-test: not in depends_on to avoid cycle (worker depends on api); API enqueues to Redis, worker polls when ready
+      odh-inference-scheduler-test:
+        condition: service_healthy
+      odh-training-operator-test:
+        condition: service_healthy
+      prefect-integration-service-test:
+        condition: service_healthy
+    networks:
+      hub-test-net:
+        aliases:
+          - api-service
+    # Liveness: /health/live/ always 200 if process is up; /health/ checks DB+Redis and can 503 under load.
+    # gunicorn spawns GUNICORN_WORKERS=5 worker processes; each worker starts Django app + loads settings,
+    # so startup is slower than runserver but the liveness endpoint is served by whichever worker is free.
+    # start_period 180s: gunicorn with 5 UvicornWorkers under full-stack load needs ~60–90s for all workers
+    # to finish Django app loading. retries 20 × interval 15s = 5min grace after start_period.
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health/live/', timeout=10).read()\" || exit 1"]
+      interval: 15s
+      timeout: 15s
+      retries: 20
+      start_period: 180s
+    # 12G limit: a full in-container batch (e.g. batch 8-6, 404 tests) runs
+    # pytest in this container next to gunicorn's 9 idle workers (~2.6G).
+    # At 8G the cgroup OOM killer SIGKILL'd pytest around test 327/404
+    # (exit 137) once the staging/dlt tests stopped skipping.  12G still
+    # allows the parallel E2E batches (1+3+4) on the 61GiB host.
+    # Increased CPUs from 2→4 to handle concurrent requests.
+    deploy:
+      resources:
+        limits:
+          cpus: "4"
+          memory: 12G
+        reservations:
+          cpus: "0.5"
+          memory: 512M
+
+  # MVP mode is controlled by the MVP_MODE env var (read per-request by
+  # MvpModeApiGateMiddleware), not by which container is running.  Tests
+  # exercise gated paths via @override_settings(MVP_MODE=True/False).
+  # There is one API backend — no need for separate mvp/full containers.
+
+  # Worker Service for Testing
+  worker-service-test:
+    build:
+      context: .
+      dockerfile: services/worker/Dockerfile
+      target: dev
+    container_name: hub-test-worker
+    # Hardened runtime: read-only rootfs; only /tmp (tmpfs) and the
+    # bind-mounted /app volume are writable.
+    read_only: true
+    tmpfs:
+      - /tmp
+    # Include 'default' to drain legacy jobs enqueued before compliance fix (job_critical routing)
+    command: python services/worker/main.py job_critical job_default job_low default
+    ports:
+      - "${WORKER_TEST_HEALTH_PORT:-8087}:8080"
+    volumes:
+      - .:/app
+      # W3.10 — the volume-backed dlt pipeline STATE (processed
+      # keys, SQL cursors): the worker's state must survive
+      # container re-creates too — the cursor lives wherever the
+      # pipeline runs.
+      - dlt-pipelines-test-data:/dlt-data/pipelines
+    environment:
+      EMAIL_BACKEND: smtp
+      EMAIL_BASE_URL: ${EMAIL_BASE_URL:-http://localhost:8001}
+      EMAIL_JOB_NOTIFICATIONS_ENABLED: ${EMAIL_JOB_NOTIFICATIONS_ENABLED:-false}
+      SMTP_HOST: ${SMTP_HOST:-mailhog-test}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_USE_TLS: ${SMTP_USE_TLS:-false}
+      SMTP_USE_SSL: ${SMTP_USE_SSL:-false}
+      E2E_ENABLE_SMTP: "true"
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-noreply@test.hub.example.com}
+      WORKER_HEALTH_PORT: ${WORKER_HEALTH_PORT:-8080}
+      WORKER_MAX_CONCURRENCY: ${WORKER_MAX_CONCURRENCY:-4}
+      WORKER_RESERVED_SLOTS_RATIO: ${WORKER_RESERVED_SLOTS_RATIO:-0.5}
+      WORKER_STARVATION_THRESHOLD_SECONDS: ${WORKER_STARVATION_THRESHOLD_SECONDS:-300}
+      POSTGRES_HOST: postgres-test
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: ${POSTGRES_TEST_USER:-hub_test}
+      POSTGRES_PASSWORD: ${POSTGRES_TEST_PASSWORD:-hub_test}
+      # Use hub_test_test_shared so worker sees same data as api-service-test (password reset, etc.)
+      POSTGRES_DB: hub_test_test_shared
+      TEST_DB_SUFFIX: "shared"
+      REDIS_URL: redis://redis-cache-test:6379/0
+      REDIS_HOST: redis-cache-test
+      REDIS_CACHE_URL: redis://redis-cache-test:6379/0
+      REDIS_QUEUE_URL: redis://redis-queue-test:6379/0
+      REDIS_EVENTS_URL: redis://redis-events-test:6379/0
+      REDIS_CHANNELS_URL: redis://redis-channels-test:6379/0
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minio}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minio123}
+      AWS_S3_ENDPOINT_URL: http://minio-test:9000
+      AWS_STORAGE_BUCKET_NAME: ${AWS_STORAGE_BUCKET_NAME:-hub-files}
+      COMPLIANCE_SERVICE_URL: http://compliance-service-test:8082
+      DQ_SERVICE_URL: http://dq-service-test:8083
+      MOCK_SERVER_URL: http://mock-server-test:8080
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-test-internal-api-key-for-test-env}
+      JAEGER_AGENT_HOST: jaeger-test
+      JAEGER_AGENT_PORT: 6831
+      OPENTELEMETRY_ENABLED: false
+      ENVIRONMENT: test
+      APP_VERSION: ${APP_VERSION:-1.0.0-test}
+      DEBUG: "True"
+      # Prevent stale .pyc bytecode from masking source changes on the
+      # bind-mounted /app volume (same as api-service-test).
+      PYTHONDONTWRITEBYTECODE: "1"
+      LOG_LEVEL: DEBUG
+      DJANGO_SETTINGS_MODULE: hub.settings
+      # JWT settings must match api-service-test so tests that generate
+      # tokens (isolation, concurrency) use the same algorithm/key.
+      # G12 — explicit keys (same contract as api-service-test).
+      SECRET_KEY: ${SECRET_KEY:-test-secret-key-for-pytest-32b}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-test-jwt-secret-key-for-pytest-32b}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-test-encryption-key-for-pytest-32b}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+      PYTHONPATH: /app:/app/compliance_engine
+      ALLOWED_HOSTS: localhost,127.0.0.1,api-service,api-service-test,testserver,host.docker.internal  # host.docker.internal: the containerized k6 load client's view of the host (pilot-readiness 4.4)
+      CLAMAV_ENABLED: ${CLAMAV_ENABLED:-false}
+      CLAMAV_HOST: ${CLAMAV_HOST:-clamav-test}
+      CLAMAV_PORT: ${CLAMAV_PORT:-3310}
+    depends_on:
+      dlt-pipelines-init:
+        condition: service_completed_successfully
+      postgres-test:
+        condition: service_healthy
+      redis-cache-test:
+        condition: service_healthy
+      redis-queue-test:
+        condition: service_healthy
+      redis-events-test:
+        condition: service_healthy
+      redis-channels-test:
+        condition: service_healthy
+      api-service-test:
+        condition: service_started
+      jaeger-test:
+        condition: service_healthy
+      mock-server-test:
+        condition: service_started
+    networks:
+      - hub-test-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1G
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+
+  # Prefect Server for Testing (pin to explicit 3.x so client/server major versions match)
+  # Waits for prefect-db, runs migrations explicitly (avoids TimeoutError in server lifespan), then starts server.
+  prefect-server-test:
+    image: prefecthq/prefect:3-python3.12
+    container_name: hub-test-prefect-server
+    restart: on-failure
+    command: ["sh", "-c", "pip install --quiet asyncpg && python /wait_for_prefect_db.py && sleep 15 && prefect server database upgrade -y && exec prefect server start --host 0.0.0.0"]
+    environment:
+      PREFECT_API_URL: http://localhost:4200/api
+      PREFECT_API_DATABASE_CONNECTION_URL: postgresql+asyncpg://prefect:prefect@prefect-db-test:5432/prefect
+      PREFECT_SERVER_DATABASE_MIGRATE_ON_START: "false"
+      PREFECT_SERVER_DATABASE_SQLALCHEMY_POOL_TIMEOUT: "120"
+      PREFECT_LOGGING_LEVEL: DEBUG
+      ENVIRONMENT: test
+    ports:
+      - "${PREFECT_SERVER_TEST_PORT:-4202}:4200"
+      - "${PREFECT_UI_TEST_PORT:-4203}:4201"
+    volumes:
+      - prefect-server-test-data:/root/.prefect
+      - ./scripts/wait_for_prefect_db.py:/wait_for_prefect_db.py:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4200/api/health', timeout=10)"]
+      interval: 15s
+      timeout: 15s
+      retries: 12
+      start_period: 240s
+    depends_on:
+      prefect-db-test:
+        condition: service_healthy
+    networks:
+      - hub-test-net
+
+  # Prefect Database (PostgreSQL) for Testing
+  # Bounded memory and low shared_buffers so it does not compete with postgres-test or OOM.
+  # Use postgres:16 (non-alpine) to avoid pg_ctl shutdown timeout during init (alpine can hang).
+  prefect-db-test:
+    image: postgres:16
+    container_name: hub-test-prefect-db
+    environment:
+      POSTGRES_USER: prefect
+      POSTGRES_PASSWORD: prefect
+      POSTGRES_DB: prefect
+      ENVIRONMENT: test
+    # Port not published: services use prefect-db-test:5432 on the Docker network. Omit ports to avoid host port conflicts (5435/5436/5437).
+    volumes:
+      - prefect-db-test-data:/var/lib/postgresql/data
+      - ./infrastructure/prefect-db/01-pgcrypto.sql:/docker-entrypoint-initdb.d/01-pgcrypto.sql:ro
+      - ./infrastructure/prefect-db/02-pg-hba-host.sh:/docker-entrypoint-initdb.d/02-pg-hba-host.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U prefect -t 5"]
+      interval: 15s
+      timeout: 10s
+      retries: 12
+      start_period: 600s
+    deploy:
+      resources:
+        limits:
+          memory: 1536M
+        reservations:
+          memory: 256M
+    networks:
+      - hub-test-net
+    command: >
+      postgres
+      -c shared_buffers=64MB
+      -c work_mem=4MB
+      -c max_connections=50
+      -c checkpoint_timeout=60
+
+  # One-off: create default docker work pool so deployments succeed before worker is fully up
+  # Worker creates pool on start, but there can be a race; this ensures pool exists.
+  ensure-prefect-work-pool:
+    build:
+      context: .
+      dockerfile: services/prefect-integration/Dockerfile.worker-docker
+    image: hub-test-prefect-worker-docker:latest
+    container_name: hub-test-ensure-prefect-work-pool
+    command: ["sh", "-c", "prefect work-pool create default --type docker 2>/dev/null || true"]
+    environment:
+      PREFECT_API_URL: http://prefect-server-test:4200/api
+    depends_on:
+      prefect-server-test:
+        condition: service_healthy
+    networks:
+      - hub-test-net
+    restart: "no"
+
+  # Prefect Worker for Testing (Docker work pool - required for deployments with custom images)
+  # Process work pool does not support image=; use Docker worker so flow.deploy(image=...) works
+  prefect-worker-test:
+    build:
+      context: .
+      dockerfile: services/prefect-integration/Dockerfile.worker-docker
+    image: hub-test-prefect-worker-docker:latest
+    container_name: hub-test-prefect-worker
+    command: prefect worker start --pool default --type docker
+    environment:
+      PREFECT_API_URL: http://prefect-server-test:4200/api
+      PREFECT_LOGGING_LEVEL: DEBUG
+      # Hub API configuration for scheduled ingestion/export worker API (E2E profile)
+      HUB_BASE_URL: ${HUB_BASE_URL:-http://api-service-test:8000}
+      HUB_WORKER_API_KEY: ${HUB_WORKER_API_KEY:-e2e-test-worker-key-scheduled-export}
+      ENVIRONMENT: test
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      prefect-server-test:
+        condition: service_healthy
+      # Note: api-service-test removed to avoid circular dep; worker creates work pool for deployment sync
+    networks:
+      - hub-test-net
+    restart: on-failure
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import os; procs = [d for d in os.listdir('/proc') if d.isdigit()]; found = any(os.path.exists(f'/proc/{p}/cmdline') and b'prefect' in open(f'/proc/{p}/cmdline', 'rb').read() for p in procs); exit(0 if found else 1)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # Frontend Service for Testing
+  frontend-test:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_APP_NAME: ${APP_NAME:-Meshant}
+        VITE_FEATURE_TOAST_ENABLED: ${VITE_FEATURE_TOAST_ENABLED:-}
+        VITE_FEATURE_BREADCRUMBS_ENABLED: ${VITE_FEATURE_BREADCRUMBS_ENABLED:-}
+        VITE_FEATURE_RESOURCE_PICKERS_ENABLED: ${VITE_FEATURE_RESOURCE_PICKERS_ENABLED:-}
+        # Empty by default: app uses relative /api/v1 paths proxied by nginx.
+        # Set to an absolute URL only for non-nginx deployments (e.g. CDN-hosted SPA).
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
+        VITE_WS_BASE_URL: ${VITE_WS_BASE_URL:-}
+        HTTP_PROXY: ${HTTP_PROXY:-}
+        HTTPS_PROXY: ${HTTPS_PROXY:-}
+        NO_PROXY: ${NO_PROXY:-}
+        NPM_USE_PUBLIC_DNS: ${NPM_USE_PUBLIC_DNS:-0}
+    container_name: hub-test-frontend
+    ports:
+      - "${FRONTEND_TEST_PORT:-3010}:8080"
+    volumes:
+      - ./frontend/nginx.test.conf:/etc/nginx/templates/default.conf.template:ro
+    environment:
+      - VITE_ENV=${ENV:-development}
+    networks:
+      - hub-test-net
+    depends_on:
+      api-service-test:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+  # Prefect Integration Service for Testing
+  prefect-integration-service-test:
+    build:
+      context: .
+      dockerfile: services/prefect-integration/Dockerfile
+      args:
+        # Test deps baked in so the in-container pytest suites run without a
+        # runtime `pip install` (Phase P.1 — see test_compose_hermetic_images.py).
+        INSTALL_DEV_DEPS: "true"
+    image: hub-test-prefect-integration:latest
+    container_name: hub-test-prefect-integration
+    # Hardened runtime: read-only rootfs; only /tmp (tmpfs) and the
+    # bind-mounted /app volume are writable.
+    read_only: true
+    tmpfs:
+      - /tmp
+    # No `user: root` override — the image is hardened (USER appuser) and the
+    # test deps are baked in at build time (INSTALL_DEV_DEPS), so the service
+    # runs as appuser like the other hardened test services.
+    command: ["sh", "-c", "cd /app/services/prefect-integration && PYTHONPATH=/app python -m uvicorn main:app --host 0.0.0.0 --port 8084"]
+    ports:
+      - "${PREFECT_INTEGRATION_TEST_PORT:-8114}:8084"
+    volumes:
+      - .:/app
+    environment:
+      # PYTHONPATH must be set at container level (not just in the command)
+      # so that `docker compose exec ... pytest` can import hub.settings
+      # before pytest-django's early plugin initialization.
+      PYTHONPATH: /app
+      # Reduce Redis connect timeout from default 5s to 0.5s so that
+      # django.setup() AppConfig.ready() event subscriptions fail fast
+      # when Redis is unreachable, instead of hanging 5s per subscription.
+      EVENT_BUS_REDIS_SOCKET_CONNECT_TIMEOUT: "0.5"
+      EVENT_BUS_REDIS_SOCKET_TIMEOUT: "1"
+      POSTGRES_HOST: postgres-test
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_TEST_USER:-hub_test}
+      POSTGRES_PASSWORD: ${POSTGRES_TEST_PASSWORD:-hub_test}
+      # Use shared test DB so prefect-integration sees data created by api-service-test pytest
+      POSTGRES_DB: hub_test_test_shared
+      # Same convention as api-service-test/worker-service-test: without this,
+      # hub/settings.py derives a RANDOM uuid test-DB suffix per process and
+      # pytest-django's test DB never exists (every suite run errors on
+      # "database ... does not exist").
+      TEST_DB_SUFFIX: "shared"
+      PREFECT_API_URL: http://prefect-server-test:4200/api
+      PREFECT_DEPLOYMENT_IMAGE: ${PREFECT_DEPLOYMENT_IMAGE:-hub-test-prefect-integration:latest}
+      # Docker network for flow containers (project_hub-test-net; set if compose project name differs)
+      DOCKER_NETWORK_NAME: ${DOCKER_NETWORK_NAME:-datainteroperabilityhub_hub-test-net}
+      DJANGO_SETTINGS_MODULE: hub.settings
+      REDIS_CACHE_URL: redis://redis-cache-test:6379/0
+      REDIS_QUEUE_URL: redis://redis-queue-test:6379/0
+      REDIS_EVENTS_URL: redis://redis-events-test:6379/0
+      REDIS_CHANNELS_URL: redis://redis-channels-test:6379/0
+      REDIS_URL: redis://redis-cache-test:6379/0
+      HUB_BASE_URL: http://api-service-test:8000
+      HUB_WORKER_API_KEY: ${HUB_WORKER_API_KEY:-e2e-test-worker-key-scheduled-export}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-test-internal-api-key-for-test-env}
+      # G12 — explicit keys (same contract as api-service-test).
+      SECRET_KEY: ${SECRET_KEY:-test-secret-key-for-pytest-32b}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-test-jwt-secret-key-for-pytest-32b}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-test-encryption-key-for-pytest-32b}
+      # MinIO test credentials — sourced from the SAME substitution vars
+      # as the minio-test service so credential drift is impossible.
+      TEST_MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minio}
+      TEST_MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minio123}
+      # Prevent stale .pyc bytecode from masking source changes on the
+      # bind-mounted /app volume (same as api-service-test).
+      PYTHONDONTWRITEBYTECODE: "1"
+      ENVIRONMENT: test
+      DEBUG: "True"
+    # Resource limits so the container-hardening smoke check sees a bounded
+    # service (mirrors the clamav/postgres deploy blocks).
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+        reservations:
+          memory: 512m
+    depends_on:
+      prefect-server-test:
+        condition: service_healthy
+      ensure-prefect-work-pool:
+        condition: service_completed_successfully
+      prefect-worker-test:
+        condition: service_started
+      postgres-test:
+        condition: service_healthy
+      redis-cache-test:
+        condition: service_healthy
+      minio-test:
+        condition: service_healthy
+      # NOTE: api-service-test is NOT listed here because it depends
+      # on prefect-integration-service-test (circular).  The 3
+      # scheduled-export hub-API integration tests skip gracefully
+      # when api-service-test is not running.  They pass when the
+      # full test stack is up (api-service-test starts after us).
+    networks:
+      - hub-test-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8084/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      # Full-mode django.setup() was measured at ~105s inside this container
+      # (2026-08-23, `python -c 'import main'`). The previous 90s budget marked
+      # the service unhealthy before it could bind, and api-service-test
+      # (depends_on: condition: service_healthy) then never started.
+      # Pinned by scripts/tests/test_compose_hermetic_images.py — re-measure
+      # if the import graph changes materially.
+      start_period: 200s
+  # Prometheus for Testing
+  prometheus-test:
+    image: prom/prometheus:v2.53.0
+    container_name: hub-test-prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.enable-lifecycle'
+    ports:
+      - "${PROMETHEUS_TEST_PORT:-9091}:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus-test.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - ./monitoring/prometheus/alerts:/etc/prometheus/alerts:ro
+      - prometheus-test-data:/prometheus
+    networks:
+      - hub-test-net
+    # Prometheus scrapes targets independently — it does not need scrape
+    # targets to be running at startup (it logs "target down" and retries).
+    # Removing the service depends_on avoids a circular chain
+    # (alertmanager → prometheus → api-service) that prevents Alertmanager
+    # from starting when only a subset of services is requested.
+    depends_on:
+      - redis-exporter-cache-test
+      - redis-exporter-queue-test
+      - redis-exporter-events-test
+      - redis-exporter-channels-test
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Grafana for Testing
+  # Official image has no curl/wget; use nc to check port 3000 and start_period for slow boot.
+  grafana-test:
+    image: grafana/grafana:11.1.0
+    container_name: hub-test-grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    ports:
+      - "${GRAFANA_TEST_PORT:-3011}:3000"
+    volumes:
+      - grafana-test-data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    networks:
+      - hub-test-net
+    depends_on:
+      - prometheus-test
+    healthcheck:
+      # Official image may lack curl/wget; try nc then wget; after start_period avoid unhealthy.
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 3000 2>/dev/null || wget -q -O /dev/null http://127.0.0.1:3000/api/health 2>/dev/null || exit 0"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+
+  # Alertmanager for Testing
+  alertmanager-test:
+    image: prom/alertmanager:v0.27.0
+    container_name: hub-test-alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager-test.yml'
+      - '--storage.path=/alertmanager'
+    ports:
+      - "${ALERTMANAGER_TEST_PORT:-9093}:9093"
+    volumes:
+      - ./monitoring/alertmanager/alertmanager-test.yml:/etc/alertmanager/alertmanager-test.yml:ro
+      - alertmanager-test-data:/alertmanager
+    networks:
+      - hub-test-net
+    depends_on:
+      - prometheus-test
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9093/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # CKAN Web Application for Testing
+  # Provides a local CKAN API at http://ckan-test:5000 for integration tests
+  # Uses the CKAN backing services below (DB, Solr, Redis)
+  ckan-test:
+    image: ckan/ckan-dev:2.10
+    container_name: hub-test-ckan-app
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        # Write DB/Solr/Redis URLs into ckan.ini (prerun.py does this but fails on db upgrade)
+        INI=/srv/app/ckan.ini
+        sed -i 's|^sqlalchemy.url = .*|sqlalchemy.url = postgresql://ckan:ckan@ckan-test-db-test:5432/ckan_test|' $$INI
+        sed -i 's|^solr_url = .*|solr_url = http://ckan-test-solr-test:8983/solr/ckan|' $$INI
+        sed -i 's|^ckan.redis.url = .*|ckan.redis.url = redis://ckan-test-redis-test:6379/0|' $$INI
+        sed -i 's|^ckan.site_url = .*|ckan.site_url = http://ckan-test:5000|' $$INI
+        sed -i 's|^beaker.session.secret =.*|beaker.session.secret = ckan-test-secret|' $$INI
+        # Disable datastore plugin (needs separate DB; not needed for CKAN API tests)
+        sed -i 's|ckan.plugins = .*|ckan.plugins = image_view text_view envvars|' $$INI
+        # Also set sqlalchemy.url in [app:main] if the key uses whitespace
+        python3 -c "
+        import re
+        with open('$$INI') as f: c = f.read()
+        c = re.sub(r'sqlalchemy\.url\s*=\s*[^\n]+', 'sqlalchemy.url = postgresql://ckan:ckan@ckan-test-db-test:5432/ckan_test', c)
+        with open('$$INI', 'w') as f: f.write(c)
+        "
+        # Verify the config was written
+        echo "[ckan-test] Config:" && grep -E "(sqlalchemy.url|solr_url|ckan.redis.url|ckan.plugins)" $$INI
+        # Wait for DB
+        for i in $$(seq 1 30); do
+          pg_isready -h ckan-test-db-test -U ckan -d ckan_test -q && break
+          echo "[ckan-test] Waiting for DB... $$i/30"
+          sleep 2
+        done
+        # Init DB
+        ckan -c $$INI db init 2>&1 || ckan -c $$INI db upgrade 2>&1
+        # Create sysadmin (ignore if exists)
+        ckan -c $$INI user add admin email=admin@test.local password=admin1234 2>&1 || true
+        ckan -c $$INI sysadmin add admin 2>&1 || true
+        # Seed test data (org + dataset with resource) — idempotent
+        ckan -c $$INI run --host 0.0.0.0 --port 5000 &
+        CKAN_PID=$$!
+        # Wait for CKAN to accept requests
+        for i in $$(seq 1 30); do
+          curl -sf http://localhost:5000/api/3/action/status_show >/dev/null 2>&1 && break
+          sleep 2
+        done
+        # Extra settling time — CKAN may accept status_show but still be
+        # initialising Solr / Redis connections needed for write operations.
+        sleep 10
+        # Create org + dataset if missing (with retries for write operations)
+        python3 -c "
+        import json, os, sys
+        try:
+            import requests
+        except ImportError:
+            print('[ckan-seed] requests not available, trying urllib fallback')
+            import urllib.request
+            requests = None
+        token = os.getenv('CKAN_SEED_TOKEN', '')
+        if not token:
+            # Generate a token via CLI
+            import subprocess
+            r = subprocess.run(['ckan', '-c', '$$INI', 'user', 'token', 'add', 'admin', 'seed_token'],
+                               capture_output=True, text=True)
+            for line in r.stdout.splitlines():
+                line = line.strip()
+                if line.startswith('eyJ'):
+                    token = line
+                    break
+        if not token:
+            print('[ckan-seed] No token, skipping seed'); sys.exit(0)
+        base = 'http://localhost:5000'
+        def _get(url, headers, timeout=30):
+            if requests:
+                return requests.get(url, headers=headers, timeout=timeout)
+            else:
+                req = urllib.request.Request(url, headers=headers)
+                return urllib.request.urlopen(req, timeout=timeout)
+        def _post(url, headers, json_data, timeout=30):
+            body = json.dumps(json_data).encode('utf-8')
+            headers2 = dict(headers)
+            headers2['Content-Type'] = headers2.get('Content-Type', 'application/json')
+            if requests:
+                return requests.post(url, headers=headers2, data=body, timeout=timeout)
+            else:
+                req = urllib.request.Request(url, data=body, headers=headers2, method='POST')
+                return urllib.request.urlopen(req, timeout=timeout)
+        def _status(r):
+            return r.status_code if requests else r.getcode()
+        def _json_body(r):
+            return r.json() if requests else json.loads(r.read().decode('utf-8'))
+        h = {'Authorization': token}
+        # Check if dataset exists
+        r = _get(f'{base}/api/3/action/package_show?id=meshant-test-dataset', headers=h)
+        if _status(r) == 200 and _json_body(r).get('success'):
+            print('[ckan-seed] Test dataset already exists'); sys.exit(0)
+        # Create org (retry up to 3 times — Solr warmup can be slow)
+        for attempt in range(1, 4):
+            try:
+                r_org = _post(f'{base}/api/3/action/organization_create', headers=h,
+                              json_data={'name': 'meshant-test-org', 'title': 'Meshant Test Org'})
+                break
+            except Exception as e:
+                if attempt < 3:
+                    print(f'[ckan-seed] org create attempt {attempt} failed ({e}), retrying...')
+                    import time
+                    time.sleep(5)
+                else:
+                    print(f'[ckan-seed] org create failed after 3 attempts: {e}')
+                    sys.exit(0)
+        # Create dataset
+        r = _post(f'{base}/api/3/action/package_create', headers=h,
+                  json_data={'name': 'meshant-test-dataset', 'title': 'Meshant Test Dataset',
+                             'notes': 'Sample dataset for integration testing', 'owner_org': 'meshant-test-org',
+                             'resources': [
+                                 {'name': 'sample.csv',
+                                  'url': 'http://ckan-test:5000/api/3/action/status_show',
+                                  'format': 'JSON', 'description': 'CKAN status endpoint (test download target)'},
+                                 {'name': 'package_search.json',
+                                  'url': 'http://ckan-test:5000/api/3/action/package_search?rows=1',
+                                  'format': 'JSON', 'description': 'CKAN search endpoint (test download target)'},
+                                 {'name': 'broken_url_test',
+                                  'url': 'http://ckan-test:5000/api/3/action/package_show?id=zzz-nonexistent-package-12345',
+                                  'format': 'JSON', 'description': 'Deliberately broken URL (404) for error-handling tests'}
+                             ]})
+        print(f'[ckan-seed] Created test dataset: {_json_body(r).get(\"success\")}')
+        " 2>&1
+        # Wait for foreground CKAN process
+        wait $$CKAN_PID
+    environment:
+      CKAN_SQLALCHEMY_URL: postgresql://ckan:ckan@ckan-test-db-test:5432/ckan_test
+      CKAN_SOLR_URL: http://ckan-test-solr-test:8983/solr/ckan
+      CKAN__REDIS__URL: redis://ckan-test-redis-test:6379/0
+      CKAN_SITE_URL: http://ckan-test:5000
+      CKAN_SITE_ID: default
+      CKAN___BEAKER__SESSION__SECRET: ckan-test-secret
+      # Fixed seed token so .env.test CKAN_TEST_API_KEY stays valid across restarts
+      # Re-minted 2026-10-04 (pilot-readiness 1.4 rehearsal); superseded admin tokens revoked.
+      CKAN_SEED_TOKEN: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJqdGkiOiJ2d1ZvVWNXVzU2RWVoaTdaOVRLZ3FFdzhZNHVHbmpaSWZZN2NQdkVXNjQwIiwiaWF0IjoxNzkxMTYxODU2fQ.2xJeei90JsAU2Gs_aejPM6F5THkwgpkgL6RhEpm_utI  # gitleaks:allow — test-stack CKAN seed token (instance-local, mirrored in .env.test; pilot 1.4)
+    ports:
+      - "${CKAN_TEST_PORT:-5100}:5000"
+    depends_on:
+      ckan-test-db-test:
+        condition: service_healthy
+      ckan-test-solr-test:
+        condition: service_healthy
+      ckan-test-redis-test:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5000/api/3/action/status_show || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 180s
+    networks:
+      - hub-test-net
+
+  # CKAN Test Database for Testing
+  # start_period + retries: recovery after unclean shutdown can fsync for many minutes on slow disks;
+  # without this, Compose marks the service unhealthy before pg_isready succeeds (blocks ckan-test).
+  ckan-test-db-test:
+    image: postgres:16-alpine
+    container_name: hub-test-ckan-test-db
+    environment:
+      POSTGRES_USER: ckan
+      POSTGRES_PASSWORD: ckan
+      POSTGRES_DB: ckan_test
+      POSTGRES_INITDB_ARGS: "-E UTF8"
+    ports:
+      - "${CKAN_TEST_DB_TEST_PORT:-5436}:5432"
+    volumes:
+      - ckan-test-db-test-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ckan -d ckan_test -t 5"]
+      interval: 15s
+      timeout: 10s
+      retries: 15
+      start_period: 600s
+    networks:
+      - hub-test-net
+
+  # CKAN Test Solr for Testing (uses CKAN's custom Solr image with correct schema)
+  ckan-test-solr-test:
+    image: ckan/ckan-solr:2.10-solr9
+    container_name: hub-test-ckan-test-solr
+    ports:
+      - "${CKAN_TEST_SOLR_TEST_PORT:-8983}:8983"
+    volumes:
+      - ckan-test-solr-test-data:/var/solr
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8983/solr/ckan/admin/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
+    networks:
+      - hub-test-net
+
+  # CKAN Test Redis for Testing
+  ckan-test-redis-test:
+    image: redis:7-alpine
+    container_name: hub-test-ckan-test-redis
+    command: redis-server --appendonly yes
+    ports:
+      - "${CKAN_TEST_REDIS_TEST_PORT:-6383}:6379"
+    volumes:
+      - ckan-test-redis-test-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - hub-test-net
+
+  # ODH Training Operator Service for Testing
+  odh-training-operator-test:
+    build:
+      context: .
+      dockerfile: services/odh-training-operator/Dockerfile
+    container_name: hub-test-odh-training-operator
+    ports:
+      - "${ODH_TRAINING_OPERATOR_TEST_PORT:-8096}:8080"
+    networks:
+      - hub-test-net
+    environment:
+      - PORT=8080
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health').read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+  # ODH Inference Scheduler Service for Testing
+  odh-inference-scheduler-test:
+    build:
+      context: .
+      dockerfile: services/odh-inference-scheduler/Dockerfile
+    container_name: hub-test-odh-inference-scheduler
+    ports:
+      - "${ODH_INFERENCE_SCHEDULER_TEST_PORT:-8097}:8080"
+    networks:
+      - hub-test-net
+    environment:
+      - PORT=8080
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health').read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+  # Traefik API Gateway for Testing
+  traefik-test:
+    image: traefik:v3.0
+    container_name: hub-test-traefik
+    command:
+      - "--api.dashboard=true"
+      - "--api.insecure=true"
+      - "--providers.docker=false"
+      - "--providers.file.directory=/etc/traefik/dynamic"
+      - "--providers.file.watch=true"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--log.level=INFO"
+    ports:
+      - "${TRAEFIK_TEST_PORT:-8080}:80"
+      - "${TRAEFIK_SECURE_TEST_PORT:-8443}:443"
+      - "${TRAEFIK_DASHBOARD_TEST_PORT:-8099}:8080"
+    volumes:
+      - ./infrastructure/traefik/traefik-test.yml:/etc/traefik/traefik.yml:ro
+      - ./infrastructure/traefik/dynamic:/etc/traefik/dynamic:ro
+    networks:
+      - hub-test-net
+    depends_on:
+      - jaeger-test
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/api/rawdata"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+  # Tempo (OTLP receiver + query API) — enables the observability smoke
+  # tests and real OTLP span export from api-service-test. In-memory
+  # storage (test-only; no persistence).
+  tempo-test:
+    image: grafana/tempo:2.4.2
+    container_name: hub-test-tempo
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./infrastructure/observability/tempo-test.yaml:/etc/tempo.yaml:ro
+    networks:
+      - hub-test-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3200/ready || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # Loki (log query API) — enables the observability smoke test's Loki
+  # reachability check. Log SHIPPING stays out of scope for the test
+  # stack (docker log drivers are host-level).
+  loki-test:
+    image: grafana/loki:2.9.6
+    container_name: hub-test-loki
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+    networks:
+      - hub-test-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3100/ready || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+volumes:
+  dlt-pipelines-test-data:
+    driver: local
+  postgres-test-data:
+    driver: local
+  redis-cache-test-data:
+    driver: local
+  redis-queue-test-data:
+    driver: local
+  redis-events-test-data:
+    driver: local
+  redis-channels-test-data:
+    driver: local
+  postgres-baas-test-data:
+    driver: local
+  redis-baas-test-data:
+    driver: local
+  minio-test-data:
+    driver: local
+  clamav-test-db:
+    driver: local
+  fuseki-test-data:
+    driver: local
+  prefect-server-test-data:
+    driver: local
+  prefect-db-test-data:
+    driver: local
+  prometheus-test-data:
+    driver: local
+  grafana-test-data:
+    driver: local
+  alertmanager-test-data:
+    driver: local
+  ckan-test-db-test-data:
+    driver: local
+  ckan-test-solr-test-data:
+    driver: local
+  ckan-test-redis-test-data:
+    driver: local
+
+networks:
+  hub-test-net:
+    driver: bridge

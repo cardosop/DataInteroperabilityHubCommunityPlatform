@@ -1,0 +1,146 @@
+{
+  "title": "Databricks \u2014 DLT Pipeline Fleet",
+  "uid": "databricks-dlt",
+  "description": "Phase 10 (add-databricks-dlt-pipelines 10.6) \u2014 DLT pipeline-fleet observability: failed updates, the update failure rate, terminal outcomes, and per-workspace update volume. Metrics from hub/apps/databricks_admin/metrics.py (record_dlt_update_outcome at the terminal-transition chokepoint).",
+  "tags": [
+    "databricks",
+    "dlt",
+    "production"
+  ],
+  "timezone": "browser",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Failed Updates (24h)",
+      "type": "stat",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 8,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(databricks_dlt_updates_total{outcome=\"FAILED\"}[24h]))",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "steps": [
+              {
+                "value": 0,
+                "color": "green"
+              },
+              {
+                "value": 1,
+                "color": "red"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Update Failure Rate (30m)",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 8,
+        "y": 0,
+        "w": 16,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(databricks_dlt_updates_total{outcome=\"FAILED\"}[30m])) / sum(rate(databricks_dlt_updates_total[30m]))",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "steps": [
+              {
+                "value": 0,
+                "color": "green"
+              },
+              {
+                "value": 0.1,
+                "color": "yellow"
+              },
+              {
+                "value": 0.25,
+                "color": "red"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Terminal Updates by Outcome (24h)",
+      "type": "table",
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 12,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "sum by (outcome) (increase(databricks_dlt_updates_total[24h]))",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none"
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Terminal Updates by Workspace (24h)",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 8,
+        "y": 0,
+        "w": 16,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "sum by (workspace_id) (increase(databricks_dlt_updates_total[24h]))",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "steps": [
+              {
+                "value": 0,
+                "color": "green"
+              },
+              {
+                "value": 0.1,
+                "color": "yellow"
+              },
+              {
+                "value": 0.25,
+                "color": "red"
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "time": null
+}

@@ -1,0 +1,95 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.018954038619995117
+  },
+  "journeys": [
+    {
+      "journey_id": "TA-008-a0f7f279",
+      "journey_name": "Configure Integration Ecosystem",
+      "persona": "Tenant Admin",
+      "status": "completed",
+      "start_time": 1771264418.8403456,
+      "end_time": 1771264418.8592997,
+      "duration": 0.018954038619995117,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Note: Connector Installation Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771264418.845079,
+          "end_time": 1771264418.845084,
+          "duration": 5.0067901611328125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Connection Configuration Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771264418.848664,
+          "end_time": 1771264418.8486671,
+          "duration": 3.0994415283203125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Integration Testing Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771264418.8523471,
+          "end_time": 1771264418.8523514,
+          "duration": 4.291534423828125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Integration Deployment Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771264418.8562663,
+          "end_time": 1771264418.8562694,
+          "duration": 3.0994415283203125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Integration Health Monitoring Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771264418.8592958,
+          "end_time": 1771264418.8592985,
+          "duration": 2.6226043701171875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-16T17:53:38.859374"
+}

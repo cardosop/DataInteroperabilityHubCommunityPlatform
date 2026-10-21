@@ -1,0 +1,174 @@
+# Phase 250.0.20 — Prometheus alert rules for asset creation
+#
+# Five alert rules covering the O-2 SLOs from §10.5 of the Phase 250
+# source plan:
+#
+#   1. Workflow failure rate (>5% over 15min) — fail-closed enforcement broken
+#   2. Workflow p95 duration regression (>30s p95 over 10min) — gate latency spike
+#   3. Orphan-DRAFT count growth — Phase 250.1.E cleanup behind
+#   4. Semantic-status FAIL rate (>10% over 1h) — semantic-service degraded
+#   5. Federated-import error rate (>5% over 15min) — marketplace upstream unhealthy
+#
+# Synthetic firing tests should mirror these rules in
+# `monitoring/prometheus/alerts/asset-creation-synthetic-firing.yml`
+# (Phase 240.5.B.4 pattern; deferrable to Phase 250.E equivalent).
+#
+# Each alert has:
+#   * `severity` label per Phase 240's convention (page / warning / info)
+#   * `runbook_url` annotation pointing at the operational runbook
+#   * `team: asset-creation-eng` label for routing
+#
+# References:
+#   * ADR-AST-001 — fail-closed asset persistence
+#   * ADR-AST-006 — semantic graceful-degrade
+#   * docs/runbooks/asset-creation.md — symptom triage matrix
+#   * docs/runbooks/asset-fail-closed-rollback.md
+#   * docs/runbooks/orphan-draft-cleanup.md
+#   * docs/runbooks/semantic-degraded.md
+#   * docs/runbooks/federated-degradation.md
+
+groups:
+  - name: asset_creation_workflow
+    interval: 30s
+    rules:
+      - alert: AssetWorkflowFailureRateHigh
+        expr: |
+          (
+            sum(rate(asset_workflow_terminal_total{state="FAILED"}[15m]))
+            /
+            sum(rate(asset_workflow_terminal_total[15m]))
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: page
+          team: asset-creation-eng
+          phase: "250.1.A"
+        annotations:
+          summary: "Asset-creation workflow failure rate above 5% for 5 minutes"
+          description: |
+            More than 5% of asset-creation workflow runs are failing in the last
+            15 minutes. This may indicate a regression in the Phase 250.1.A
+            fail-closed re-sequence OR an upstream microservice outage
+            (compliance-service / dq-service).
+          runbook_url: "https://meshant-internal.example.com/runbooks/asset-fail-closed-rollback"
+          dashboard_url: "https://meshant-internal.example.com/d/asset-creation"
+
+      - alert: AssetWorkflowDurationP95Regressed
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(asset_workflow_duration_seconds_bucket[10m]))
+          ) > 30
+        for: 10m
+        labels:
+          severity: warning
+          team: asset-creation-eng
+          phase: "250.1.A"
+        annotations:
+          summary: "Asset-creation workflow p95 duration above 30s SLO"
+          description: |
+            p95 workflow duration has regressed past the 30-second SLO. Likely
+            causes: gate latency (compliance-service / dq-service slowdown),
+            workflow worker pool saturation, or a poison-pill workflow.
+          runbook_url: "https://meshant-internal.example.com/runbooks/workflow-stuck"
+          dashboard_url: "https://meshant-internal.example.com/d/asset-creation"
+
+      - alert: AssetWorkflowDurationP95TwoXSLO
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(asset_workflow_duration_seconds_bucket[10m]))
+          ) > 60
+        for: 15m
+        labels:
+          severity: page
+          team: asset-creation-eng
+          phase: "250.DoD.4"
+        annotations:
+          summary: "Asset-creation workflow p95 duration > 2x SLO for 15 minutes"
+          description: |
+            Escalation threshold breached: p95 workflow duration has remained above
+            60s (2x the 30s SLO) for 15 minutes. Page the on-call engineer and
+            begin incident triage immediately.
+          runbook_url: "https://meshant-internal.example.com/runbooks/asset-creation"
+          dashboard_url: "https://meshant-internal.example.com/d/asset-creation"
+
+      - alert: AssetWorkflowDurationP95ThreeXSLOAutoRollback
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(asset_workflow_duration_seconds_bucket[10m]))
+          ) > 90
+        for: 30m
+        labels:
+          severity: critical
+          team: asset-creation-eng
+          phase: "250.DoD.4"
+          auto_rollback: "true"
+        annotations:
+          summary: "Asset-creation workflow p95 duration > 3x SLO for 30 minutes"
+          description: |
+            Auto-rollback threshold breached: p95 workflow duration has remained
+            above 90s (3x the 30s SLO) for 30 minutes. Trigger rollback automation
+            to execute `helm rollback hub <previous-revision>`.
+          runbook_url: "https://meshant-internal.example.com/runbooks/asset-creation"
+          rollback_command: "helm rollback hub <previous-revision>"
+          dashboard_url: "https://meshant-internal.example.com/d/asset-creation"
+
+      - alert: AssetOrphanDraftCountHigh
+        expr: |
+          sum(asset_orphan_draft_count) > 100
+        for: 30m
+        labels:
+          severity: warning
+          team: asset-creation-eng
+          phase: "250.1.E"
+        annotations:
+          summary: "Orphan-DRAFT asset count above 100 sustained 30 minutes"
+          description: |
+            More than 100 DRAFT assets exist with no associated WorkflowRun and
+            haven't progressed in 30+ days. Run the cleanup procedure in the
+            linked runbook to reclaim quota and deduplicate.
+          runbook_url: "https://meshant-internal.example.com/runbooks/orphan-draft-cleanup"
+          dashboard_url: "https://meshant-internal.example.com/d/asset-creation"
+
+      - alert: AssetSemanticFailRateHigh
+        expr: |
+          (
+            sum(asset_semantic_status_count{status="FAIL"})
+            /
+            sum(asset_semantic_status_count)
+          ) > 0.1
+        for: 1h
+        labels:
+          severity: warning
+          team: asset-creation-eng
+          phase: "250.7.A"
+        annotations:
+          summary: "More than 10% of assets in semantic_status=FAIL for 1 hour"
+          description: |
+            Sustained semantic-status FAIL rate suggests semantic-service
+            degradation OR a contract-shape regression that's producing
+            unmappable assets. Phase 250.7.A graceful-degrade keeps assets
+            usable but undiscoverable in semantic search.
+          runbook_url: "https://meshant-internal.example.com/runbooks/semantic-degraded"
+          dashboard_url: "https://meshant-internal.example.com/d/asset-creation"
+
+      - alert: AssetFederatedImportErrorRateHigh
+        expr: |
+          (
+            sum(rate(asset_federated_import_total{result="FAILED"}[15m]))
+            /
+            sum(rate(asset_federated_import_total[15m]))
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: page
+          team: asset-creation-eng
+          phase: "250.5.A"
+        annotations:
+          summary: "Federated-import failure rate above 5% for 5 minutes"
+          description: |
+            More than 5% of federated-import attempts are failing. Likely
+            causes: marketplace upstream outage, marketplace connector circuit-
+            breaker OPEN, or per-tenant credential expiration. Check the
+            connector logs and the marketplace's status page.
+          runbook_url: "https://meshant-internal.example.com/runbooks/federated-degradation"
+          dashboard_url: "https://meshant-internal.example.com/d/asset-creation"

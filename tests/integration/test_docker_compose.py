@@ -1,0 +1,458 @@
+"""
+Integration tests for docker-compose.yml configuration.
+
+Tests service startup, health checks, dependencies, and service communication.
+"""
+
+import os
+import subprocess
+import sys
+from pathlib import Path
+from typing import ClassVar
+
+import pytest
+import requests
+import yaml
+
+# Add project root to path
+project_root = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(project_root))
+
+
+class TestDockerComposeIntegration:
+    """Integration tests for docker-compose.yml."""
+
+    @classmethod
+    @pytest.fixture(scope="class")
+    def docker_compose_file(cls):
+        """Get path to docker-compose.yml."""
+        return project_root / "docker-compose.yml"
+
+    @classmethod
+    @pytest.fixture(scope="class")
+    def docker_compose_config(cls, docker_compose_file):
+        """Load docker-compose.yml configuration."""
+        with open(docker_compose_file) as f:
+            return yaml.safe_load(f)
+
+    def test_docker_compose_file_exists(self, docker_compose_file):
+        """Test that docker-compose.yml exists."""
+        assert docker_compose_file.exists(), (
+            f"docker-compose.yml not found at {docker_compose_file}"
+        )
+
+    def test_docker_compose_valid_yaml(self, docker_compose_config):
+        """Test that docker-compose.yml is valid YAML."""
+        assert docker_compose_config is not None
+        assert "services" in docker_compose_config
+
+    def test_all_services_have_build_or_image(self, docker_compose_config):
+        """Test that all services have either build or image specified."""
+        services = docker_compose_config.get("services", {})
+        for service_name, service_config in services.items():
+            assert "build" in service_config or "image" in service_config, (
+                f"Service {service_name} must have either 'build' or 'image'"
+            )
+
+    def test_all_services_have_networks(self, docker_compose_config):
+        """Test that all services are connected to hub-net network."""
+        services = docker_compose_config.get("services", {})
+        for service_name, service_config in services.items():
+            networks = service_config.get("networks", [])
+            if isinstance(networks, (list, dict)):
+                assert "hub-net" in networks, (
+                    f"Service {service_name} must be connected to hub-net network"
+                )
+
+    def test_infrastructure_services_exist(self, docker_compose_config):
+        """Test that required infrastructure services exist."""
+        services = docker_compose_config.get("services", {})
+        # Use actual service names from docker-compose.yml (redis-cache, not single 'redis')
+        required_services = ["postgres", "redis-cache", "minio", "fuseki"]
+        for service_name in required_services:
+            assert service_name in services, (
+                f"Required infrastructure service {service_name} not found"
+            )
+
+    def test_monitoring_services_exist(self, docker_compose_config):
+        """Test that monitoring services exist."""
+        services = docker_compose_config.get("services", {})
+        monitoring_services = ["prometheus", "grafana", "jaeger", "alertmanager"]
+        for service_name in monitoring_services:
+            assert service_name in services, f"Required monitoring service {service_name} not found"
+
+    def test_application_services_exist(self, docker_compose_config):
+        """Test that application services exist."""
+        services = docker_compose_config.get("services", {})
+        application_services = [
+            "api-service",
+            "worker-service",
+            "semantic-service",
+            "dq-service",
+            "compliance-service",
+            "compliance-rq-worker",
+            "datacontract-service",
+            "prefect-integration-service",
+        ]
+        for service_name in application_services:
+            assert service_name in services, (
+                f"Required application service {service_name} not found"
+            )
+
+    def test_all_services_have_healthchecks(self, docker_compose_config):
+        """Test that all application services have health checks."""
+        services = docker_compose_config.get("services", {})
+        # Infrastructure and optional services that may not have healthcheck
+        infrastructure_services = {
+            "postgres",
+            "redis-cache",
+            "redis-queue",
+            "redis-events",
+            "redis-channels",
+            "minio",
+            "fuseki",
+            "prometheus",
+            "grafana",
+            "jaeger",
+            "alertmanager",
+            "traefik",
+            "prefect-server",
+            "prefect-db",
+            "prefect-worker",
+            "redis-exporter-cache",
+            "redis-exporter-queue",
+            "redis-exporter-events",
+            "redis-exporter-channels",
+            "mock-server",  # optional test marketplace mock; no healthcheck in image
+            "compliance-rq-worker",  # RQ worker — no healthcheck defined
+            "ckan-test-db",  # test-only CKAN service
+            "ckan-test-solr",
+            "ckan-test-redis",
+            "odh-training-operator",
+            "odh-inference-scheduler",
+            "clamav",
+            "postgres-replica",
+            "postgres-baas",
+            "redis-baas",
+            "mailhog",
+            "frontend",
+        }
+
+        for service_name, service_config in services.items():
+            if service_name not in infrastructure_services:
+                assert "healthcheck" in service_config, (
+                    f"Service {service_name} must have a healthcheck"
+                )
+
+    def test_service_dependencies(self, docker_compose_config):
+        """Test that service dependencies are properly configured."""
+        services = docker_compose_config.get("services", {})
+
+        def _has_dep(depends_on, name):
+            if depends_on is None:
+                return False
+            if isinstance(depends_on, list):
+                return name in depends_on
+            return name in depends_on
+
+        # Test that api-service depends on postgres, redis-cache, and minio
+        api_service = services.get("api-service", {})
+        api_depends_on = api_service.get("depends_on", {})
+        assert _has_dep(api_depends_on, "postgres"), "api-service must depend on postgres"
+        assert _has_dep(api_depends_on, "redis-cache") or _has_dep(api_depends_on, "redis-queue"), (
+            "api-service must depend on redis-cache or redis-queue"
+        )
+        assert _has_dep(api_depends_on, "minio"), "api-service must depend on minio"
+
+    def test_opentelemetry_configuration(self, docker_compose_config):
+        """Test that services have OpenTelemetry configuration."""
+        services = docker_compose_config.get("services", {})
+
+        # Core services that must have OpenTelemetry configuration.
+        # Other services may inherit OTEL via proxy or not need it in test env.
+        services_with_tracing = [
+            "api-service",
+            "worker-service",
+        ]
+
+        for service_name in services_with_tracing:
+            service_config = services.get(service_name, {})
+            environment = service_config.get("environment", [])
+            if isinstance(environment, list):
+                env_dict = {}
+                for item in environment:
+                    if isinstance(item, str) and "=" in item:
+                        k, _, v = item.partition("=")
+                        env_dict[k] = v
+                    elif isinstance(item, dict):
+                        env_dict.update(item)
+            else:
+                env_dict = environment or {}
+
+            assert "OPENTELEMETRY_ENABLED" in env_dict or any(
+                "OPENTELEMETRY_ENABLED" in str(e) for e in environment
+            ), f"Service {service_name} must have OPENTELEMETRY_ENABLED configuration"
+            assert "JAEGER_AGENT_HOST" in env_dict or any(
+                "JAEGER_AGENT_HOST" in str(e) for e in environment
+            ), f"Service {service_name} must have JAEGER_AGENT_HOST configuration"
+
+    def test_prometheus_scrape_configuration(self):
+        """Test that Prometheus scrape configuration includes all services."""
+        prometheus_config_file = project_root / "monitoring" / "prometheus" / "prometheus.yml"
+        assert prometheus_config_file.exists(), "Prometheus configuration file not found"
+
+        with open(prometheus_config_file) as f:
+            prometheus_config = yaml.safe_load(f)
+
+        scrape_configs = prometheus_config.get("scrape_configs", [])
+        job_names = [config.get("job_name") for config in scrape_configs]
+
+        # Check for key services
+        required_jobs = [
+            "workflow-engine-service",
+            "workflow-registry-service",
+            "event-bus-health-service",
+            "event-schema-registry-service",
+        ]
+
+        for job_name in required_jobs:
+            assert job_name in job_names, f"Prometheus scrape config must include {job_name}"
+
+    def test_volumes_defined(self, docker_compose_config):
+        """Test that required volumes are defined."""
+        volumes = docker_compose_config.get("volumes", {})
+        # Match actual volume names in docker-compose.yml (redis-cache-data, not redis-data)
+        required_volumes = [
+            "pgdata",
+            "redis-cache-data",
+            "minio-data",
+            "fuseki-data",
+            "prometheus-data",
+            "grafana-data",
+            "alertmanager-data",
+        ]
+
+        for volume_name in required_volumes:
+            assert volume_name in volumes, f"Required volume {volume_name} not defined"
+
+    def test_network_defined(self, docker_compose_config):
+        """Test that hub-net network is defined."""
+        networks = docker_compose_config.get("networks", {})
+        assert "hub-net" in networks, "hub-net network must be defined"
+
+        network_config = networks.get("hub-net", {})
+        assert network_config.get("driver") == "bridge", "hub-net should use bridge driver"
+
+    def test_service_ports_unique(self, docker_compose_config):
+        """Test that service ports don't conflict."""
+        services = docker_compose_config.get("services", {})
+        ports_used = {}
+
+        for service_name, service_config in services.items():
+            ports = service_config.get("ports", [])
+            for port_mapping in ports:
+                host_port = None
+                if isinstance(port_mapping, str):
+                    # Skip env var references before splitting (e.g. ${POSTGRES_BAAS_PORT:-5433}:5433)
+                    if "${" in port_mapping:
+                        continue
+                    parts = port_mapping.split(":")
+                    # 3 parts → IP:HOST_PORT:CONTAINER_PORT (e.g. 127.0.0.1:5432:5432)
+                    # 2 parts → HOST_PORT:CONTAINER_PORT (e.g. 8080:8080)
+                    # 1 part  → CONTAINER_PORT only (no host binding)
+                    if len(parts) >= 2:
+                        host_port = parts[-2]  # second-to-last part is always host port
+                elif isinstance(port_mapping, dict):
+                    host_port = port_mapping.get("published")
+
+                if host_port:
+                    assert host_port not in ports_used, (
+                        f"Port {host_port} is used by both {ports_used[host_port]} and {service_name}"
+                    )
+                    ports_used[host_port] = service_name
+
+    def test_environment_variables_consistent(self, docker_compose_config):
+        """Test that environment variables are consistently named."""
+        services = docker_compose_config.get("services", {})
+
+        # Check that database URL format is consistent
+        for service_name, service_config in services.items():
+            environment = service_config.get("environment", [])
+            if isinstance(environment, list):
+                env_dict = {}
+                for item in environment:
+                    if isinstance(item, str) and "=" in item:
+                        k, _, v = item.partition("=")
+                        env_dict[k] = v
+                    elif isinstance(item, dict):
+                        env_dict.update(item)
+            else:
+                env_dict = environment or {}
+
+            if "DATABASE_URL" in env_dict:
+                db_url = str(env_dict["DATABASE_URL"])
+                assert db_url.startswith("postgresql://") or "${" in db_url, (
+                    f"Service {service_name} DATABASE_URL must use postgresql:// or env var"
+                )
+
+            if "REDIS_URL" in env_dict:
+                redis_url = str(env_dict["REDIS_URL"])
+                assert redis_url.startswith("redis://") or "${" in redis_url, (
+                    f"Service {service_name} REDIS_URL must use redis:// or env var"
+                )
+
+    def test_resource_limits_when_present_are_valid(self, docker_compose_config):
+        """Test that when deploy.resources.limits are set, they are valid (coverage: resource limits)."""
+        services = docker_compose_config.get("services", {})
+        for service_name, service_config in services.items():
+            deploy = service_config.get("deploy", {})
+            resources = deploy.get("resources", {}) if isinstance(deploy, dict) else {}
+            limits = resources.get("limits", {}) if isinstance(resources, dict) else {}
+            if not limits:
+                continue
+            if "memory" in limits:
+                mem = str(limits["memory"]).strip().upper()
+                assert mem.endswith(("M", "G")) or mem.isdigit(), (
+                    f"Service {service_name} memory limit should be like 512M/512m or 1G, got {limits['memory']}"
+                )
+            if "cpus" in limits:
+                cpus = limits["cpus"]
+                try:
+                    n = float(cpus)
+                    assert n > 0, f"Service {service_name} cpus limit must be positive, got {cpus}"
+                except (TypeError, ValueError):
+                    pass  # Allow string like "0.5"
+
+
+@pytest.mark.integration
+@pytest.mark.requires_db
+class TestDockerComposeRuntime:
+    """Runtime tests for docker-compose (requires Docker Compose to be running).
+    Enable with PYTEST_DOCKER_COMPOSE_RUNTIME=1. No mocks - uses real Docker Compose.
+    """
+
+    # Services expected to be running in the test stack — used for DNS-based
+    # detection when running inside a container (where docker CLI is unavailable).
+    _EXPECTED_SERVICES: ClassVar[list] = [
+        ("postgres-test", 5432),
+        ("redis-cache-test", 6379),
+    ]
+
+    @classmethod
+    @pytest.fixture(scope="class")
+    def docker_compose_running(cls):
+        """Check whether Docker Compose services are running.
+
+        Inside a container (detected via ``/.dockerenv``) the ``docker`` CLI
+        is not available; we verify that known service hostnames resolve via
+        DNS instead.  On the host we use ``docker compose ps``.
+        """
+        # Container-side: check DNS resolution for known services
+        if os.path.exists("/.dockerenv"):
+            import socket
+
+            for hostname, port in cls._EXPECTED_SERVICES:
+                try:
+                    socket.getaddrinfo(hostname, port, socket.AF_INET, socket.SOCK_STREAM)
+                except (socket.gaierror, OSError):
+                    continue
+                else:
+                    return True
+            return False
+
+        # Host-side: use docker compose CLI
+        try:
+            result = subprocess.run(
+                ["docker", "compose", "ps", "--format", "json"],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=5,
+                cwd=str(project_root),
+            )
+            return result.returncode == 0 and bool(result.stdout.strip())
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            return False
+
+    def test_services_healthy(self, docker_compose_running):
+        """Test that key services are reachable."""
+        if not docker_compose_running:
+            pytest.skip(  # noqa: skip-in-body — runtime service dependency
+                "Docker Compose not running; set PYTEST_DOCKER_COMPOSE_RUNTIME=1 and start services"
+            )
+
+        # When inside the container, verify via DNS resolution for all expected services
+        if os.path.exists("/.dockerenv"):
+            import socket
+
+            for hostname, port in self._EXPECTED_SERVICES:
+                try:
+                    socket.getaddrinfo(hostname, port, socket.AF_INET, socket.SOCK_STREAM)
+                except (socket.gaierror, OSError):
+                    pytest.fail(f"Service {hostname}:{port} should be resolvable via DNS")
+            return
+
+        # Host-side: use docker compose ps
+        result = subprocess.run(
+            ["docker", "compose", "ps", "--format", "json"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            cwd=str(project_root),
+        )
+        assert result.returncode == 0, f"docker compose ps failed: {result.stderr}"
+        lines = [line for line in (result.stdout or "").strip().splitlines() if line]
+        assert len(lines) >= 1, "At least one service should be running"
+
+    def test_monitoring_stack_health_endpoints(self, docker_compose_running):
+        """Test that monitoring stack health endpoints are accessible.
+
+        Checks prometheus-test, alertmanager-test, and jaeger-test.
+        Uses Docker hostnames inside a container, localhost on the host.
+        Assertions only cover reachable services — Alertmanager is not in
+        the api-service-test dependency chain (circular dep with Prometheus
+        which scrapes the API service), so it may not be running.
+        """
+        if not docker_compose_running:  # noqa: skip-in-body — runtime service dependency
+            pytest.skip(
+                "Docker Compose not running; set PYTEST_DOCKER_COMPOSE_RUNTIME=1 and start services"
+            )
+
+        in_docker = os.path.exists("/.dockerenv")
+        health_endpoints = [
+            # (service_name, host, port, path)
+            (
+                "prometheus-test",
+                "prometheus-test" if in_docker else "localhost",
+                9090 if in_docker else 9091,
+                "/api/v1/status/config",
+            ),
+            (
+                "alertmanager-test",
+                "alertmanager-test" if in_docker else "localhost",
+                9093,
+                "/api/v2/status",
+            ),
+            ("jaeger-test", "jaeger-test" if in_docker else "localhost", 16686, "/api/services"),
+        ]
+
+        reachable = 0
+        unreachable = []
+        for service_name, host, port, endpoint in health_endpoints:
+            try:
+                response = requests.get(f"http://{host}:{port}{endpoint}", timeout=5)
+                assert response.status_code == 200, (
+                    f"Service {service_name} health endpoint returned {response.status_code}"
+                )
+                reachable += 1
+            except requests.exceptions.ConnectionError:
+                unreachable.append(service_name)
+            except requests.exceptions.RequestException as exc:
+                pytest.fail(f"Service {service_name} health check failed: {exc}")
+
+        assert reachable >= 1, (
+            f"No monitoring services reachable. "
+            f"Unreachable: {unreachable}. "
+            f"Start the full stack with 'make test-stack-up'."
+        )

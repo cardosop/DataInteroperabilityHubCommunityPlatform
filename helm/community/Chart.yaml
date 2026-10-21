@@ -1,0 +1,6 @@
+apiVersion: v2
+name: datahub-core
+description: "DataInteroperabilityHub — open-source core (Apache-2.0). Community chart: API + worker + frontend with Postgres, Redis, and MinIO."
+type: application
+version: 0.1.0
+appVersion: "core"

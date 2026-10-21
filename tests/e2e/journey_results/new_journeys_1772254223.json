@@ -1,0 +1,108 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.017512083053588867
+  },
+  "journeys": [
+    {
+      "journey_id": "TA-007-fa203524",
+      "journey_name": "Monitor Cost Tracking",
+      "persona": "Tenant Admin",
+      "status": "completed",
+      "start_time": 1772254223.9735444,
+      "end_time": 1772254223.9910564,
+      "duration": 0.017512083053588867,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "View Cost Dashboard",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772254223.9782293,
+          "end_time": 1772254223.9782352,
+          "duration": 5.9604644775390625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "View Cost Breakdown",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772254223.9814448,
+          "end_time": 1772254223.9814477,
+          "duration": 2.86102294921875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Analyze Costs by Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772254223.9846263,
+          "end_time": 1772254223.984629,
+          "duration": 2.6226043701171875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Review Optimization Recommendations",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772254223.9877803,
+          "end_time": 1772254223.9877834,
+          "duration": 3.0994415283203125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Implement Optimizations",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772254223.9877856,
+          "end_time": 1772254223.9877872,
+          "duration": 1.6689300537109375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "bool"
+          }
+        },
+        {
+          "step_name": "Monitor Cost Trends",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772254223.9910522,
+          "end_time": 1772254223.991055,
+          "duration": 2.86102294921875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-28T04:50:23.991128"
+}

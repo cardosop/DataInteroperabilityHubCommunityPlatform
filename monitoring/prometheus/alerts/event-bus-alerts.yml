@@ -1,0 +1,141 @@
+groups:
+  - name: event_bus_alerts
+    interval: 30s
+    rules:
+      # Event Bus Health Alerts
+      - alert: EventBusUnhealthy
+        expr: event_bus_health_status == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: event_bus
+        annotations:
+          summary: "Event bus is unhealthy"
+          description: "Event bus health check has been failing for more than 2 minutes"
+
+      # Redis Connection Alerts
+      - alert: EventBusRedisConnectionErrorsHigh
+        expr: rate(event_bus_redis_connection_errors_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          component: event_bus
+        annotations:
+          summary: "High Redis connection error rate"
+          description: "Event bus Redis connection errors are occurring at {{ $value }} errors/second"
+
+      - alert: EventBusRedisConnectionPoolExhausted
+        expr: event_bus_redis_pool_utilization_percent > 90
+        for: 5m
+        labels:
+          severity: warning
+          component: event_bus
+        annotations:
+          summary: "Redis connection pool utilization high"
+          description: "Event bus Redis connection pool is {{ $value }}% utilized"
+
+      # Event Publish Alerts
+      - alert: EventBusPublishFailureRateHigh
+        expr: rate(event_publish_failed_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          component: event_bus
+        annotations:
+          summary: "High event publish failure rate"
+          description: "Event publish failures are occurring at {{ $value }} failures/second"
+
+      - alert: EventBusPublishLatencyHigh
+        expr: histogram_quantile(0.95, rate(event_publish_duration_seconds_bucket[5m])) > 1.0
+        for: 5m
+        labels:
+          severity: warning
+          component: event_bus
+        annotations:
+          summary: "High event publish latency"
+          description: "95th percentile event publish latency is {{ $value }} seconds"
+
+      # Event Consumption Alerts
+      - alert: EventBusConsumeFailureRateHigh
+        expr: rate(event_consume_failed_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          component: event_bus
+        annotations:
+          summary: "High event consumption failure rate"
+          description: "Event consumption failures are occurring at {{ $value }} failures/second"
+
+      - alert: EventBusProcessingLatencyHigh
+        expr: histogram_quantile(0.95, rate(event_processing_duration_seconds_bucket[5m])) > 5.0
+        for: 5m
+        labels:
+          severity: warning
+          component: event_bus
+        annotations:
+          summary: "High event processing latency"
+          description: "95th percentile event processing latency is {{ $value }} seconds"
+
+      # Dead Letter Queue Alerts
+      - alert: EventBusDLQSizeHigh
+        expr: event_dlq_size > 100
+        for: 5m
+        labels:
+          severity: warning
+          component: event_bus
+        annotations:
+          summary: "Dead letter queue size is high"
+          description: "Dead letter queue contains {{ $value }} unresolved events"
+
+      - alert: EventBusDLQSizeCritical
+        expr: event_dlq_size > 500
+        for: 5m
+        labels:
+          severity: critical
+          component: event_bus
+        annotations:
+          summary: "Dead letter queue size is critical"
+          description: "Dead letter queue contains {{ $value }} unresolved events - immediate attention required"
+
+      - alert: EventBusDLQSizeExcessive
+        expr: sum(event_dlq_size) by (tenant_id) > 1000
+        for: 10m
+        labels:
+          severity: critical
+          component: event_bus
+        annotations:
+          summary: "Dead letter queue size is excessive"
+          description: "Dead letter queue contains {{ $value }} unresolved events (threshold: 1000) - immediate investigation required"
+
+      - alert: EventBusDLQGrowthRateHigh
+        expr: rate(event_dlq_events_total[5m]) > 1.0
+        for: 5m
+        labels:
+          severity: warning
+          component: event_bus
+        annotations:
+          summary: "High dead letter queue growth rate"
+          description: "Events are being added to DLQ at {{ $value }} events/second"
+
+      # Redis Latency Alerts
+      - alert: EventBusRedisLatencyHigh
+        expr: event_bus_redis_latency_ms > 100
+        for: 5m
+        labels:
+          severity: warning
+          component: event_bus
+        annotations:
+          summary: "High Redis latency"
+          description: "Event bus Redis latency is {{ $value }}ms"
+
+      # Event Subscription Alerts
+      - alert: EventBusNoActiveSubscriptions
+        expr: event_subscriptions_active == 0
+        for: 10m
+        labels:
+          severity: warning
+          component: event_bus
+        annotations:
+          summary: "No active event subscriptions"
+          description: "No active event subscriptions detected - events may not be processed"
+

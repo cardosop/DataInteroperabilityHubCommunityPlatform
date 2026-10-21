@@ -1,0 +1,31 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.5994374752044678
+  },
+  "journeys": [
+    {
+      "journey_id": "ODPS-003-ERRORS-e08371cf",
+      "journey_name": "ODPS Export/Download - Error Scenarios",
+      "persona": "Data Product Owner",
+      "status": "completed",
+      "start_time": 1771891370.729798,
+      "end_time": 1771891371.3292356,
+      "duration": 0.5994374752044678,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [],
+      "metadata": {
+        "error_scenarios_tested": 2
+      }
+    }
+  ],
+  "exported_at": "2026-02-24T00:02:51.329282"
+}

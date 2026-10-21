@@ -1,0 +1,104 @@
+.webhook-list-page {
+  padding: var(--spacing-lg);
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.webhook-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-lg);
+}
+
+.webhook-list-header h1 {
+  margin: 0;
+  font-size: var(--font-size-xxl);
+  font-weight: var(--font-weight-bold);
+}
+
+.webhook-list-table-wrapper {
+  background: var(--color-background-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-md);
+  overflow: auto;
+}
+
+.webhook-list-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.webhook-list-table th {
+  padding: var(--spacing-md);
+  text-align: left;
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-sm);
+  text-transform: uppercase;
+  background: var(--color-background-secondary);
+}
+
+.webhook-list-table td {
+  padding: var(--spacing-md);
+  border-top: 1px solid var(--color-border);
+}
+
+.webhook-list-row {
+  cursor: pointer;
+}
+
+.webhook-list-row:hover {
+  background: var(--color-background-secondary);
+}
+
+.webhook-list-url {
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.webhook-status-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  text-transform: uppercase;
+}
+
+.webhook-status-active {
+  background: var(--color-success-light);
+  color: var(--color-success-dark);
+}
+
+.webhook-status-paused {
+  background: var(--color-warning-light);
+  color: var(--color-warning-dark);
+}
+
+.webhook-status-disabled {
+  background: var(--color-error-light);
+  color: var(--color-error-dark);
+}
+
+.webhook-list-pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: var(--spacing-md);
+  margin-top: var(--spacing-lg);
+}
+
+.webhook-list-pagination button {
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--color-background-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-md);
+  cursor: pointer;
+}
+
+.webhook-list-pagination button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

@@ -1,0 +1,54 @@
+# Phase 277.B.099 — Prometheus alert rules for webhook DLQ
+#
+# Two alert rules covering undelivered webhook accumulation:
+#
+#   1. WebhookDLQSizeHigh — any tenant has >50 DEAD_LETTER deliveries
+#      for 15 min. Signals undelivered webhooks accumulating silently.
+#      Severity: warning.
+#   2. WebhookDLQPerTenantHigh — single tenant's DLQ exceeds 100
+#      deliveries for 10 min. Signals per-tenant delivery stall.
+#      Severity: critical.
+#
+# References:
+#   * metric: hub/apps/observability/otel_metrics.py → webhook_dlq_size
+#   * emitter: hub/apps/webhooks/dlsla_metrics.py → emit_webhook_dlq_metrics
+#   * model: hub/apps/webhooks/models.py → WebhookDelivery.DeliveryStatus
+#   * runbook: docs/runbooks/RB-WH-001-webhook-dlq-investigation.md
+
+groups:
+  - name: webhook_dlq
+    interval: 60s
+    rules:
+      - alert: WebhookDLQSizeHigh
+        expr: |
+          sum(webhook_dlq_size) > 50
+        for: 15m
+        labels:
+          severity: warning
+          team: platform-engineering
+        annotations:
+          summary: "Webhook DLQ has {{ $value }} undelivered deliveries"
+          description: >
+            {{ $value }} webhook deliveries are in DEAD_LETTER status
+            across all tenants.  Undelivered webhooks may indicate
+            subscriber endpoint failures, rate-limit exhaustion, or
+            signing-key misconfiguration.  Check the DLQ dashboard and
+            investigate the oldest dead-lettered deliveries.
+          runbook_url: "https://meshant.com/docs/runbooks/RB-WH-001-webhook-dlq-investigation"
+
+      - alert: WebhookDLQPerTenantHigh
+        expr: |
+          webhook_dlq_size > 100
+        for: 10m
+        labels:
+          severity: critical
+          team: platform-engineering
+        annotations:
+          summary: "Tenant {{ $labels.tenant_id }} has {{ $value }} dead-lettered webhooks"
+          description: >
+            Tenant {{ $labels.tenant_id }} has {{ $value }} webhook
+            deliveries in DEAD_LETTER status.  This is a per-tenant
+            delivery stall — the subscriber's endpoint may be
+            permanently down, the signing key may be invalid, or the
+            tenant's rate-limit budget may be exhausted.
+          runbook_url: "https://meshant.com/docs/runbooks/RB-WH-001-webhook-dlq-investigation"

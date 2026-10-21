@@ -1,0 +1,16 @@
+{
+  "id": "resource-minimal-1",
+  "package_id": "sample-dataset-1",
+  "name": "",
+  "description": "",
+  "url": "https://example.com/resource",
+  "format": null,
+  "size": null,
+  "mimetype": null,
+  "created": "2024-01-15T10:00:00Z",
+  "last_modified": "2024-01-15T10:00:00Z",
+  "position": 0,
+  "resource_type": null,
+  "url_type": null
+}
+

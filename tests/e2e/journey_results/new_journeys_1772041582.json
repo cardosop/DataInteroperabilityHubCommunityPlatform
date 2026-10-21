@@ -1,0 +1,56 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.23334860801696777
+  },
+  "journeys": [
+    {
+      "journey_id": "DMO-002-9a767af4",
+      "journey_name": "Configure Federated Governance",
+      "persona": "Data Mesh Domain Owner",
+      "status": "completed",
+      "start_time": 1772041582.6576138,
+      "end_time": 1772041582.8909624,
+      "duration": 0.23334860801696777,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Select Domain",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772041582.6576226,
+          "end_time": 1772041582.8841438,
+          "duration": 0.22652125358581543,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Configure Governance",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772041582.8841572,
+          "end_time": 1772041582.8909583,
+          "duration": 0.006801128387451172,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-25T17:46:22.891031"
+}

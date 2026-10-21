@@ -1,0 +1,132 @@
+{
+  "dashboard": {
+    "title": "Meshant — SLO Dashboard",
+    "uid": "meshant-slo",
+    "description": "301.4 — Platform SLO compliance dashboard with burn-rate gauges, latency heatmaps, and error budget remaining.",
+    "tags": ["slo", "meshant", "production"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Availability Error Budget Remaining",
+        "type": "gauge",
+        "gridPos": {"x": 0, "y": 0, "w": 8, "h": 6},
+        "targets": [{
+          "expr": "(1 - sum(increase(http_requests_total{status=~\"5..\",path!~\"/health/.*\"}[30d])) / sum(increase(http_requests_total{path!~\"/health/.*\"}[30d]))) * 100",
+          "legendFormat": "Availability %"
+        }],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "min": 99, "max": 100,
+            "thresholds": {"steps": [{"value": 99.5, "color": "green"}, {"value": 99.0, "color": "yellow"}, {"value": 0, "color": "red"}]}
+          }
+        }
+      },
+      {
+        "id": 2,
+        "title": "Burn Rate — Last 1 Hour (Alert if > 5%)",
+        "type": "stat",
+        "gridPos": {"x": 8, "y": 0, "w": 8, "h": 6},
+        "targets": [{
+          "expr": "(sum(rate(http_requests_total{status=~\"5..\"}[1h])) / (sum(rate(http_requests_total[30d])) * 0.005)) * 100",
+          "legendFormat": "1h burn rate %"
+        }],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "thresholds": {"steps": [{"value": 0, "color": "green"}, {"value": 5, "color": "red"}]}
+          }
+        }
+      },
+      {
+        "id": 3,
+        "title": "Burn Rate — Last 30 Days (Alert if > 10%)",
+        "type": "stat",
+        "gridPos": {"x": 16, "y": 0, "w": 8, "h": 6},
+        "targets": [{
+          "expr": "(sum(increase(http_requests_total{status=~\"5..\"}[30d])) / (sum(increase(http_requests_total[30d])) * 0.005)) * 100",
+          "legendFormat": "30d burn rate %"
+        }],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "thresholds": {"steps": [{"value": 0, "color": "green"}, {"value": 10, "color": "red"}]}
+          }
+        }
+      },
+      {
+        "id": 4,
+        "title": "Search Latency p95 (SLO: < 500ms)",
+        "type": "timeseries",
+        "gridPos": {"x": 0, "y": 6, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(search_request_duration_seconds_bucket[5m]))",
+            "legendFormat": "Search p95"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "seconds",
+            "thresholds": {"steps": [{"value": 0, "color": "green"}, {"value": 0.5, "color": "red"}]}
+          }
+        }
+      },
+      {
+        "id": 5,
+        "title": "SPARQL Latency p95 (SLO: < 2s)",
+        "type": "timeseries",
+        "gridPos": {"x": 12, "y": 6, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(sparql_execution_seconds_bucket[5m]))",
+            "legendFormat": "SPARQL p95"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "seconds",
+            "thresholds": {"steps": [{"value": 0, "color": "green"}, {"value": 2, "color": "red"}]}
+          }
+        }
+      },
+      {
+        "id": 6,
+        "title": "Frontend LCP p75 (SLO: < 2.5s)",
+        "type": "timeseries",
+        "gridPos": {"x": 0, "y": 14, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.75, rate(frontend_lcp_seconds_bucket[5m]))",
+            "legendFormat": "LCP p75"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "seconds",
+            "thresholds": {"steps": [{"value": 0, "color": "green"}, {"value": 2.5, "color": "red"}]}
+          }
+        }
+      },
+      {
+        "id": 7,
+        "title": "Frontend CLS p75 (SLO: < 0.1)",
+        "type": "timeseries",
+        "gridPos": {"x": 12, "y": 14, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.75, rate(frontend_cls_score_bucket[5m]))",
+            "legendFormat": "CLS p75"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "none",
+            "thresholds": {"steps": [{"value": 0, "color": "green"}, {"value": 0.1, "color": "red"}]}
+          }
+        }
+      }
+    ]
+  }
+}

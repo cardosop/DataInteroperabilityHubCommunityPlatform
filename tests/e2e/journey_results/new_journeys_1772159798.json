@@ -1,0 +1,69 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.014694929122924805
+  },
+  "journeys": [
+    {
+      "journey_id": "DS-003-8c46c587",
+      "journey_name": "Configure ML-Based Anomaly Detection",
+      "persona": "Data Scientist",
+      "status": "completed",
+      "start_time": 1772159798.9703906,
+      "end_time": 1772159798.9850855,
+      "duration": 0.014694929122924805,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Note: Anomaly Detection Configuration Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772159798.977067,
+          "end_time": 1772159798.9770722,
+          "duration": 5.245208740234375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Train Model",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772159798.98066,
+          "end_time": 1772159798.9806643,
+          "duration": 4.291534423828125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Note: Model Deployment Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772159798.9850814,
+          "end_time": 1772159798.9850845,
+          "duration": 3.0994415283203125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-27T02:36:38.985142"
+}

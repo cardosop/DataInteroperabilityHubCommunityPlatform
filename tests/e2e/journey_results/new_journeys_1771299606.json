@@ -1,0 +1,43 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.014268159866333008
+  },
+  "journeys": [
+    {
+      "journey_id": "DE-009-4ef538bd",
+      "journey_name": "Set Up Data Virtualization",
+      "persona": "Data Engineer",
+      "status": "completed",
+      "start_time": 1771299606.9676516,
+      "end_time": 1771299606.9819198,
+      "duration": 0.014268159866333008,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Define Virtual Dataset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771299606.9676588,
+          "end_time": 1771299606.9819171,
+          "duration": 0.014258384704589844,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-17T03:40:06.981970"
+}

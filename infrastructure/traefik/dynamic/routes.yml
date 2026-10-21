@@ -1,0 +1,161 @@
+# Dynamic Routes Configuration for Traefik
+# Service routing rules for microservices
+
+http:
+  routers:
+    # API Gateway - Main Entry Point for all API requests
+    # Routes all /api/v1/* requests to FastAPI API Gateway
+    # FastAPI Gateway handles: API key auth, rate limiting, usage tracking, and routing to backend services
+    # Priority 100 so /api/v1 is matched before the frontend catch-all
+    api-gateway:
+      rule: "PathPrefix(`/api/v1`)"
+      entryPoints:
+        - websecure
+      service: api-gateway-service
+      middlewares:
+        - cors-middleware
+        - tracing-middleware
+      tls:
+        certResolver: letsencrypt
+      priority: 100
+
+    # Host-based API Gateway route (for backward compatibility)
+    api-gateway-host:
+      rule: "Host(`api.hub.local`) || Host(`api.hub.example.com`)"
+      entryPoints:
+        - websecure
+      service: api-gateway-service
+      middlewares:
+        - cors-middleware
+        - tracing-middleware
+      tls:
+        certResolver: letsencrypt
+      priority: 90
+
+    # Frontend - Single entrypoint: non-API paths (e.g. /) go to frontend service
+    # When Traefik is used as single entrypoint; see docs/API_GATEWAY_TRAEFIK.md
+    # Priority 10 so API routes (priority 100/90) are matched first
+    frontend:
+      rule: "PathPrefix(`/`)"
+      entryPoints:
+        - websecure
+      service: frontend-service
+      middlewares:
+        - cors-middleware
+        - tracing-middleware
+      tls:
+        certResolver: letsencrypt
+      priority: 10
+
+  services:
+    # API service — Traefik routes /api/v1/* directly to the Django api-service
+    # (no separate gateway; auth, rate limiting, and routing are handled by
+    # api-service middleware).  The old api-gateway FastAPI service was removed
+    # in commit c09d7e03.
+    api-gateway-service:
+      loadBalancer:
+        servers:
+          - url: "http://api-service:8000"
+
+    # Frontend Service - Serves the SPA when Traefik is single entrypoint
+    # Docker Compose service name: frontend; nginx on port 80
+    frontend-service:
+      loadBalancer:
+        servers:
+          - url: "http://frontend:80"
+
+    # Direct backend reference — kept alongside api-gateway-service for
+    # transitional compatibility.  Both route to the same Django service.
+    api-service:
+      loadBalancer:
+        servers:
+          - url: "http://api-service:8000"
+
+    contract-service:
+      loadBalancer:
+        servers:
+          - url: "http://contract-service:8001"
+
+    asset-service:
+      loadBalancer:
+        servers:
+          - url: "http://asset-service:8002"
+
+    dataset-service:
+      loadBalancer:
+        servers:
+          - url: "http://dataset-service:8003"
+
+    search-service:
+      loadBalancer:
+        servers:
+          - url: "http://search-service:8085"
+
+    observability-service:
+      loadBalancer:
+        servers:
+          - url: "http://observability-service:8086"
+
+    webhook-service:
+      loadBalancer:
+        servers:
+          - url: "http://webhook-service:8087"
+
+    semantic-service:
+      loadBalancer:
+        servers:
+          - url: "http://semantic-service:8081"
+
+    dq-service:
+      loadBalancer:
+        servers:
+          - url: "http://dq-service:8083"
+
+    compliance-service:
+      loadBalancer:
+        servers:
+          - url: "http://compliance-service:8082"
+
+    # Removed: lineage-service, governance-service, ingestion-service,
+    # versioning-service, normalization-service — not in deployment.
+    # API Gateway routes /api/v1/lineage, /api/v1/governance, /api/v1/ingestion,
+    # /api/v1/versioning, /api/v1/normalization to api-service:8000.
+
+  middlewares:
+    # Note: Authentication and rate limiting are now handled by FastAPI API Gateway
+    # Traefik only handles TLS termination, load balancing, and infrastructure-level concerns
+
+    # CORS Middleware - Applied at infrastructure level (development defaults).
+    # IN PRODUCTION this file is rendered from routes.yml.tmpl via envsubst,
+    # which replaces the wildcard with ${ALLOWED_ORIGINS_REGEX}.
+    # Do NOT commit this file with "*" after an accidental production deployment.
+    cors-middleware:
+      headers:
+        accessControlAllowMethods:
+          - GET
+          - POST
+          - PUT
+          - DELETE
+          - OPTIONS
+          - PATCH
+        accessControlAllowOriginList:
+          - "http://localhost:5173"
+          - "http://localhost:3000"
+          - "http://localhost:8000"
+        accessControlAllowHeaders:
+          - "Authorization"
+          - "Content-Type"
+          - "X-Tenant-Id"
+          - "X-Request-Id"
+        accessControlAllowCredentials: true
+        accessControlMaxAge: 86400
+        addVaryHeader: true
+
+    # Tracing Middleware - For distributed tracing
+    tracing-middleware:
+      headers:
+        customRequestHeaders:
+          X-Forwarded-For: ""
+        customResponseHeaders:
+          X-Service-Name: "traefik"
+

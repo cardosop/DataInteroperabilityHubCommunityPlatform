@@ -1,0 +1,44 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "CPO-010-6fcf0efd",
+      "journey_name": "Review AI Auto-Classification Results",
+      "persona": "Compliance Officer",
+      "status": "failed",
+      "start_time": 1770553603.3730967,
+      "end_time": 1770553603.3973632,
+      "duration": 0.024266481399536133,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": "Failed to create asset: 500 - {'error': {'code': 'PLAN_NOT_FOUND', 'message': 'No plan assigned to tenant and default FREE plan not found', 'http_status': 500, 'request_id': '1ef007ee-1044-4324-bd1f-8e95fc8c2475', 'timestamp': '2026-02-08T12:26:43.385951+00:00'}}",
+      "error_type": "Exception",
+      "steps": [
+        {
+          "step_name": "Select Asset",
+          "status": "StepStatus.FAILED",
+          "start_time": 1770553603.3731074,
+          "end_time": 1770553603.397354,
+          "duration": 0.0242464542388916,
+          "error_message": "Failed to create asset: 500 - {'error': {'code': 'PLAN_NOT_FOUND', 'message': 'No plan assigned to tenant and default FREE plan not found', 'http_status': 500, 'request_id': '1ef007ee-1044-4324-bd1f-8e95fc8c2475', 'timestamp': '2026-02-08T12:26:43.385951+00:00'}}",
+          "error_type": "Exception",
+          "retry_count": 0,
+          "metadata": {
+            "args": "()",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-08T12:26:43.397516"
+}

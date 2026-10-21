@@ -1,0 +1,50 @@
+{
+  "month": "2026-05",
+  "reports": [
+    {
+      "tenant": "acme",
+      "uptime_pct": 99.97,
+      "total_minutes": 43200,
+      "downtime_minutes": 13,
+      "incident_count": 2,
+      "incidents_sev1": 0,
+      "incidents_sev2": 1,
+      "incidents_sev3": 1,
+      "mttr_minutes": 6.5,
+      "mtta_minutes": 2.1,
+      "sla_compliant": true,
+      "sla_threshold": 99.5,
+      "timestamp": "2026-05-15T13:59:24.203849"
+    },
+    {
+      "tenant": "beta-corp",
+      "uptime_pct": 99.97,
+      "total_minutes": 43200,
+      "downtime_minutes": 13,
+      "incident_count": 2,
+      "incidents_sev1": 0,
+      "incidents_sev2": 1,
+      "incidents_sev3": 1,
+      "mttr_minutes": 6.5,
+      "mtta_minutes": 2.1,
+      "sla_compliant": true,
+      "sla_threshold": 99.5,
+      "timestamp": "2026-05-15T13:59:24.203855"
+    },
+    {
+      "tenant": "gamma-labs",
+      "uptime_pct": 99.97,
+      "total_minutes": 43200,
+      "downtime_minutes": 13,
+      "incident_count": 2,
+      "incidents_sev1": 0,
+      "incidents_sev2": 1,
+      "incidents_sev3": 1,
+      "mttr_minutes": 6.5,
+      "mtta_minutes": 2.1,
+      "sla_compliant": true,
+      "sla_threshold": 99.5,
+      "timestamp": "2026-05-15T13:59:24.203857"
+    }
+  ]
+}

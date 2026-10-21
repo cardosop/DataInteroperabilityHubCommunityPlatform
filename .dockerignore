@@ -1,0 +1,114 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Django
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+/media
+/staticfiles
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment
+.env*
+
+# Secrets and local dev certs
+*.pem
+*.key
+infrastructure/postgres/certs/
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+docs/_build/
+
+# OpenSpec
+openspec/
+
+# InputDocs
+InputDocs/
+
+# Node — ** prefix matches at any depth (frontend/node_modules/, sdk/js/node_modules/, etc.)
+**/node_modules/
+npm-debug.log*
+
+# Frontend source — backend services don't need it; the frontend Dockerfile
+# uses context: frontend/ so this exclusion doesn't affect it.
+frontend/
+
+# Docker
+docker-compose.override.yml
+
+# Local environments and CI artifacts — never COPY'd into images but default
+# compose `context: .` still hashes/sends them to the daemon (multi‑GB on dev machines).
+venv/
+.venv/
+venv-*/
+**/venv/
+**/.venv/
+# Explicit paths for SDK venvs — belt-and-suspenders with the ** globs above.
+# Trivy scans flagged stale packages in sdk/python/.venv that leaked into the
+# worker image despite **/.venv/ being present. Explicit paths are unambiguous.
+sdk/python/.venv/
+sdk/python/venv/
+sdk/js/node_modules/
+test_reports_comprehensive/
+test_reports_integration/
+htmlcov/
+htmlcov-unit/
+awscliv2.zip
+backups/
+coverage.xml
+# Local AWS CLI bundle / artifacts — not COPY'd into images
+aws/
+
+# Generated MkDocs output (also in .gitignore) and the standalone Astro
+# marketing site, which builds from its own context: product-site/Dockerfile.
+# Neither is COPY'd into the backend images, but `context: .` still sent both
+# to the daemon. Measured with `COPY . /x` from scratch: 675MB -> 510MB.
+# Effectively all of that is site/; product-site/ is 270MB on disk but 269MB
+# of it is node_modules/ (already caught above), so it contributes ~1MB —
+# listed anyway so a built product-site/dist/ can't silently creep back in.
+site/
+product-site/
+
+# Terraform — provider/plugin cache under each module (often 500MB+ each). .tf files stay; tests
+# e.g. hub/apps/search/tests/test_fts_search.py read infrastructure/terraform/s3/main.tf.
+**/.terraform/
+*.tfstate
+*.tfstate.*
+
+# Type-check / misc local caches (not needed in API/worker images)
+.mypy_cache/
+deployment_logs/
+test-results*.txt
+frontend/e2e-results*.txt
+
+# W11.11: build context must not ship test artifacts (a root-owned
+# soak-run AOF file under this dir broke the api build context).
+test-artifacts/

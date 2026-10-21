@@ -1,0 +1,39 @@
+.org-onboarding-page .org-onboarding-container {
+  max-width: 440px;
+}
+
+.org-onboarding-subtitle {
+  text-align: center;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  margin: calc(-1 * var(--spacing-md)) 0 var(--spacing-lg) 0;
+}
+
+.form-hint {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  margin-top: var(--spacing-xs);
+}
+
+.optional {
+  /* WCAG 2 AA: --color-neutral-500 (#9E9E9E) on white = 2.56:1 — fails AA.
+     Using --700 (#616161) = 5.88:1. Same fix as Sidebar.css .nav-group__label. */
+  color: var(--color-neutral-700);
+  font-weight: normal;
+}
+
+.org-onboarding-footer {
+  margin-top: var(--spacing-lg);
+  text-align: center;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.org-onboarding-footer a {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.org-onboarding-footer a:hover {
+  text-decoration: underline;
+}

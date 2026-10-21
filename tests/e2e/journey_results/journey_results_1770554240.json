@@ -1,0 +1,44 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DE-006-65b6a0e6",
+      "journey_name": "Schema Evolution",
+      "persona": "Data Engineer / Contract Author",
+      "status": "failed",
+      "start_time": 1770554240.593184,
+      "end_time": 1770554240.6078405,
+      "duration": 0.014656543731689453,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": "Failed to create asset: 500 - {'error': {'code': 'PLAN_NOT_FOUND', 'message': 'No plan assigned to tenant and default FREE plan not found', 'http_status': 500, 'request_id': '4d8ee530-e74b-4bbd-b103-53d33cea1f20', 'timestamp': '2026-02-08T12:37:20.601053+00:00'}}",
+      "error_type": "Exception",
+      "steps": [
+        {
+          "step_name": "Create Asset with Dataset",
+          "status": "StepStatus.FAILED",
+          "start_time": 1770554240.5931923,
+          "end_time": 1770554240.6078343,
+          "duration": 0.014642000198364258,
+          "error_message": "Failed to create asset: 500 - {'error': {'code': 'PLAN_NOT_FOUND', 'message': 'No plan assigned to tenant and default FREE plan not found', 'http_status': 500, 'request_id': '4d8ee530-e74b-4bbd-b103-53d33cea1f20', 'timestamp': '2026-02-08T12:37:20.601053+00:00'}}",
+          "error_type": "Exception",
+          "retry_count": 0,
+          "metadata": {
+            "args": "()",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-08T12:37:20.607962"
+}

@@ -1,0 +1,56 @@
+# Phase 7 (add-databricks-cost-guardrails task 7.6) — Databricks
+# cost-budget alerts.
+#
+# Metrics emitted by hub/apps/databricks_admin/metrics.py — the SAME
+# rolling-window read the enforcement computes on every dispatch and
+# the U9 budget page refreshes:
+#   databricks_cost_budget_consumed_ratio{tenant_id, scope}  (1.0 = at budget)
+#   databricks_cost_budget_crossings_total{tenant_id, scope}
+#
+# Alert definitions:
+#   DatabricksCostBudgetAtOrOver  — a tenant's rolling-hour consumption
+#                                   reached its budget (the BLOCK/ALERT
+#                                   boundary the enforcement enforces;
+#                                   sustained 5m to ride out single-spike
+#                                   noise).
+#   DatabricksCostBudgetCrossingFired — the once-per-crossing webhook
+#                                   fired (the `databricks.budget.exceeded`
+#                                   emission path worked end to end —
+#                                   subscribers were fanned out).
+
+groups:
+  - name: databricks_cost_budget
+    rules:
+      # ------------------------------------------------------------------
+      # DatabricksCostBudgetAtOrOver
+      # A scope whose rolling-hour consumption reached its budget. In
+      # BLOCK mode the enforcement 429s every further query; in ALERT
+      # mode queries still run. Either way an operator should see it.
+      # ------------------------------------------------------------------
+      - alert: DatabricksCostBudgetAtOrOver
+        expr: databricks_cost_budget_consumed_ratio >= 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: >-
+            Tenant {{ $labels.tenant_id }} scope {{ $labels.scope }} consumed
+            {{ $value | humanizePercentage }} of its Databricks cost budget
+            in the rolling hour.
+
+      # ------------------------------------------------------------------
+      # DatabricksCostBudgetCrossingFired
+      # The once-per-crossing webhook fired — a real budget crossing was
+      # observed AND fanned out to the tenant's subscribed webhooks.
+      # Silent-absence monitoring: a BLOCK-mode budget that 429s without
+      # this increment means the webhook path broke.
+      # ------------------------------------------------------------------
+      - alert: DatabricksCostBudgetCrossingFired
+        expr: increase(databricks_cost_budget_crossings_total[10m]) > 0
+        labels:
+          severity: info
+        annotations:
+          summary: >-
+            Tenant {{ $labels.tenant_id }} scope {{ $labels.scope }} crossed
+            its Databricks cost budget — the databricks.budget.exceeded
+            webhook fired ({{ $value }} crossing(s) in 10m).

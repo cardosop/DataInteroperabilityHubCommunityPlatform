@@ -1,0 +1,72 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.002332925796508789
+  },
+  "journeys": [
+    {
+      "journey_id": "AUD-001-dd228053",
+      "journey_name": "Review Audit Logs",
+      "persona": "Auditor",
+      "status": "completed",
+      "start_time": 1765620200.6717825,
+      "end_time": 1765620200.6741154,
+      "duration": 0.002332925796508789,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Access Audit Logs",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765620200.6717885,
+          "end_time": 1765620200.6740952,
+          "duration": 0.002306699752807617,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "list"
+          }
+        },
+        {
+          "step_name": "Filter Logs",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765620200.6741002,
+          "end_time": 1765620200.674104,
+          "duration": 3.814697265625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "list"
+          }
+        },
+        {
+          "step_name": "Analyze Patterns",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765620200.6741066,
+          "end_time": 1765620200.674114,
+          "duration": 7.3909759521484375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        }
+      ],
+      "metadata": {
+        "logs_count": 0,
+        "filtered_count": 0
+      }
+    }
+  ],
+  "exported_at": "2025-12-13T10:03:20.674198"
+}

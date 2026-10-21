@@ -1,0 +1,34 @@
+{
+  "id": "odps-dataset-1",
+  "name": "odps-dataset-1",
+  "title": "Dataset with ODPS Metadata",
+  "notes": "A dataset containing ODPS contract metadata",
+  "tags": [
+    {
+      "id": "tag-odps-1",
+      "name": "odps",
+      "vocabulary_id": null,
+      "display_name": "ODPS"
+    }
+  ],
+  "organization": {
+    "id": "test-org",
+    "name": "test-org",
+    "title": "Test Organization"
+  },
+  "license_id": "cc-by",
+  "version": "2.0.0",
+  "author": "ODPS Author",
+  "maintainer": "odps-maintainer@example.com",
+  "metadata_created": "2024-01-15T10:00:00Z",
+  "metadata_modified": "2024-01-15T10:00:00Z",
+  "type": "dataset",
+  "state": "active",
+  "extras": [
+    {
+      "key": "x_odps",
+      "value": "{\"pricing_plans\": [{\"planID\": \"plan-1\", \"name\": \"Basic Plan\", \"price\": 0, \"currency\": \"USD\"}], \"access_methods\": {\"api\": {\"endpoint\": \"https://api.example.com/data\"}}, \"payment_gateways\": {\"stripe\": {\"enabled\": true}}}"
+    }
+  ]
+}
+

@@ -1,0 +1,210 @@
+# Pre-commit hooks configuration
+# Install with: pre-commit install
+# Run manually with: pre-commit run --all-files
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+      - id: check-json
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: debug-statements
+      - id: mixed-line-ending
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.16  # pinned to match the CI-installed ruff (Q.2.3) — pre-commit and CI cannot diverge again
+    hooks:
+      - id: ruff
+        args: ['--fix', '--exit-non-zero-on-fix']
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.8.0
+    hooks:
+      - id: mypy
+        additional_dependencies: [django-stubs, types-redis, types-requests]
+        args: ['--ignore-missing-imports', '--show-error-codes']
+        exclude: ^(migrations/|tests/|venv/|\.venv/)
+
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.7.5
+    hooks:
+      - id: bandit
+        args: ['-c', '.bandit', '-r', 'hub/', 'services/']
+        exclude: ^(migrations/|tests/|venv/|\.venv/)
+
+  - repo: local
+    hooks:
+      - id: validate-transformation-schemas
+        name: Validate Transformation Pipeline Schemas
+        entry: python -c "import json, sys; [json.load(open(f)) for f in sys.argv[1:]]" --
+        language: system
+        types: [file]
+        files: ^hub/apps/transformation/.*\.json$
+        pass_filenames: true
+        description: "Validate JSON schema files for transformation pipelines"
+
+  - repo: local
+    hooks:
+      - id: validate-odps-schemas
+        name: Validate ODPS Schema Files
+        entry: python scripts/validate_odps_schemas.py --strict
+        language: system
+        types: [file]
+        files: ^hub/apps/contracts/schemas/odps/.*\.json$
+        pass_filenames: false
+        always_run: true
+
+      - id: lint-odps
+        name: Lint ODPS Files
+        entry: python scripts/lint_odps.py --strict
+        language: system
+        types: [file]
+        files: ^(tests/fixtures/odps/|examples/contracts/).*\.(json|yaml|yml)$
+        pass_filenames: true
+
+      - id: format-check-odps
+        name: Check ODPS Formatting
+        entry: python scripts/format_odps.py
+        language: system
+        types: [file]
+        files: ^(tests/fixtures/odps/|examples/contracts/).*\.(json|yaml|yml)$
+        pass_filenames: true
+
+      - id: validate-url-patterns
+        name: Validate URL Patterns
+        entry: python scripts/validate_url_patterns.py --strict
+        language: system
+        types: [file]
+        files: ^(hub/apps/.*/urls\.py|hub/urls\.py)$
+        pass_filenames: false
+        always_run: false
+        description: "Validate Django URL patterns against API naming standards"
+
+      - id: check-dq-log-extras
+        name: 240.5.F.4 — DQ logger extras PII gate
+        entry: python scripts/check_dq_log_extras.py
+        language: system
+        # Run on ANY change to the canonical DQ Hub-side files so the
+        # check fires whenever a log call is added/edited.  Pass no
+        # filenames — the script defaults to scanning the canonical
+        # five files per Phase 240.5.F.1 (views/services/service_client/
+        # alerting/tasks) PLUS the alert-delivery client subtree
+        # (hub/apps/dq/clients/{base,email_client,webhook_client,
+        # slack_client,pagerduty_client}.py — extension scope from
+        # 240.5.F audit pass).  Globally-scoped (always_run when files
+        # match) so a refactor that splits a log call across two
+        # files is still caught.
+        files: ^hub/apps/dq/((views|services|service_client|alerting|tasks)\.py|clients/[^/]+\.py)$
+        pass_filenames: false
+        description: "Phase 240.5.F.4 — bans raw redacted-key payloads in DQ logger.* extra= args. Wrap the dict in _redact() from hub.apps.dq.log_helpers."
+
+      - id: check-core-boundary
+        name: GATE-29 — core/paid boundary + guards (staged files, fast)
+        entry: bash scripts/check_core_boundary_precommit.sh
+        language: system
+        types: [python]
+        # DEFAULT_EXTRA_FILES of the checker (settings/urls/manage) must fire
+        # too — MIDDLEWARE/ROUTERS string literals live in settings.py and
+        # would otherwise never trigger the hook.
+        files: ^(hub/apps/|hub/tests/|tests/|scripts/|cli/|sdk/).*\.py$|^hub/(settings|urls|manage)\.py$
+        pass_filenames: true
+        description: "Fails at commit time when a staged Python file imports a paid app from core or an allowlisted import lacks its guard (GATE-29 scoped via --paths; ~milliseconds). CI keeps the full-tree backstop."
+
+      - id: lint-marketplace-code
+        name: Lint Marketplace Integration Code
+        entry: bash -c 'ruff check --select I,F,E,W --ignore E501 "$@"' --
+        language: system
+        types: [python]
+        files: ^hub/apps/integrations/.*\.py$
+        pass_filenames: true
+        description: "Lint marketplace integration code with ruff"
+
+      - id: type-check-marketplace-code
+        name: Type Check Marketplace Integration Code
+        entry: bash -c 'mypy --ignore-missing-imports --show-error-codes "$@"' --
+        language: system
+        types: [python]
+        files: ^hub/apps/integrations/.*\.py$
+        pass_filenames: true
+        description: "Type check marketplace integration code with mypy (system language: mypy + stubs must be present on PATH)"
+
+      # ── Documentation sync hooks (Phase 312.5) ─────────────────────
+      - id: check-journey-doc-sync
+        name: Check journey documentation sync
+        entry: python scripts/check_doc_journey_marker_sync.py
+        language: system
+        files: (docs/USER_JOURNEYS\.md|tests/.*\.py|frontend/e2e/journeys/.*\.spec\.ts|hub/apps/.*/tests/.*\.py)
+        pass_filenames: false
+        description: "Verify bidirectional consistency between journey docs and test markers"
+
+      - id: check-uc-doc-sync
+        name: Check use case documentation sync
+        entry: python scripts/check_doc_uc_marker_sync.py
+        language: system
+        files: (docs/USE_CASES\.md|tests/.*\.py|frontend/e2e/use-cases/.*\.spec\.ts|hub/apps/.*/tests/.*\.py)
+        pass_filenames: false
+        description: "Verify bidirectional consistency between UC docs and test markers"
+
+      # ── Migration drift gates ───────────────────────────────────────
+      # Added after makemigrations --check was found reporting 70 pending
+      # operations across 16 apps (4 destructive, incl. a DROP COLUMN on a
+      # populated FK column). Nothing caught it because every migration gate
+      # in .github/workflows is pinned to main/develop/staging/release-mvp-v1,
+      # so feature branches had zero coverage and drift only surfaced at
+      # PR-to-main time — by which point it was a 70-op mountain.
+      - id: check-migration-state-sync
+        name: Migration state-sync (bans DDL with no recorded state)
+        entry: python scripts/check_migration_state_sync.py
+        language: system
+        types: [python]
+        files: ^hub/apps/.*/migrations/.*\.py$
+        pass_filenames: true
+        description: "Blocks SeparateDatabaseAndState(database_operations=[...], state_operations=[]) — the pattern that silently desynchronises migration state from the database and makes the autodetector re-propose changes forever."
+
+      - id: makemigrations-check
+        name: Unmade migrations (makemigrations --check)
+        entry: bash -c 'cd hub && python manage.py makemigrations --check --dry-run --noinput'
+        language: system
+        # Django setup in this repo takes ~90s, so scope this to commits that
+        # can actually introduce drift rather than paying it on every commit.
+        files: ^hub/apps/.*/(models\.py|models/.*\.py|migrations/.*\.py)$
+        pass_filenames: false
+        description: "Fails at commit time when a model change ships without its migration. Mirrors CI GATE-12; catches drift on feature branches, where no CI gate currently runs."
+
+      # ── Secret scanning backstop (Phase 313.0) ──────────────────────
+      # W0.6 (oss-release-remediation): the hook is BLOCKING — a missing
+      # gitleaks binary FAILS the commit (the previous exit-0 fallback
+      # made the hook silently vacuous, the exact class the W0.2 scan
+      # fought). Pinned by GATE-52 (scripts/check_tag_archive_manifest.py).
+      - id: gitleaks
+        name: Gitleaks secret scan
+        entry: bash -c 'command -v gitleaks >/dev/null 2>&1 || { echo "gitleaks not installed — install it (https://github.com/gitleaks/gitleaks#installing) and re-run; the secret-scan hook is blocking"; exit 1; }; gitleaks detect --source . --config .gitleaks.toml --redact --no-banner'
+        language: system
+        pass_filenames: false
+        description: "Block commits that introduce secrets (CI runs gitleaks/gitleaks-action@v2 as the enforcement backstop)"
+
+
+      # ── Phase T.5 (W17) — GATE-40: skip debt owns a ticket and an expiry ──
+      - id: check-skip-expiry
+        name: Skip-expiry debt gate (GATE-40)
+        entry: python scripts/check_skip_expiry.py
+        language: system
+        types: [python, ts]
+        files: ^(hub/.*/tests/.*\.py|tests/.*\.py|cli/tests/.*\.py|sdk/.*/tests/.*\.py|frontend/(e2e|src)/.*\.(ts|tsx)|sdk/js/.*\.ts)$
+        pass_filenames: false
+        description: "Fails at commit time when a skip/fixme/xfail reason lacks TICKET=<id> EXPIRES=<YYYY-MM-DD> (ratcheted per bucket) or carries an expired date. Full-tree scan ~12s; CI keeps the blocking backstop."
+
+  - repo: local
+    hooks:
+      - id: lint-env-file
+        name: lint-env-file (GATE-59 wired, W12.4)
+        entry: python scripts/lint_env_file.py
+        language: system
+        files: ^\.env.*(template|example)?$
+        pass_filenames: false

@@ -1,0 +1,264 @@
+{
+  "title": "Databricks \u2014 UC Metadata Sync",
+  "uid": "databricks-uc-sync",
+  "description": "Phase 1 (add-databricks-uc-read 1.10) \u2014 UC metadata sync observability: run outcomes, mirror rows written, sync duration, and per-workspace mirror staleness. Metrics from hub/apps/databricks_admin/metrics.py.",
+  "tags": [
+    "databricks",
+    "uc",
+    "sync",
+    "production"
+  ],
+  "timezone": "browser",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Sync Runs \u2014 Success (24h)",
+      "type": "stat",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(databricks_uc_sync_runs_total{outcome=\"success\"}[24h]))",
+          "legendFormat": "successful runs"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "steps": [
+              {
+                "value": 0,
+                "color": "red"
+              },
+              {
+                "value": 1,
+                "color": "green"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Sync Runs \u2014 Failed (24h)",
+      "type": "stat",
+      "gridPos": {
+        "x": 6,
+        "y": 0,
+        "w": 6,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(databricks_uc_sync_runs_total{outcome=\"failure\"}[24h]))",
+          "legendFormat": "failed runs"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "steps": [
+              {
+                "value": 0,
+                "color": "green"
+              },
+              {
+                "value": 1,
+                "color": "red"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Sync Runs \u2014 Skipped (24h)",
+      "type": "stat",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 6,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(databricks_uc_sync_runs_total{outcome=\"skipped\"}[24h]))",
+          "legendFormat": "skipped workspaces"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "steps": [
+              {
+                "value": 0,
+                "color": "green"
+              },
+              {
+                "value": 5,
+                "color": "yellow"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Failure Rate (24h)",
+      "type": "stat",
+      "gridPos": {
+        "x": 18,
+        "y": 0,
+        "w": 6,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "(sum(increase(databricks_uc_sync_runs_total{outcome=\"failure\"}[24h])) / clamp_min(sum(increase(databricks_uc_sync_runs_total[24h])), 1)) * 100",
+          "legendFormat": "failure %"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "steps": [
+              {
+                "value": 0,
+                "color": "green"
+              },
+              {
+                "value": 25,
+                "color": "red"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 5,
+      "title": "Mirror Rows Written (per operation)",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 6,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(databricks_uc_sync_rows_total{operation=\"created\"}[1h]))",
+          "legendFormat": "created"
+        },
+        {
+          "expr": "sum(increase(databricks_uc_sync_rows_total{operation=\"updated\"}[1h]))",
+          "legendFormat": "updated"
+        },
+        {
+          "expr": "sum(increase(databricks_uc_sync_rows_total{operation=\"deleted\"}[1h]))",
+          "legendFormat": "deleted"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        }
+      }
+    },
+    {
+      "id": 6,
+      "title": "Sync Duration p95",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 6,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(databricks_uc_sync_duration_seconds_bucket[30m])) by (le))",
+          "legendFormat": "p95"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        }
+      }
+    },
+    {
+      "id": 7,
+      "title": "Mirror Staleness \u2014 Worst Workspace",
+      "type": "stat",
+      "gridPos": {
+        "x": 0,
+        "y": 14,
+        "w": 12,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "max(time() - databricks_uc_sync_last_success_timestamp)",
+          "legendFormat": "worst staleness"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dtdurations",
+          "thresholds": {
+            "steps": [
+              {
+                "value": 0,
+                "color": "green"
+              },
+              {
+                "value": 129600,
+                "color": "yellow"
+              },
+              {
+                "value": 259200,
+                "color": "red"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 8,
+      "title": "Per-Workspace Last Success",
+      "type": "table",
+      "gridPos": {
+        "x": 12,
+        "y": 14,
+        "w": 12,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "time() - databricks_uc_sync_last_success_timestamp",
+          "legendFormat": "{{ workspace }}",
+          "format": "table",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dtdurations"
+        }
+      }
+    }
+  ]
+}

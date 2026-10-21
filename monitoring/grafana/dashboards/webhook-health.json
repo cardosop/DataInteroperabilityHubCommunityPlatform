@@ -1,0 +1,200 @@
+{
+  "title": "Webhooks (Phase 233)",
+  "uid": "webhook-health",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "type": "row",
+      "title": "Outbound Delivery Volume",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "type": "timeseries",
+      "title": "Outbound trigger rate by outcome",
+      "description": "Trigger-time outbound webhook attempts split by outcome (triggered / rate_limited / duplicate_skipped). Sums across tenants — drill into a single tenant by adding a tenant_id filter at query time.",
+      "gridPos": { "x": 0, "y": 1, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(meshant_webhook_outbound_total[5m]))",
+          "legendFormat": "{{outcome}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops" } },
+      "options": { "legend": { "displayMode": "table", "placement": "right" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Top-10 tenants by outbound rate",
+      "description": "Surfaces noisy tenants. A rapid jump on a single tenant_id is a misconfigured automation or runaway event source — investigate via the WEBHOOK_RATE_LIMIT_EXCEEDED audit events for the tenant.",
+      "gridPos": { "x": 12, "y": 1, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "topk(10, sum by (tenant_id) (rate(meshant_webhook_outbound_total[5m])))",
+          "legendFormat": "{{tenant_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops" } }
+    },
+    {
+      "type": "stat",
+      "title": "Triggered (last 5m)",
+      "gridPos": { "x": 0, "y": 9, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "sum(increase(meshant_webhook_outbound_total{outcome=\"triggered\"}[5m]))",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] } } }
+    },
+    {
+      "type": "stat",
+      "title": "Rate-limited (last 5m)",
+      "gridPos": { "x": 6, "y": 9, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "sum(increase(meshant_webhook_outbound_total{outcome=\"rate_limited\"}[5m]))",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 10 }, { "color": "red", "value": 100 }] } } }
+    },
+    {
+      "type": "stat",
+      "title": "Duplicate-skipped (last 5m)",
+      "description": "Idempotency hits — when an event_id already has a SUCCESS row. Informational; high values mean the emitter is double-firing.",
+      "gridPos": { "x": 12, "y": 9, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "sum(increase(meshant_webhook_outbound_total{outcome=\"duplicate_skipped\"}[5m]))",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" } }
+    },
+    {
+      "type": "stat",
+      "title": "Distinct tenants firing rate-limit (last 5m)",
+      "description": "Mirrors the WebhookRateLimitBlockedAcrossManyTenants alert. >10 → page.",
+      "gridPos": { "x": 18, "y": 9, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "count(sum by (tenant_id) (increase(meshant_webhook_rate_limit_blocks_total[5m])) > 0)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 5 }, { "color": "red", "value": 10 }] } } }
+    },
+    {
+      "type": "row",
+      "title": "Signature Compute Duration (HMAC + decrypt_secret)",
+      "gridPos": { "x": 0, "y": 13, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "type": "timeseries",
+      "title": "Signature compute duration percentiles",
+      "description": "P50/P95/P99 of HMAC-SHA256 + decrypt_secret on outbound deliveries. Typical p95 is sub-millisecond; >100ms triggers WebhookSignatureComputeDurationHigh alert. The alert annotation links here.",
+      "gridPos": { "x": 0, "y": 14, "w": 24, "h": 9 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(meshant_webhook_signature_verification_duration_seconds_bucket[5m])))",
+          "legendFormat": "p50",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(meshant_webhook_signature_verification_duration_seconds_bucket[5m])))",
+          "legendFormat": "p95",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(meshant_webhook_signature_verification_duration_seconds_bucket[5m])))",
+          "legendFormat": "p99",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.01 },
+              { "color": "red", "value": 0.1 }
+            ]
+          },
+          "custom": { "thresholdsStyle": { "mode": "line+area" } }
+        }
+      }
+    },
+    {
+      "type": "row",
+      "title": "Rate-limit Blocks (Phase 233.3)",
+      "gridPos": { "x": 0, "y": 23, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "type": "timeseries",
+      "title": "Rate-limit blocks/sec by tenant",
+      "description": "Reads from meshant_webhook_rate_limit_blocks_total. Each spike on a single tenant_id is a tenant whose subscriber-side bug or operator behaviour is exhausting the per-minute budget. Drill into the WEBHOOK_RATE_LIMIT_EXCEEDED audit events for the tenant_id to see which webhook + event_type fired.",
+      "gridPos": { "x": 0, "y": 24, "w": 24, "h": 9 },
+      "targets": [
+        {
+          "expr": "sum by (tenant_id) (rate(meshant_webhook_rate_limit_blocks_total[5m]))",
+          "legendFormat": "{{tenant_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops" } }
+    },
+    {
+      "type": "row",
+      "title": "Alert State",
+      "gridPos": { "x": 0, "y": 33, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "type": "stat",
+      "title": "WebhookRateLimitedSpikePerTenant firing",
+      "gridPos": { "x": 0, "y": 34, "w": 6, "h": 5 },
+      "targets": [
+        {
+          "expr": "max(ALERTS{alertname=\"WebhookRateLimitedSpikePerTenant\", alertstate=\"firing\"}) OR on() vector(0)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "mappings": [{ "type": "value", "options": { "0": { "text": "OK", "color": "green" }, "1": { "text": "FIRING", "color": "yellow" } } }], "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }] } } }
+    },
+    {
+      "type": "stat",
+      "title": "WebhookSignatureComputeDurationHigh firing",
+      "gridPos": { "x": 6, "y": 34, "w": 6, "h": 5 },
+      "targets": [
+        {
+          "expr": "max(ALERTS{alertname=\"WebhookSignatureComputeDurationHigh\", alertstate=\"firing\"}) OR on() vector(0)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "mappings": [{ "type": "value", "options": { "0": { "text": "OK", "color": "green" }, "1": { "text": "FIRING", "color": "yellow" } } }], "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }] } } }
+    },
+    {
+      "type": "stat",
+      "title": "WebhookRateLimitBlockedAcrossManyTenants firing",
+      "gridPos": { "x": 12, "y": 34, "w": 12, "h": 5 },
+      "targets": [
+        {
+          "expr": "max(ALERTS{alertname=\"WebhookRateLimitBlockedAcrossManyTenants\", alertstate=\"firing\"}) OR on() vector(0)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "mappings": [{ "type": "value", "options": { "0": { "text": "OK", "color": "green" }, "1": { "text": "PAGE", "color": "red" } } }], "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] } } }
+    }
+  ]
+}

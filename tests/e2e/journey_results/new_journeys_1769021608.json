@@ -1,0 +1,56 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.022041797637939453
+  },
+  "journeys": [
+    {
+      "journey_id": "DA-003-12b510be",
+      "journey_name": "Query Virtual Dataset",
+      "persona": "Data Analyst",
+      "status": "completed",
+      "start_time": 1769021608.470335,
+      "end_time": 1769021608.4923768,
+      "duration": 0.022041797637939453,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Select Virtual Dataset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769021608.4703403,
+          "end_time": 1769021608.4876704,
+          "duration": 0.017330169677734375,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Execute Query",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769021608.4876778,
+          "end_time": 1769021608.492373,
+          "duration": 0.00469517707824707,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-01-21T18:53:28.492439"
+}

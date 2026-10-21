@@ -1,0 +1,62 @@
+name: Frontend Core
+
+on:
+  push:
+    branches: [main]
+    paths: ["frontend/**", "shared/**"]
+  pull_request:
+    paths: ["frontend/**", "shared/**"]
+
+jobs:
+  frontend:
+    name: Unit + typecheck + build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm ci
+        working-directory: frontend
+      - run: npm run test:run:ci
+        working-directory: frontend
+      - run: npm run typecheck
+        working-directory: frontend
+      - run: npm run build
+        working-directory: frontend
+
+  e2e-core-personas:
+    name: E2E (core personas, weekly)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'push'
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm ci
+        working-directory: frontend
+      - run: npx playwright install --with-deps chromium
+        working-directory: frontend
+      - name: Start core backend
+        run: docker compose -f docker-compose.test.yml -f docker-compose.test.core.yml up -d --build --wait
+        timeout-minutes: 10
+      - name: Core OpenAPI drift (E2E_CORE_ONLY=1)
+        working-directory: frontend
+        # The core backend serves no paid paths — the committed core
+        # snapshot must match (a drift here means the core schema changed
+        # without its snapshot).
+        run: npx playwright test --project=dimensions e2e/dimensions/openapi-drift.spec.ts --reporter=line --workers=1
+        env:
+          CI: "true"
+          E2E_CORE_ONLY: "1"
+          E2E_API_BASE_URL: "http://localhost:8001/api/v1"
+        timeout-minutes: 10
+      - name: Run core subset (frontend/e2e/core-only.txt)
+        # scripts/run-e2e-core.sh strips comments/blank lines, pins the
+        # setup-auth title, wires the 8001 backend env and fails loudly
+        # when the subset file is missing (no silent zero-match pass).
+        run: npm run test:e2e:core -- --workers=3
+        working-directory: frontend
+        timeout-minutes: 35

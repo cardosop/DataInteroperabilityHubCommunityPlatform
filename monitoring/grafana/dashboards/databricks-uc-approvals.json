@@ -1,0 +1,95 @@
+{
+  "title": "Databricks \u2014 UC Approval Pipeline",
+  "uid": "databricks-uc-approvals",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Pending Approvals (now)",
+      "targets": [
+        {
+          "expr": "sum(databricks_uc_change_pending_approvals)"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Oldest Pending (worst tenant)",
+      "targets": [
+        {
+          "expr": "max(databricks_uc_change_oldest_pending_seconds)"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 6,
+        "y": 0
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Transitions (24h, by event)",
+      "targets": [
+        {
+          "expr": "sum(increase(databricks_uc_change_requests_total{event=\"submitted\"}[24h]))"
+        },
+        {
+          "expr": "sum(increase(databricks_uc_change_requests_total{event=\"approved\"}[24h]))"
+        },
+        {
+          "expr": "sum(increase(databricks_uc_change_requests_total{event=\"rejected\"}[24h]))"
+        },
+        {
+          "expr": "sum(increase(databricks_uc_change_requests_total{event=\"executed\"}[24h]))"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Approval Latency p95 (created \u2192 decided)",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(databricks_uc_approval_duration_seconds_bucket[30m])) by (le))"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      }
+    },
+    {
+      "type": "table",
+      "title": "Per-Tenant Pending Approvals",
+      "targets": [
+        {
+          "expr": "databricks_uc_change_pending_approvals"
+        },
+        {
+          "expr": "databricks_uc_change_oldest_pending_seconds"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      }
+    }
+  ]
+}

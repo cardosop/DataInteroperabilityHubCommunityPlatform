@@ -1,0 +1,58 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.33792853355407715
+  },
+  "journeys": [
+    {
+      "journey_id": "DMO-004-6f722066",
+      "journey_name": "Transfer Asset Ownership",
+      "persona": "Data Mesh Domain Owner",
+      "status": "completed",
+      "start_time": 1771734448.4939408,
+      "end_time": 1771734448.8318694,
+      "duration": 0.33792853355407715,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Select Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771734448.4939477,
+          "end_time": 1771734448.8223867,
+          "duration": 0.32843899726867676,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Note: Asset Ownership Transfer Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771734448.8318546,
+          "end_time": 1771734448.8318667,
+          "duration": 1.2159347534179688e-05,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "968fb04f-01a8-404a-ac97-693aa65bcae1"
+      }
+    }
+  ],
+  "exported_at": "2026-02-22T04:27:28.832012"
+}

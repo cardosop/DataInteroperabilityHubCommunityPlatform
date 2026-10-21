@@ -1,0 +1,681 @@
+{
+  "title": "Databricks \u2014 Control Plane",
+  "uid": "databricks-control-plane",
+  "description": "Shared DoD gate (openspec add-databricks-control-plane \u2014 Ops & observability) \u2014 the Databricks control-plane estate rollup: workspace mirror staleness across all three mirrors, the UC change approval pipeline, the SQL-warehouse and job fleets, cost budgets, and DLT updates. Metrics from hub/apps/databricks_admin/metrics.py.",
+  "tags": [
+    "databricks",
+    "control-plane",
+    "estate",
+    "production"
+  ],
+  "timezone": "browser",
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Workspaces tracked (UC sync)",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "count(databricks_uc_sync_last_success_timestamp)",
+          "legendFormat": "workspaces"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        }
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "UC mirror \u2014 max staleness",
+      "gridPos": {
+        "x": 6,
+        "y": 0,
+        "w": 6,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "max(time() - databricks_uc_sync_last_success_timestamp)",
+          "legendFormat": "max mirror age"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "steps": [
+              {
+                "value": 0,
+                "color": "green"
+              },
+              {
+                "value": 43200,
+                "color": "yellow"
+              },
+              {
+                "value": 129600,
+                "color": "red"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Warehouse mirror \u2014 max staleness",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 6,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "max(time() - databricks_warehouse_mirror_last_success_timestamp)",
+          "legendFormat": "max mirror age"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "steps": [
+              {
+                "value": 0,
+                "color": "green"
+              },
+              {
+                "value": 43200,
+                "color": "yellow"
+              },
+              {
+                "value": 86400,
+                "color": "red"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Jobs mirror \u2014 max staleness",
+      "gridPos": {
+        "x": 18,
+        "y": 0,
+        "w": 6,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "max(time() - databricks_jobs_mirror_last_success_timestamp)",
+          "legendFormat": "max mirror age"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "steps": [
+              {
+                "value": 0,
+                "color": "green"
+              },
+              {
+                "value": 43200,
+                "color": "yellow"
+              },
+              {
+                "value": 86400,
+                "color": "red"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "UC approval backlog",
+      "gridPos": {
+        "x": 0,
+        "y": 6,
+        "w": 6,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "sum(databricks_uc_change_pending_approvals)",
+          "legendFormat": "pending requests"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              {
+                "value": 0,
+                "color": "green"
+              },
+              {
+                "value": 10,
+                "color": "yellow"
+              },
+              {
+                "value": 20,
+                "color": "red"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Oldest pending approval",
+      "gridPos": {
+        "x": 6,
+        "y": 6,
+        "w": 6,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "max(databricks_uc_change_oldest_pending_seconds)",
+          "legendFormat": "oldest pending"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "steps": [
+              {
+                "value": 0,
+                "color": "green"
+              },
+              {
+                "value": 86400,
+                "color": "yellow"
+              },
+              {
+                "value": 259200,
+                "color": "red"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "UC sync runs (24h) by outcome",
+      "gridPos": {
+        "x": 12,
+        "y": 6,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "sum by (outcome) (increase(databricks_uc_sync_runs_total[24h]))",
+          "legendFormat": "{{outcome}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {}
+      }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "UC sync duration p95",
+      "gridPos": {
+        "x": 0,
+        "y": 14,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(databricks_uc_sync_duration_seconds_bucket[6h])))",
+          "legendFormat": "p95 sync duration"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        }
+      }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "UC sync mirror rows (24h) by operation",
+      "gridPos": {
+        "x": 12,
+        "y": 14,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "sum by (operation) (increase(databricks_uc_sync_rows_total[24h]))",
+          "legendFormat": "{{operation}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {}
+      }
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "UC change lifecycle (24h) by event",
+      "gridPos": {
+        "x": 0,
+        "y": 22,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "sum by (event) (increase(databricks_uc_change_requests_total[24h]))",
+          "legendFormat": "{{event}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {}
+      }
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Approval latency p95",
+      "gridPos": {
+        "x": 12,
+        "y": 22,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(databricks_uc_approval_duration_seconds_bucket[24h])))",
+          "legendFormat": "p95 approval latency"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        }
+      }
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Warehouses per state",
+      "gridPos": {
+        "x": 0,
+        "y": 30,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "sum by (state) (databricks_warehouse_state_count)",
+          "legendFormat": "{{state}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {}
+      }
+    },
+    {
+      "id": 13,
+      "type": "stat",
+      "title": "Long-STARTING warehouses",
+      "gridPos": {
+        "x": 12,
+        "y": 30,
+        "w": 6,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "count(databricks_warehouse_starting_since_timestamp > 0 and time() - databricks_warehouse_starting_since_timestamp > 600)",
+          "legendFormat": "starting > 10m"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {}
+      }
+    },
+    {
+      "id": 14,
+      "type": "stat",
+      "title": "Long-running job runs",
+      "gridPos": {
+        "x": 18,
+        "y": 30,
+        "w": 6,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "count(databricks_job_run_started_since_timestamp > 0 and time() - databricks_job_run_started_since_timestamp > 1800)",
+          "legendFormat": "running > 30m"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {}
+      }
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Warehouse pool in-use (per tenant)",
+      "gridPos": {
+        "x": 0,
+        "y": 38,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "sum by (tenant_id) (databricks_warehouse_pool_in_use)",
+          "legendFormat": "{{tenant_id}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {}
+      }
+    },
+    {
+      "id": 16,
+      "type": "stat",
+      "title": "Pool exhaustions (24h)",
+      "gridPos": {
+        "x": 12,
+        "y": 38,
+        "w": 6,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(databricks_warehouse_pool_exhausted_total[24h]))",
+          "legendFormat": "exhaustions"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {}
+      }
+    },
+    {
+      "id": 17,
+      "type": "stat",
+      "title": "Pool borrows (24h)",
+      "gridPos": {
+        "x": 18,
+        "y": 38,
+        "w": 6,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(databricks_warehouse_pool_borrows_total[24h]))",
+          "legendFormat": "borrows"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {}
+      }
+    },
+    {
+      "id": 18,
+      "type": "timeseries",
+      "title": "Job runs (24h) by outcome",
+      "gridPos": {
+        "x": 0,
+        "y": 46,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "sum by (outcome) (increase(databricks_job_runs_total[24h]))",
+          "legendFormat": "{{outcome}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {}
+      }
+    },
+    {
+      "id": 19,
+      "type": "timeseries",
+      "title": "Job runs per lifecycle state",
+      "gridPos": {
+        "x": 12,
+        "y": 46,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "sum by (lifecycle_state) (databricks_job_run_state_count)",
+          "legendFormat": "{{lifecycle_state}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {}
+      }
+    },
+    {
+      "id": 20,
+      "type": "stat",
+      "title": "Job run failure share (30m)",
+      "gridPos": {
+        "x": 0,
+        "y": 54,
+        "w": 6,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(databricks_job_runs_total{outcome=\"FAILED\"}[30m])) / sum(rate(databricks_job_runs_total[30m]))",
+          "legendFormat": "failure share"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "steps": [
+              {
+                "value": 0,
+                "color": "green"
+              },
+              {
+                "value": 0.25,
+                "color": "yellow"
+              },
+              {
+                "value": 0.5,
+                "color": "red"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 21,
+      "type": "stat",
+      "title": "DLT failure share (30m)",
+      "gridPos": {
+        "x": 6,
+        "y": 54,
+        "w": 6,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(databricks_dlt_updates_total{outcome=\"FAILED\"}[30m])) / sum(rate(databricks_dlt_updates_total[30m]))",
+          "legendFormat": "failure share"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "steps": [
+              {
+                "value": 0,
+                "color": "green"
+              },
+              {
+                "value": 0.25,
+                "color": "yellow"
+              },
+              {
+                "value": 0.5,
+                "color": "red"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 22,
+      "type": "timeseries",
+      "title": "DLT updates (24h) by outcome",
+      "gridPos": {
+        "x": 12,
+        "y": 54,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "sum by (outcome) (increase(databricks_dlt_updates_total[24h]))",
+          "legendFormat": "{{outcome}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {}
+      }
+    },
+    {
+      "id": 23,
+      "type": "timeseries",
+      "title": "Budget consumption by scope",
+      "gridPos": {
+        "x": 0,
+        "y": 62,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "max by (scope) (databricks_cost_budget_consumed_ratio)",
+          "legendFormat": "{{scope}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "steps": [
+              {
+                "value": 0,
+                "color": "green"
+              },
+              {
+                "value": 0.8,
+                "color": "yellow"
+              },
+              {
+                "value": 1,
+                "color": "red"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 24,
+      "type": "stat",
+      "title": "Max budget consumption",
+      "gridPos": {
+        "x": 12,
+        "y": 62,
+        "w": 6,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "max(databricks_cost_budget_consumed_ratio)",
+          "legendFormat": "max ratio"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "steps": [
+              {
+                "value": 0,
+                "color": "green"
+              },
+              {
+                "value": 0.8,
+                "color": "yellow"
+              },
+              {
+                "value": 1,
+                "color": "red"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 25,
+      "type": "stat",
+      "title": "Budget crossings (24h)",
+      "gridPos": {
+        "x": 18,
+        "y": 62,
+        "w": 6,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(databricks_cost_budget_crossings_total[24h]))",
+          "legendFormat": "crossings"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {}
+      }
+    }
+  ]
+}

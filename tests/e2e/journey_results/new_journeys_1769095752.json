@@ -1,0 +1,69 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.14222073554992676
+  },
+  "journeys": [
+    {
+      "journey_id": "AUD-005-5eaf4b25",
+      "journey_name": "Audit Transformation Pipelines",
+      "persona": "Auditor",
+      "status": "completed",
+      "start_time": 1769095752.7523868,
+      "end_time": 1769095752.8946075,
+      "duration": 0.14222073554992676,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Note: Pipeline Listing Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769095752.886874,
+          "end_time": 1769095752.8868794,
+          "duration": 5.4836273193359375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Pipeline Executions Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769095752.8910344,
+          "end_time": 1769095752.8910384,
+          "duration": 4.0531158447265625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Transformation Audit Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769095752.8946035,
+          "end_time": 1769095752.8946066,
+          "duration": 3.0994415283203125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-01-22T15:29:12.894669"
+}

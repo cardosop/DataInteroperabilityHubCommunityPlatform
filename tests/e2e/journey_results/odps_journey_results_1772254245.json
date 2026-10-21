@@ -1,0 +1,124 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.5776867866516113
+  },
+  "journeys": [
+    {
+      "journey_id": "ODPS-004-1edcee90",
+      "journey_name": "ODPS Marketplace Configuration Journey",
+      "persona": "Data Product Owner",
+      "status": "completed",
+      "start_time": 1772254245.3043487,
+      "end_time": 1772254245.8820355,
+      "duration": 0.5776867866516113,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Create Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772254245.3043568,
+          "end_time": 1772254245.3203878,
+          "duration": 0.01603102684020996,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Create ODPS with Marketplace Configuration",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772254245.3203986,
+          "end_time": 1772254245.3204656,
+          "duration": 6.699562072753906e-05,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Create ODPS Contract",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772254245.320468,
+          "end_time": 1772254245.8794775,
+          "duration": 0.5590095520019531,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Verify Pricing Plans",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772254245.8796847,
+          "end_time": 1772254245.8803415,
+          "duration": 0.0006568431854248047,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Verify Access Methods",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772254245.8803444,
+          "end_time": 1772254245.8809202,
+          "duration": 0.0005757808685302734,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Verify Payment Gateways",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772254245.8809228,
+          "end_time": 1772254245.8814774,
+          "duration": 0.0005545616149902344,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Verify Marketplace Listing Integration",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772254245.8814805,
+          "end_time": 1772254245.882033,
+          "duration": 0.0005526542663574219,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        }
+      ],
+      "metadata": {
+        "odps_contract_id": "b2616555-959c-4952-ae50-75935190dc1d",
+        "marketplace_configured": true
+      }
+    }
+  ],
+  "exported_at": "2026-02-28T04:50:45.882112"
+}

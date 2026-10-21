@@ -1,0 +1,69 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.01896047592163086
+  },
+  "journeys": [
+    {
+      "journey_id": "AUD-004-52be5960",
+      "journey_name": "Review Data Mesh Governance",
+      "persona": "Auditor",
+      "status": "completed",
+      "start_time": 1771736724.841299,
+      "end_time": 1771736724.8602595,
+      "duration": 0.01896047592163086,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "View Governance Policies",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771736724.8504372,
+          "end_time": 1771736724.8504431,
+          "duration": 5.9604644775390625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Review Policy Compliance",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771736724.8564615,
+          "end_time": 1771736724.8564653,
+          "duration": 3.814697265625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Generate Governance Report",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771736724.8602552,
+          "end_time": 1771736724.8602586,
+          "duration": 3.337860107421875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-22T05:05:24.860326"
+}

@@ -1,0 +1,215 @@
+# Phase 313.4 — core-only DEV stack overlay (docker-compose.yml base).
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.core.yml up -d --build
+#   make quickstart   # convenience wrapper (Makefile.core)
+#
+# Same overlay design as docker-compose.test.core.yml: paid + optional
+# services get a non-default profile so default `up` excludes them, and the
+# core services pin their depends_on to core-only targets via `!reset`
+# (compose deep-merges maps, so a plain list would merge instead of replace).
+
+services:
+  postgres:
+    # Core-only init mounts: the base compose also mounts pgbouncer-user
+    # and ssl-copy scripts whose sources (infrastructure/postgres/*)
+    # do not ship in the public tree. !reset replaces the list.
+    volumes: !reset
+      - pgdata:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./infrastructure/postgres/02-pg-hba-host.sh:/docker-entrypoint-initdb.d/02-pg-hba-host.sh:ro
+  api-service:
+    # Fresh-volume postgres initdb can outrun the settings startup probe —
+    # retry until the database accepts connections (idempotent).
+    restart: unless-stopped
+    # First boot also runs on-boot migrations; the base healthcheck window
+    # (2m start_period + 5×30s retries ≈ 4.5m) gives up before gunicorn
+    # binds on slow disks. Deep-merge widens the window; fast CI runners
+    # go healthy in seconds regardless.
+    healthcheck:
+      start_period: 10m
+      retries: 10
+    environment:
+      HUB_CORE_ONLY: "1"
+      POSTGRES_HOST: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required — run make quickstart (bootstraps .env)}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-hub}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-hub}
+      # G12 — explicit keys, required at compose-parse time. The bootstrap
+      # .env (scripts/make_dev_env.py via `make quickstart`) generates them;
+      # a fresh clone without .env fails HERE, never with a well-known key.
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required — run make quickstart (bootstraps .env)}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?JWT_SECRET_KEY is required — run make quickstart (bootstraps .env)}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY is required — run make quickstart (bootstraps .env)}
+      REDIS_URL: redis://redis-cache:6379/0
+      REDIS_HOST: redis-cache
+      REDIS_PORT: "6379"
+      AWS_S3_ENDPOINT_URL: http://minio:9000
+      AWS_STORAGE_BUCKET_NAME: hub-files
+    depends_on: !reset
+      postgres:
+        condition: service_healthy
+      redis-cache:
+        condition: service_healthy
+      redis-queue:
+        condition: service_healthy
+      redis-events:
+        condition: service_healthy
+      redis-channels:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+  worker-service:
+    restart: unless-stopped
+    environment:
+      HUB_CORE_ONLY: "1"
+      POSTGRES_HOST: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required — run make quickstart (bootstraps .env)}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-hub}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-hub}
+      # G12 — explicit keys (same contract as api-service above).
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required — run make quickstart (bootstraps .env)}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?JWT_SECRET_KEY is required — run make quickstart (bootstraps .env)}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY is required — run make quickstart (bootstraps .env)}
+      REDIS_URL: redis://redis-cache:6379/0
+      REDIS_HOST: redis-cache
+      REDIS_PORT: "6379"
+      AWS_S3_ENDPOINT_URL: http://minio:9000
+      AWS_STORAGE_BUCKET_NAME: hub-files
+    depends_on: !reset
+      postgres:
+        condition: service_healthy
+      redis-cache:
+        condition: service_healthy
+      redis-queue:
+        condition: service_healthy
+      redis-events:
+        condition: service_healthy
+      redis-channels:
+        condition: service_healthy
+
+  frontend:
+    # The SPA is served by nginx regardless of api health — the base
+    # `service_healthy` condition aborts the whole `up` while the api is
+    # in its restart loop during a fresh-volume postgres initdb.
+    restart: unless-stopped
+    depends_on: !reset
+      api-service:
+        condition: service_started
+
+  traefik:
+    # Same convergence class as api/worker: the api may be unhealthy for
+    # the first minutes on slow disks; traefik retries instead of exiting.
+    restart: unless-stopped
+    # Core static config (no docker provider) + core healthcheck probe:
+    # the base /api/rawdata probe targets the paid ckan layer and 404s
+    # forever in core mode; the base image's docker client is refused by
+    # modern daemons (min API 1.44).
+    volumes: !reset
+      - ./infrastructure/traefik/traefik.core.yml:/etc/traefik/traefik.yml:ro
+      - ./infrastructure/traefik/dynamic:/etc/traefik/dynamic:ro
+      - traefik-letsencrypt:/letsencrypt
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/api/version"]
+    depends_on: !reset
+      api-service:
+        condition: service_started
+      frontend:
+        condition: service_started
+
+  # Paid-layer services (excluded from core)
+  postgres-baas:
+    profiles: ["core-excluded"]
+  redis-baas:
+    profiles: ["core-excluded"]
+  clamav:
+    profiles: ["core-excluded"]
+  fuseki:
+    profiles: ["core-excluded"]
+  semantic-service:
+    profiles: ["core-excluded"]
+    image: busybox:1.36
+    build: !reset null
+  datacontract-service:
+    profiles: ["core-excluded"]
+    image: busybox:1.36
+    build: !reset null
+  dq-service:
+    profiles: ["core-excluded"]
+    image: busybox:1.36
+    build: !reset null
+  compliance-service:
+    profiles: ["core-excluded"]
+    image: busybox:1.36
+    build: !reset null
+  compliance-rq-worker:
+    profiles: ["core-excluded"]
+    image: busybox:1.36
+    build: !reset null
+  prefect-server:
+    profiles: ["core-excluded"]
+    image: busybox:1.36
+    build: !reset null
+  prefect-db:
+    profiles: ["core-excluded"]
+    image: busybox:1.36
+    build: !reset null
+  prefect-worker:
+    profiles: ["core-excluded"]
+    image: busybox:1.36
+    build: !reset null
+  prefect-integration-service:
+    profiles: ["core-excluded"]
+    image: busybox:1.36
+    build: !reset null
+  odh-training-operator:
+    profiles: ["core-excluded"]
+    image: busybox:1.36
+    build: !reset null
+  odh-inference-scheduler:
+    profiles: ["core-excluded"]
+    image: busybox:1.36
+    build: !reset null
+  ckan-test:
+    profiles: ["core-excluded"]
+    image: busybox:1.36
+    build: !reset null
+  ckan-test-db:
+    profiles: ["core-excluded"]
+    image: busybox:1.36
+    build: !reset null
+  ckan-test-solr:
+    profiles: ["core-excluded"]
+    image: busybox:1.36
+    build: !reset null
+  ckan-test-redis:
+    profiles: ["core-excluded"]
+    image: busybox:1.36
+    build: !reset null
+
+  # Optional dev extras (excluded from the minimal core stack)
+  jaeger:
+    profiles: ["core-excluded"]
+  mock-server:
+    profiles: ["core-excluded"]
+  prometheus:
+    profiles: ["core-excluded"]
+    # Phase P.8 — when monitoring IS enabled in the core stack, mount the
+    # core-safe scrape config. The shipped prometheus.yml scrapes paid-only
+    # services (semantic/dq/compliance/datacontract/prefect/search + k8s-only
+    # sidecars); in the OSS tree those targets do not exist, `up == 0`
+    # holds, and the ServiceDown / SemanticFusekiDown / PrefectDown rules
+    # page for services the deployment does not have. Compose merges
+    # volumes by container path, so this entry REPLACES the base file's
+    # config mount (traefik.core.yml precedent).
+    volumes:
+      - ./monitoring/prometheus/prometheus.core.yml:/etc/prometheus/prometheus.yml:ro
+  grafana:
+    profiles: ["core-excluded"]
+  alertmanager:
+    profiles: ["core-excluded"]
+    # Phase P.8 — the base compose mounts ./monitoring/alertmanager/
+    # alertmanager.yml, which does NOT ship in the public tree (its routes
+    # reference env placeholders only a deploy pipeline substitutes). The
+    # core-safe config is a no-op: routes are inert without paid-layer
+    # alerts and the receiver declares no delivery channel.
+    volumes:
+      - ./monitoring/alertmanager/alertmanager.core.yml:/etc/alertmanager/alertmanager.yml:ro

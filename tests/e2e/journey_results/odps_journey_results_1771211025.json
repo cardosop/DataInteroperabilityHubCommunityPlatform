@@ -1,0 +1,44 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "ODPS-005-ee4d76ac",
+      "journey_name": "ODPS Product Strategy Journey",
+      "persona": "Data Product Owner",
+      "status": "failed",
+      "start_time": 1771211025.5846345,
+      "end_time": 1771211025.5876405,
+      "duration": 0.0030059814453125,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": "Failed to create asset: 403 - {\"error\": \"No active subscription\", \"code\": \"subscription_inactive\", \"details\": {\"tenant_id\": \"153af6ed-6253-445f-bc31-47d53186f5e5\"}}",
+      "error_type": "Exception",
+      "steps": [
+        {
+          "step_name": "Create Asset",
+          "status": "StepStatus.FAILED",
+          "start_time": 1771211025.5846434,
+          "end_time": 1771211025.5876372,
+          "duration": 0.0029938220977783203,
+          "error_message": "Failed to create asset: 403 - {\"error\": \"No active subscription\", \"code\": \"subscription_inactive\", \"details\": {\"tenant_id\": \"153af6ed-6253-445f-bc31-47d53186f5e5\"}}",
+          "error_type": "Exception",
+          "retry_count": 0,
+          "metadata": {
+            "args": "()",
+            "kwargs": "{'key': 'odps-strategy-eb353ba3', 'name': 'ODPS Product Strategy Test Asset'}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-16T03:03:45.587708"
+}

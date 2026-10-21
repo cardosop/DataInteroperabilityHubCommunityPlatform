@@ -1,0 +1,92 @@
+# Phase 277.B.071 + 277.B.075 — Prometheus alert rules for RQ jobs
+#
+# Four alert rules covering queue backpressure, failures, latency, and workers:
+#
+#   1. RQQueueDepthHigh — any queue exceeds 500 queued jobs for 10 min.
+#      Signals worker saturation / stalled consumer.  Severity: warning.
+#   2. RQFailedJobsAccumulating — failed registry grows >50 over 15 min.
+#      Signals poison messages or systemic failures.  Severity: critical.
+#   3. RQJobLatencyP99High — p99 latency >60s over 10 min for any queue.
+#      Signals degraded downstream dependency or worker contention.
+#      Severity: warning.
+#   4. RQWorkerUptimeReset — worker uptime gauge drops to zero (restart
+#      detected).  Signals unexpected worker crash / OOMKill.
+#      Severity: warning.
+#
+# References:
+#   * metric: hub/apps/observability/otel_metrics.py
+#   * emitter: hub/apps/jobs/queue_metrics.py + latency_metrics.py
+#   * spec: specs/observability-completeness/spec.md
+
+groups:
+  - name: rq_queue_depth
+    interval: 30s
+    rules:
+      - alert: RQQueueDepthHigh
+        expr: |
+          rq_queue_depth{status="queued"} > 500
+        for: 10m
+        labels:
+          severity: warning
+          team: platform-engineering
+        annotations:
+          summary: "RQ queue {{ $labels.queue_name }} has {{ $value }} queued jobs"
+          description: >
+            RQ queue {{ $labels.queue_name }} has {{ $value }} jobs waiting
+            for more than 10 minutes.  This may indicate worker saturation or
+            a stalled consumer.  Check worker pod replicas, HPA status, and
+            recent job failures.
+          runbook_url: "https://meshant.com/docs/runbooks/RB-OPS-001-rq-queue-backpressure"
+
+      - alert: RQFailedJobsAccumulating
+        expr: |
+          rq_queue_depth{status="failed"} > 50
+        for: 15m
+        labels:
+          severity: critical
+          team: platform-engineering
+        annotations:
+          summary: "RQ queue {{ $labels.queue_name }} has {{ $value }} failed jobs"
+          description: >
+            RQ queue {{ $labels.queue_name }} has {{ $value }} jobs in the
+            failed registry for more than 15 minutes.  This may indicate
+            poison messages, systemic failures, or a deployment that broke
+            job deserialization.  Check the DLQ and recent worker logs.
+          runbook_url: "https://meshant.com/docs/runbooks/RB-OPS-002-rq-failed-jobs"
+
+  - name: rq_job_latency
+    interval: 30s
+    rules:
+      - alert: RQJobLatencyP99High
+        expr: |
+          histogram_quantile(0.99,
+            rate(job_queue_latency_seconds_bucket{status="COMPLETED"}[10m])
+          ) > 60
+        for: 10m
+        labels:
+          severity: warning
+          team: platform-engineering
+        annotations:
+          summary: "RQ queue {{ $labels.queue_name }} p99 latency is {{ $value }}s"
+          description: >
+            RQ queue {{ $labels.queue_name }} has a p99 job latency of
+            {{ $value }}s over the last 10 minutes.  This may indicate
+            a degraded downstream dependency (slow API, DB contention) or
+            worker saturation.  Check the {{ $labels.job_type }} job type
+            and recent durations.
+          runbook_url: "https://meshant.com/docs/runbooks/RB-OPS-003-rq-job-latency"
+
+      - alert: RQWorkerUptimeReset
+        expr: |
+          worker_uptime_seconds < 60
+        for: 2m
+        labels:
+          severity: warning
+          team: platform-engineering
+        annotations:
+          summary: "RQ worker for queue {{ $labels.queue_name }} restarted (uptime {{ $value }}s)"
+          description: >
+            The worker process for queue {{ $labels.queue_name }} has been
+            running for less than 60 seconds, indicating a recent restart.
+            This may be a normal deployment or an unexpected crash / OOMKill.
+            Check the worker pod restart count and recent logs.

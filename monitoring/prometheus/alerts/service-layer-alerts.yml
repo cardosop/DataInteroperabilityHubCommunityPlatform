@@ -1,0 +1,139 @@
+groups:
+  - name: service_layer_alerts
+    interval: 30s
+    rules:
+      # Service Health Alerts
+      - alert: ServiceUnhealthy
+        expr: service_health_status == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: service_layer
+        annotations:
+          summary: "Service {{ $labels.service }} is unhealthy"
+          description: "Service {{ $labels.service }} has been unhealthy for more than 2 minutes."
+
+      - alert: ServiceHealthCheckFailureRate
+        expr: rate(service_health_checks_total{status="unhealthy"}[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          component: service_layer
+        annotations:
+          summary: "High service health check failure rate for {{ $labels.service }}"
+          description: "Service {{ $labels.service }} has a health check failure rate of {{ $value }} failures/sec over the last 5 minutes."
+
+      # Service Operation Alerts
+      - alert: ServiceOperationErrorRate
+        expr: rate(service_operation_errors_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: critical
+          component: service_layer
+        annotations:
+          summary: "High error rate for service operation {{ $labels.service }}.{{ $labels.operation }}"
+          description: "Service operation {{ $labels.service }}.{{ $labels.operation }} has an error rate of {{ $value }} errors/sec over the last 5 minutes."
+
+      - alert: ServiceOperationHighLatency
+        expr: histogram_quantile(0.95, rate(service_operation_duration_seconds_bucket[5m])) > 5.0
+        for: 10m
+        labels:
+          severity: warning
+          component: service_layer
+        annotations:
+          summary: "High latency for service operation {{ $labels.service }}.{{ $labels.operation }}"
+          description: "Service operation {{ $labels.service }}.{{ $labels.operation }} has a p95 latency of {{ $value }}s over the last 10 minutes."
+
+      - alert: ServiceOperationCriticalLatency
+        expr: histogram_quantile(0.95, rate(service_operation_duration_seconds_bucket[5m])) > 10.0
+        for: 5m
+        labels:
+          severity: critical
+          component: service_layer
+        annotations:
+          summary: "Critical latency for service operation {{ $labels.service }}.{{ $labels.operation }}"
+          description: "Service operation {{ $labels.service }}.{{ $labels.operation }} has a p95 latency of {{ $value }}s over the last 5 minutes."
+
+      # Cross-Service Communication Alerts
+      - alert: CrossServiceCallErrorRate
+        expr: rate(service_call_errors_total[5m]) > 5
+        for: 5m
+        labels:
+          severity: critical
+          component: service_layer
+        annotations:
+          summary: "High error rate for cross-service call {{ $labels.source_service }} -> {{ $labels.target_service }}"
+          description: "Cross-service call from {{ $labels.source_service }} to {{ $labels.target_service }} has an error rate of {{ $value }} errors/sec over the last 5 minutes."
+
+      - alert: CrossServiceCallTimeoutRate
+        expr: rate(service_call_timeouts_total[5m]) > 1
+        for: 5m
+        labels:
+          severity: critical
+          component: service_layer
+        annotations:
+          summary: "High timeout rate for cross-service call {{ $labels.source_service }} -> {{ $labels.target_service }}"
+          description: "Cross-service call from {{ $labels.source_service }} to {{ $labels.target_service }} has a timeout rate of {{ $value }} timeouts/sec over the last 5 minutes."
+
+      - alert: CrossServiceCallHighLatency
+        expr: histogram_quantile(0.95, rate(service_call_duration_seconds_bucket[5m])) > 3.0
+        for: 10m
+        labels:
+          severity: warning
+          component: service_layer
+        annotations:
+          summary: "High latency for cross-service call {{ $labels.source_service }} -> {{ $labels.target_service }}"
+          description: "Cross-service call from {{ $labels.source_service }} to {{ $labels.target_service }} has a p95 latency of {{ $value }}s over the last 10 minutes."
+
+      - alert: CrossServiceCallHighRetryRate
+        expr: rate(service_call_retries_total[5m]) > 2
+        for: 5m
+        labels:
+          severity: warning
+          component: service_layer
+        annotations:
+          summary: "High retry rate for cross-service call {{ $labels.source_service }} -> {{ $labels.target_service }}"
+          description: "Cross-service call from {{ $labels.source_service }} to {{ $labels.target_service }} has a retry rate of {{ $value }} retries/sec over the last 5 minutes."
+
+      # Service Operation Success Rate Alert
+      - alert: ServiceOperationLowSuccessRate
+        expr: |
+          (
+            sum(rate(service_operations_total[5m]))
+            /
+            (sum(rate(service_operations_total[5m])) + sum(rate(service_operation_errors_total[5m])))
+          ) * 100 < 95
+        for: 10m
+        labels:
+          severity: warning
+          component: service_layer
+        annotations:
+          summary: "Low success rate for service operations"
+          description: "Service operations have a success rate of {{ $value }}% over the last 10 minutes (threshold: 95%)."
+
+      - alert: ServiceOperationCriticalSuccessRate
+        expr: |
+          (
+            sum(rate(service_operations_total[5m]))
+            /
+            (sum(rate(service_operations_total[5m])) + sum(rate(service_operation_errors_total[5m])))
+          ) * 100 < 90
+        for: 5m
+        labels:
+          severity: critical
+          component: service_layer
+        annotations:
+          summary: "Critical success rate for service operations"
+          description: "Service operations have a success rate of {{ $value }}% over the last 5 minutes (threshold: 90%)."
+
+      # Service Health Check Latency Alert
+      - alert: ServiceHealthCheckHighLatency
+        expr: histogram_quantile(0.95, rate(service_health_check_duration_seconds_bucket[5m])) > 1.0
+        for: 10m
+        labels:
+          severity: warning
+          component: service_layer
+        annotations:
+          summary: "High latency for service health checks"
+          description: "Service {{ $labels.service }} health checks have a p95 latency of {{ $value }}s over the last 10 minutes."
+

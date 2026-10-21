@@ -1,0 +1,44 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "CPO-003-566fac7a",
+      "journey_name": "Configure Retention Policies",
+      "persona": "Compliance & Privacy Officer",
+      "status": "failed",
+      "start_time": 1771211170.8260095,
+      "end_time": 1771211170.8302019,
+      "duration": 0.004192352294921875,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": "Failed to create asset: 403 - {\"error\": \"No active subscription\", \"code\": \"subscription_inactive\", \"details\": {\"tenant_id\": \"c11db52f-5a15-410f-a597-62623a91d42b\"}}",
+      "error_type": "Exception",
+      "steps": [
+        {
+          "step_name": "Create Asset for Retention Policy",
+          "status": "StepStatus.FAILED",
+          "start_time": 1771211170.8260186,
+          "end_time": 1771211170.8301983,
+          "duration": 0.004179716110229492,
+          "error_message": "Failed to create asset: 403 - {\"error\": \"No active subscription\", \"code\": \"subscription_inactive\", \"details\": {\"tenant_id\": \"c11db52f-5a15-410f-a597-62623a91d42b\"}}",
+          "error_type": "Exception",
+          "retry_count": 0,
+          "metadata": {
+            "args": "()",
+            "kwargs": "{'key': 'retention-test-asset-0209bd7c', 'name': 'Retention Test Asset', 'description': 'Asset for testing retention policies'}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-16T03:06:10.830283"
+}

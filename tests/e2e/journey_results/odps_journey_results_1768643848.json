@@ -1,0 +1,31 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.004076480865478516
+  },
+  "journeys": [
+    {
+      "journey_id": "ODPS-001-COMP-e9a08f52",
+      "journey_name": "Product-First Flow - Compensation Logic",
+      "persona": "Data Product Owner",
+      "status": "completed",
+      "start_time": 1768643848.5750136,
+      "end_time": 1768643848.57909,
+      "duration": 0.004076480865478516,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [],
+      "metadata": {
+        "compensation_tasks_verified": true
+      }
+    }
+  ],
+  "exported_at": "2026-01-17T09:57:28.579138"
+}

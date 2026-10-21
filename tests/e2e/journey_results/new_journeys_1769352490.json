@@ -1,0 +1,69 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.011272668838500977
+  },
+  "journeys": [
+    {
+      "journey_id": "MPA-009-9550d9c2",
+      "journey_name": "Manage Plugin Marketplace",
+      "persona": "Platform Admin",
+      "status": "completed",
+      "start_time": 1769352490.907726,
+      "end_time": 1769352490.9189987,
+      "duration": 0.011272668838500977,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Note: Plugin Marketplace Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769352490.9125707,
+          "end_time": 1769352490.9125767,
+          "duration": 5.9604644775390625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Plugin Approval Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769352490.916001,
+          "end_time": 1769352490.9160044,
+          "duration": 3.337860107421875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Plugin Usage Monitoring Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769352490.9189944,
+          "end_time": 1769352490.9189975,
+          "duration": 3.0994415283203125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-01-25T14:48:10.919060"
+}

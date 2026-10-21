@@ -1,0 +1,129 @@
+{
+  "uid": "meshant-search-overview-273",
+  "title": "Search Overview — Phase 273",
+  "description": "Search/SPARQL latency, rate, no-result rate, and throttle metrics per kind and tenant. Phase 273 G5 OTel observability.",
+  "tags": ["meshant", "search", "phase-273"],
+  "panels": [
+    {
+      "id": 1,
+      "title": "Search Latency (p50/p95/p99) by Kind",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(search_request_duration_seconds_bucket{kind=~\"$kind\"}[5m])) by (le, kind))",
+          "legendFormat": "{{kind}} p50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(search_request_duration_seconds_bucket{kind=~\"$kind\"}[5m])) by (le, kind))",
+          "legendFormat": "{{kind}} p95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(search_request_duration_seconds_bucket{kind=~\"$kind\"}[5m])) by (le, kind))",
+          "legendFormat": "{{kind}} p99"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+    },
+    {
+      "id": 2,
+      "title": "Search Rate by Kind / Outcome",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum(rate(search_request_duration_seconds_count{kind=~\"$kind\", outcome=~\"$outcome\"}[5m])) by (kind, outcome)",
+          "legendFormat": "{{kind}}/{{outcome}}"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+    },
+    {
+      "id": 3,
+      "title": "No-Result Rate Trend",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum(rate(search_no_result_total{kind=~\"$kind\"}[5m])) by (kind) / sum(rate(search_request_duration_seconds_count{kind=~\"$kind\"}[5m])) by (kind)",
+          "legendFormat": "{{kind}} no-result ratio"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "thresholds": [
+        {"value": 0.5, "color": "red", "label": ">50% empty"}
+      ]
+    },
+    {
+      "id": 4,
+      "title": "SPARQL Latency (p95)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(sparql_execution_seconds_bucket[5m])) by (le, outcome))",
+          "legendFormat": "{{outcome}} p95"
+        }
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+    },
+    {
+      "id": 5,
+      "title": "SPARQL Timeout Rate",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "sum(rate(sparql_timeout_total[5m]))",
+          "legendFormat": "timeouts/sec"
+        }
+      ],
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 16}
+    },
+    {
+      "id": 6,
+      "title": "Throttled Request Rate (search + sparql)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum(rate(search_request_duration_seconds_count{outcome=\"throttled\"}[5m])) by (kind)",
+          "legendFormat": "{{kind}} throttled"
+        }
+      ],
+      "gridPos": {"h": 4, "w": 18, "x": 6, "y": 16}
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "tenant_id",
+        "type": "query",
+        "label": "Tenant",
+        "query": "label_values(tenant_id)",
+        "multi": true,
+        "includeAll": true
+      },
+      {
+        "name": "kind",
+        "type": "custom",
+        "label": "Kind",
+        "current": {"text": "All", "value": "$__all"},
+        "options": [
+          {"text": "All", "value": ".+"},
+          {"text": "FTS", "value": "fts"},
+          {"text": "SPARQL", "value": "sparql"},
+          {"text": "Listing", "value": "listing"},
+          {"text": "AI", "value": "ai"}
+        ]
+      },
+      {
+        "name": "outcome",
+        "type": "custom",
+        "label": "Outcome",
+        "current": {"text": "All", "value": "$__all"},
+        "options": [
+          {"text": "All", "value": ".+"},
+          {"text": "Success", "value": "success"},
+          {"text": "Empty", "value": "empty"},
+          {"text": "Error", "value": "error"},
+          {"text": "Throttled", "value": "throttled"}
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,288 @@
+{
+  "title": "Phase 234 \u2014 Audit health (tamper-evidence, retention, FTS)",
+  "uid": "audit-health-234",
+  "tags": [
+    "audit",
+    "phase-234",
+    "tamper-evidence",
+    "retention",
+    "fts"
+  ],
+  "timezone": "utc",
+  "editable": true,
+  "refresh": "30s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "tenant_id",
+        "label": "Tenant",
+        "type": "query",
+        "datasource": "Prometheus",
+        "query": "label_values(audit_events_total, tenant_id)",
+        "includeAll": true,
+        "multi": true
+      }
+    ]
+  },
+  "panels": [
+    {
+      "title": "Chain-break detections (rate, 5m) \u2014 load-bearing tamper-evidence signal",
+      "description": "Phase 234.7.2 \u2014 audit_chain_break_total. Non-zero is a PagerDuty incident; see runbook docs/runbooks/audit-tamper-evidence.md.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "sum by (reason) (rate(audit_chain_break_total[5m]))",
+          "legendFormat": "{{reason}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "ops",
+          "label": "breaks/sec"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "title": "Chain-break cumulative (per tenant)",
+      "description": "Phase 234.7.2 \u2014 should remain at zero. Any positive value warrants investigation regardless of recent rate.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 9
+      },
+      "targets": [
+        {
+          "expr": "topk(10, sum by (tenant_id) (audit_chain_break_total))",
+          "legendFormat": "{{tenant_id}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "short",
+          "label": "cumulative breaks"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "title": "Integrity verifier outcomes (rate, 15m)",
+      "description": "Phase 234.7.1 \u2014 AUDIT_INTEGRITY_VERIFIED vs AUDIT_INTEGRITY_MISMATCH meta-audit emission. Clean baseline = constant VERIFIED rate from scheduled checks; any MISMATCH spike is the precursor signal to a chain break.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 9
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(audit_events_total{action=\"AUDIT_INTEGRITY_VERIFIED\"}[15m]))",
+          "legendFormat": "verified",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(audit_events_total{action=\"AUDIT_INTEGRITY_MISMATCH\"}[15m]))",
+          "legendFormat": "mismatch",
+          "refId": "B"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "ops"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "title": "Merkle snapshot duration (p50 / p95 / p99)",
+      "description": "Phase 234.7.2 \u2014 audit_merkle_snapshot_duration_seconds. Slow-snapshot alert: p99 > 30s for 10m \u2192 likely S3 Object-Lock PUT latency.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 17
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(audit_merkle_snapshot_duration_seconds_bucket[5m])))",
+          "legendFormat": "p50",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(audit_merkle_snapshot_duration_seconds_bucket[5m])))",
+          "legendFormat": "p95",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(audit_merkle_snapshot_duration_seconds_bucket[5m])))",
+          "legendFormat": "p99",
+          "refId": "C"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "s",
+          "label": "duration"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "title": "Retention purges (rate, 1h)",
+      "description": "Phase 234.7.2 \u2014 audit_retention_purged_total. Counter is incremented by deleted-row count, not 1-per-call, so this graphs deletions/hour.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 26
+      },
+      "targets": [
+        {
+          "expr": "sum by (tenant_id) (rate(audit_retention_purged_total{dry_run=\"false\"}[1h]))",
+          "legendFormat": "actual / {{tenant_id}}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (tenant_id) (rate(audit_retention_purged_total{dry_run=\"true\"}[1h]))",
+          "legendFormat": "dry-run / {{tenant_id}}",
+          "refId": "B"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "ops",
+          "label": "rows/sec"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "title": "Retention purges cumulative (per tenant, 24h window)",
+      "description": "Phase 234.7.2 \u2014 cumulative deleted-row count by tenant, 24h. Pairs with the AUDIT_RETENTION_PURGED meta-audit for forensic reconciliation.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 26
+      },
+      "targets": [
+        {
+          "expr": "topk(10, sum by (tenant_id) (increase(audit_retention_purged_total{dry_run=\"false\"}[24h])))",
+          "legendFormat": "{{tenant_id}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "short",
+          "label": "rows / 24h"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "title": "Audit FTS query latency (p50 / p95 / p99)",
+      "description": "Phase 234.6.AUDIT.4 \u2014 audit_search_query_duration_seconds. Slow-query alert: p95 > 5s for 5m \u2192 GIN index probably bloated, REINDEX CONCURRENTLY.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 34
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(audit_search_query_duration_seconds_bucket[5m])))",
+          "legendFormat": "p50",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(audit_search_query_duration_seconds_bucket[5m])))",
+          "legendFormat": "p95",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(audit_search_query_duration_seconds_bucket[5m])))",
+          "legendFormat": "p99",
+          "refId": "C"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "s",
+          "label": "duration"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "title": "Audit FTS query rate by tenant (top 10)",
+      "description": "Phase 234.6 \u2014 surfaces per-tenant search load; a single tenant dominating the top-10 panel correlates p95 spikes to a noisy neighbour.",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 43
+      },
+      "targets": [
+        {
+          "expr": "topk(10, sum by (tenant_id) (rate(audit_search_query_duration_seconds_count[5m])))",
+          "legendFormat": "{{tenant_id}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "ops",
+          "label": "queries/sec"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 27,
+  "version": 1
+}

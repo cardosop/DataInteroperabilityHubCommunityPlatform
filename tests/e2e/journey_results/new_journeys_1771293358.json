@@ -1,0 +1,43 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.009846925735473633
+  },
+  "journeys": [
+    {
+      "journey_id": "CPO-009-e378d164",
+      "journey_name": "Configure Automated Retention Policies",
+      "persona": "Compliance Officer",
+      "status": "completed",
+      "start_time": 1771293358.4674048,
+      "end_time": 1771293358.4772518,
+      "duration": 0.009846925735473633,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Configure Retention Policy",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771293358.467416,
+          "end_time": 1771293358.4772484,
+          "duration": 0.009832382202148438,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-17T01:55:58.477307"
+}

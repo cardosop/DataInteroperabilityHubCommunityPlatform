@@ -1,0 +1,101 @@
+# Phase 280.A.2.4 — PgBouncer connection pool saturation alerts.
+#
+# PgBouncer metrics are exposed via the stats user on the admin database.
+# Prometheus scrapes via the pgbouncer_exporter sidecar.
+groups:
+  - name: pgbouncer_alerts
+    interval: 30s
+    rules:
+      # ── Pool utilization > 80% for 5 min → P2 warning ──────────────
+      - alert: PgBouncerPoolSaturation
+        expr: |
+          (
+            pgbouncer_pools_active_connections
+            /
+            pgbouncer_pools_max_connections
+          ) > 0.80
+        for: 5m
+        labels:
+          severity: warning
+          component: pgbouncer
+          tier: p2
+        annotations:
+          summary: >
+            PgBouncer pool {{ $labels.pool }} at
+            {{ $value | humanizePercentage }} utilization
+          description: >
+            Database connection pool "{{ $labels.pool }}" (database
+            "{{ $labels.database }}", user "{{ $labels.user }}") has been
+            above 80% utilization for 5 minutes.
+
+            **Impact**: New connection requests may queue, increasing API
+            latency.  If utilization reaches 100%, requests will be rejected
+            with "no connections available".
+
+            **Remediation**:
+            1. Check the database-performance dashboard for slow queries.
+            2. Increase `default_pool_size` in `pgbouncer.ini` if this is
+               sustained traffic growth (not a transient spike).
+            3. Verify `server_idle_timeout` is not keeping idle connections
+               alive too long.
+            4. Check for connection leaks — `SHOW POOLS;` in pgbouncer admin.
+
+      # ── Pool utilization > 95% for 2 min → P1 critical ─────────────
+      - alert: PgBouncerPoolCritical
+        expr: |
+          (
+            pgbouncer_pools_active_connections
+            /
+            pgbouncer_pools_max_connections
+          ) > 0.95
+        for: 2m
+        labels:
+          severity: critical
+          component: pgbouncer
+          tier: p1
+        annotations:
+          summary: >
+            PgBouncer pool {{ $labels.pool }} CRITICAL —
+            {{ $value | humanizePercentage }} utilization
+          description: >
+            Database connection pool "{{ $labels.pool }}" is at CRITICAL
+            saturation ({{ $value | humanizePercentage }}).  Requests are
+            being queued or rejected.
+
+            **Immediate actions**:
+            1. Page on-call — this is a P1 incident.
+            2. Check `SHOW POOLS;` for the saturated pool.
+            3. Kill long-running idle transactions: `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE state = 'idle in transaction' AND query_start < now() - interval '5 minutes';`
+            4. Temporarily increase `default_pool_size` and reload pgbouncer.
+
+      # ── Client wait time > 100ms for 5 min → P2 latency warning ────
+      - alert: PgBouncerClientWaitTime
+        expr: pgbouncer_stats_avg_wait_time_seconds > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          component: pgbouncer
+          tier: p2
+        annotations:
+          summary: >
+            PgBouncer average client wait time {{ $value }}s
+            (threshold: 100ms)
+          description: >
+            Clients are waiting an average of {{ $value }}s for a database
+            connection from the pool.  This directly adds to API latency.
+            Check pool saturation and active connection counts.
+
+      # ── PgBouncer down — exporter unreachable for 1m ────────────────
+      - alert: PgBouncerExporterDown
+        expr: up{job="pgbouncer-exporter"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: pgbouncer
+        annotations:
+          summary: "PgBouncer metrics exporter is down"
+          description: >
+            The pgbouncer_exporter Prometheus target is unreachable.
+            PgBouncer itself may still be running, but we have NO
+            visibility into connection pool health.  Check the
+            pgbouncer-exporter container/pod.

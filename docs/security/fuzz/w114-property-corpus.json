@@ -1,0 +1,344 @@
+{
+  "note": "W11.4 (oss-release-remediation) — the ASVS V5 fuzz corpus. Every entry is a REGRESSION INPUT the Hypothesis property suites found (or a canonical adversarial sample), replayed through the real target by each suite's test_w114_corpus_replay. A change that alters any pinned outcome flips the replay RED.",
+  "cents": [
+    {
+      "input": "19.99",
+      "expect_cents": 1999,
+      "note": "W2.1 float-artifact regression — int(x*100) truncation charged 1998"
+    },
+    {
+      "input": 19.99,
+      "expect_cents": 1999,
+      "note": "float coerced via str() shortest-repr"
+    },
+    {
+      "input": "2.235",
+      "expect_cents": 224,
+      "note": "ROUND_HALF_UP, not banker's HALF_EVEN (224.5 case: banker's gives 224)"
+    },
+    {
+      "input": "-2.235",
+      "expect_cents": -224,
+      "note": "half-up away from zero on negatives"
+    },
+    {
+      "input": "2.245",
+      "expect_cents": 225,
+      "note": "the sibling half-cent that banker's rounds to 224"
+    },
+    {
+      "input": "0.005",
+      "expect_cents": 1,
+      "note": "half-cent rounds up, never truncates to 0"
+    },
+    {
+      "input": "-0.005",
+      "expect_cents": -1
+    },
+    {
+      "input": "1e27",
+      "expect_cents": 100000000000000000000000000000,
+      "note": "W2.9 precision regression — 28+ digit coverage via exponent"
+    },
+    {
+      "input": "inf",
+      "expect_error": true,
+      "note": "non-finite refused loudly, never crashes"
+    },
+    {
+      "input": "nan",
+      "expect_error": true
+    },
+    {
+      "input": true,
+      "expect_error": true,
+      "note": "bool is not money"
+    },
+    {
+      "input": null,
+      "expect_error": true,
+      "note": "missing amount never silently becomes 0"
+    }
+  ],
+  "sql_dq": [
+    {
+      "warehouse_type": "snowflake",
+      "table_fqn": "db.schema.tbl",
+      "check_definitions": [
+        {
+          "type": "not_null",
+          "column": "a'; DROP TABLE users;--"
+        }
+      ],
+      "expect": "SQLSafetyError",
+      "note": "SQLi breakout column refused by the identifier grammar"
+    },
+    {
+      "warehouse_type": "snowflake",
+      "table_fqn": "db.schema.tbl",
+      "check_definitions": [
+        {
+          "type": "not_null",
+          "column": "col"
+        }
+      ],
+      "expect": "ok"
+    },
+    {
+      "warehouse_type": "bigquery",
+      "table_fqn": "db.schema.tbl",
+      "check_definitions": [
+        {
+          "type": "unique",
+          "column": "col"
+        }
+      ],
+      "expect": "ok"
+    },
+    {
+      "warehouse_type": 123,
+      "table_fqn": "db.schema.tbl",
+      "check_definitions": [
+        {
+          "type": "not_null",
+          "column": "col"
+        }
+      ],
+      "expect": "SQLSafetyError",
+      "note": "W2.9 regression — non-string warehouse type was an AttributeError crash"
+    },
+    {
+      "warehouse_type": "snowflake",
+      "table_fqn": "db.schema; DROP TABLE x",
+      "check_definitions": [
+        {
+          "type": "not_null",
+          "column": "col"
+        }
+      ],
+      "expect": "SQLSafetyError",
+      "note": "FQN breakout refused"
+    },
+    {
+      "warehouse_type": "snowflake",
+      "table_fqn": "db.schema.tbl",
+      "check_definitions": [
+        {
+          "type": "unknown_check_type"
+        }
+      ],
+      "expect": "ok",
+      "note": "unknown check types are skipped, never crash"
+    },
+    {
+      "warehouse_type": "snowflake",
+      "table_fqn": "db.schema.tbl",
+      "check_definitions": [
+        {
+          "type": "accepted_values",
+          "column": "status",
+          "values": [
+            "a' OR '1'='1",
+            "b"
+          ]
+        }
+      ],
+      "expect": "ok",
+      "note": "accepted-values literals are ANSI-escaped (the compiled SQL carries the doubled quote)"
+    }
+  ],
+  "sql_compliance": [
+    {
+      "warehouse_type": "snowflake",
+      "table_fqn": "db.schema.tbl",
+      "check_definitions": [
+        {
+          "type": "pii_email",
+          "column": "email'; DROP TABLE users;--"
+        }
+      ],
+      "expect": "SQLSafetyError"
+    },
+    {
+      "warehouse_type": "snowflake",
+      "table_fqn": "db.schema.tbl",
+      "check_definitions": [
+        {
+          "type": "pii_email",
+          "column": "email"
+        }
+      ],
+      "expect": "ok"
+    },
+    {
+      "warehouse_type": "snowflake",
+      "table_fqn": "db.schema.tbl",
+      "check_definitions": [
+        {
+          "type": "unknown_check_type"
+        }
+      ],
+      "expect": "ok"
+    },
+    {
+      "warehouse_type": 123,
+      "table_fqn": "db.schema.tbl",
+      "check_definitions": [
+        {
+          "type": "pii_email",
+          "column": "email"
+        }
+      ],
+      "expect": "SQLSafetyError"
+    }
+  ],
+  "sparql": [
+    {
+      "query": "SELECT * WHERE { ?s ?p ?o }",
+      "expect_valid": true
+    },
+    {
+      "query": "INSERT DATA { <s> <p> <o> }",
+      "expect_valid": false,
+      "note": "update keyword gate"
+    },
+    {
+      "query": "DROP ALL",
+      "expect_valid": false
+    },
+    {
+      "query": "INS#comment\nERT DATA { <s> <p> <o> }",
+      "expect_valid": false,
+      "note": "obfuscated INSERT dies at the query-type gate"
+    },
+    {
+      "query": "WITH x DELETE { ?s ?p ?o } WHERE { ?s ?p ?o }",
+      "expect_valid": false,
+      "note": "SPARQL Update delete-where"
+    },
+    {
+      "query": "SELECT * WHERE { SERVICE <http://169.254.169.254/latest/meta-data/> { ?s ?p ?o } }",
+      "expect_valid": false,
+      "code": "SPARQL_FEDERATION_NOT_ALLOWED",
+      "note": "SERVICE without tenant context default-rejects (metadata SSRF probe)"
+    },
+    {
+      "query": "SELECT * WHERE { ?s ?p ?o",
+      "expect_valid": false,
+      "note": "unbalanced braces"
+    },
+    {
+      "query": "PREFIX ex: <http://ex.org/>\nSELECT * WHERE { ?s ?p ?o }",
+      "expect_valid": true,
+      "note": "PREFIX stripping must not break valid queries"
+    }
+  ],
+  "dlt_rows": [
+    {
+      "rows": [
+        {
+          "a": 1,
+          "b": [
+            "x",
+            null
+          ]
+        }
+      ],
+      "asset_key": "asset-1",
+      "table_ref": "t1",
+      "cursor_value": null
+    },
+    {
+      "rows": [],
+      "asset_key": "asset-1",
+      "table_ref": "t1",
+      "cursor_value": null,
+      "note": "empty read → empty payload, zero lines"
+    },
+    {
+      "rows": [
+        {
+          "nested": {
+            "deep": [
+              1,
+              2,
+              {
+                "x": "y"
+              }
+            ]
+          },
+          "unicode": "héllo→世界"
+        }
+      ],
+      "asset_key": "asset-2",
+      "table_ref": null,
+      "cursor_value": "cursor-9",
+      "note": "null table_ref falls back to 'source' in the key"
+    }
+  ],
+  "odps": [
+    {
+      "payload": {},
+      "event_type": "invoice.created",
+      "expect_pass": false,
+      "code": "WEBHOOK_INVALID_EVENT_TYPE",
+      "note": "non-ODPS event types refused before any structure check"
+    },
+    {
+      "payload": {
+        "event_type": "odps.created",
+        "resource_type": "dataset",
+        "resource_id": "r1",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "data": {}
+      },
+      "event_type": "odps.created",
+      "expect_pass": true
+    },
+    {
+      "payload": {
+        "event_type": "odps.created"
+      },
+      "event_type": "odps.created",
+      "expect_pass": false,
+      "code": "WEBHOOK_PAYLOAD_MISSING_FIELD"
+    },
+    {
+      "payload": {
+        "event_type": "odps.updated",
+        "resource_type": "dataset",
+        "resource_id": "r1",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "data": {}
+      },
+      "event_type": "odps.created",
+      "expect_pass": false,
+      "code": "WEBHOOK_PAYLOAD_INVALID_VALUE",
+      "note": "payload event_type mismatch"
+    },
+    {
+      "payload": {
+        "event_type": "odps.created",
+        "resource_type": 5,
+        "resource_id": "r1",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "data": {}
+      },
+      "event_type": "odps.created",
+      "expect_pass": false,
+      "code": "WEBHOOK_PAYLOAD_INVALID_TYPE"
+    },
+    {
+      "payload": {
+        "event_type": "odps.created",
+        "resource_type": "dataset",
+        "resource_id": "r1",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "data": "not-a-dict"
+      },
+      "event_type": "odps.created",
+      "expect_pass": false,
+      "code": "WEBHOOK_PAYLOAD_INVALID_TYPE"
+    }
+  ]
+}

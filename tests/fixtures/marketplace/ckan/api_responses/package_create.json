@@ -1,0 +1,30 @@
+{
+  "success": true,
+  "result": {
+    "id": "new-dataset-1",
+    "name": "new-dataset-1",
+    "title": "New Dataset",
+    "notes": "A newly created dataset",
+    "tags": [
+      {
+        "id": "tag-new-1",
+        "name": "new",
+        "vocabulary_id": null,
+        "display_name": "New"
+      }
+    ],
+    "organization": {
+      "id": "test-org",
+      "name": "test-org",
+      "title": "Test Organization"
+    },
+    "license_id": "cc-by",
+    "metadata_created": "2024-01-21T12:00:00Z",
+    "metadata_modified": "2024-01-21T12:00:00Z",
+    "creator_user_id": "user-123",
+    "type": "dataset",
+    "resources": [],
+    "state": "active"
+  }
+}
+

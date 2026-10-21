@@ -1,0 +1,29 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 30.323251724243164
+  },
+  "journeys": [
+    {
+      "journey_id": "ODPS-001-DEPS-d430e2e6",
+      "journey_name": "Product-First Flow - Step Dependencies",
+      "persona": "Data Product Owner",
+      "status": "completed",
+      "start_time": 1768648756.6407964,
+      "end_time": 1768648786.9640481,
+      "duration": 30.323251724243164,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-01-17T11:19:46.964117"
+}

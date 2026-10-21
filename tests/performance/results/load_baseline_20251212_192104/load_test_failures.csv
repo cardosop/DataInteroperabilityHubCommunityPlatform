@@ -1,0 +1,3 @@
+Method,Name,Error,Occurrences
+api_error,GET /assets_exception,"LocustError('Tried to set status on a request that has not yet been made. Make sure you use a with-block, like this:\n\nwith self.client.request(..., catch_response=True) as response:\n    response.failure(...)')",2
+api_error,POST /files/init_exception,"LocustError('Tried to set status on a request that has not yet been made. Make sure you use a with-block, like this:\n\nwith self.client.request(..., catch_response=True) as response:\n    response.failure(...)')",1

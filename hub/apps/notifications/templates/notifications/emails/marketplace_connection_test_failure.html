@@ -1,0 +1,27 @@
+{% extends "notifications/emails/base.html" %}
+
+{% block title %}Marketplace Connection Test Failed{% endblock %}
+
+{% block content %}
+<h2>Marketplace Connection Test Failed</h2>
+<p>Hello{% if user.display_name %} {{ user.display_name }}{% endif %},</p>
+<p>The connection test for your marketplace connection has failed.</p>
+<p><strong>Connection Name:</strong> {{ connection_name }}</p>
+<p><strong>Connection ID:</strong> {{ connection_id }}</p>
+<p><strong>Marketplace Type:</strong> {{ marketplace_type }}</p>
+{% if error_message %}
+<p><strong>Error:</strong></p>
+<div class="code">{{ error_message }}</div>
+{% endif %}
+{% if tested_at %}
+<p><strong>Tested At:</strong> {{ tested_at }}</p>
+{% endif %}
+{% if connection_url %}
+<p>View connection details:</p>
+<p style="text-align: center;">
+    <a href="{{ connection_url }}" class="button">View Connection</a>
+</p>
+{% endif %}
+<p>Please check your connection configuration and credentials. If the problem persists, contact support.</p>
+{% endblock %}
+

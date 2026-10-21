@@ -1,0 +1,159 @@
+# 280.B.2.4 — synthetic firing tests for the synthetic probe alert rules.
+#
+# Run with:
+#   promtool test rules monitoring/prometheus/alerts/synthetic-probes-firing.yml
+#
+# Each test case fabricates metric series and asserts the alert fires
+# after its `for:` window.  This pins the alert regression-safety at CI
+# time without needing a running staging cluster.
+#
+# Tested alerts:
+#   - SyntheticProbeFailureRateHigh  (aggregate, >1% for 5m)
+#   - SyntheticProbeLoginFailing     (per-probe, login)
+#   - SyntheticProbeHealthFailing    (per-probe, health)
+#   - SyntheticProbeLatencyHigh      (latency >3s for 10m)
+
+rule_files:
+  - synthetic-probes.yml
+
+evaluation_interval: 1m
+
+tests:
+  # ── Aggregate: failure rate >1% for 5m ──────────────────────────────
+  # Scenario: 1% of probes fail for 7 minutes.  Alert fires at 6m
+  # (5m `for:` window + 1m eval interval = fires at 6m).
+  - interval: 1m
+    name: SyntheticProbeFailureRateHigh fires at >1% failure for 5m
+    input_series:
+      # successes: 99 per minute steady
+      - series: 'synthetic_probe_success_total{probe="login"}'
+        values: '0 99 198 297 396 495 594 693 792'
+      - series: 'synthetic_probe_success_total{probe="asset_list"}'
+        values: '0 99 198 297 396 495 594 693 792'
+      - series: 'synthetic_probe_success_total{probe="search"}'
+        values: '0 99 198 297 396 495 594 693 792'
+      - series: 'synthetic_probe_success_total{probe="health"}'
+        values: '0 99 198 297 396 495 594 693 792'
+      # failures: 2 per minute per probe (~2% aggregate failure rate —
+      # 1/min would be exactly 1.0% and the rule requires > 0.01)
+      - series: 'synthetic_probe_failures_total{probe="login"}'
+        values: '0 2 4 6 8 10 12 14 16'
+      - series: 'synthetic_probe_failures_total{probe="asset_list"}'
+        values: '0 2 4 6 8 10 12 14 16'
+      - series: 'synthetic_probe_failures_total{probe="search"}'
+        values: '0 2 4 6 8 10 12 14 16'
+      - series: 'synthetic_probe_failures_total{probe="health"}'
+        values: '0 2 4 6 8 10 12 14 16'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: SyntheticProbeFailureRateHigh
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              component: synthetic-probers
+            exp_annotations:
+              summary: "Synthetic probe failure rate >1% for 5m"
+              description: |
+                The aggregate failure rate across all synthetic probes has
+                exceeded 1% for 5 minutes (current: 1.98%).
+                This indicates a systemic API issue affecting critical journeys.
+                Check individual probe metrics:
+                  synthetic_probe_failures_total{probe="login"}
+                  synthetic_probe_failures_total{probe="asset_list"}
+                  synthetic_probe_failures_total{probe="search"}
+                  synthetic_probe_failures_total{probe="health"}
+              runbook_url: "docs/runbooks/synthetic-probes.md"
+
+  # ── Does NOT fire at <1% failure ────────────────────────────────────
+  - interval: 1m
+    name: SyntheticProbeFailureRateHigh does NOT fire at 0% failure
+    input_series:
+      - series: 'synthetic_probe_success_total{probe="health"}'
+        values: '0 100 200 300 400 500 600 700'
+      - series: 'synthetic_probe_failures_total{probe="health"}'
+        values: '0 0 0 0 0 0 0 0'
+    alert_rule_test:
+      - eval_time: 7m
+        alertname: SyntheticProbeFailureRateHigh
+        exp_alerts: []
+
+  # ── Per-probe: login failing >1% for 5m ─────────────────────────────
+  - interval: 1m
+    name: SyntheticProbeLoginFailing fires at >1% failure for 5m
+    input_series:
+      - series: 'synthetic_probe_success_total{probe="login"}'
+        values: '0 97 194 291 388 485 582 679'
+      - series: 'synthetic_probe_failures_total{probe="login"}'
+        values: '0 3 6 9 12 15 18 21'  # 3% failure rate
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: SyntheticProbeLoginFailing
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              component: synthetic-probers
+              probe: login
+            exp_annotations:
+              summary: "Login probe failure rate >1% for 5m"
+              description: |
+                The login synthetic probe is failing at 3%.
+                Login is the entry point for all authenticated journeys — this
+                indicates an auth-service or database issue.
+              runbook_url: "docs/runbooks/synthetic-probes.md#login-probe-failing"
+
+  # ── Per-probe: health failing >1% for 5m ────────────────────────────
+  - interval: 1m
+    name: SyntheticProbeHealthFailing fires when health endpoint down
+    input_series:
+      - series: 'synthetic_probe_success_total{probe="health"}'
+        values: '0 0 0 0 0 0 0 0'  # 100% failure
+      - series: 'synthetic_probe_failures_total{probe="health"}'
+        values: '0 1 2 3 4 5 6 7'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: SyntheticProbeHealthFailing
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              component: synthetic-probers
+              probe: health
+            exp_annotations:
+              summary: "Health probe failure rate >1% for 5m"
+              description: |
+                The health synthetic probe is failing at 100%.
+                The /health endpoint is the most basic liveness check — failure
+                indicates the API server itself is unreachable or crashed.
+              runbook_url: "docs/runbooks/synthetic-probes.md#health-probe-failing"
+
+  # ── Latency degradation >3s for 10m ─────────────────────────────────
+  - interval: 1m
+    name: SyntheticProbeLatencyHigh fires when latency >3s sustained
+    input_series:
+      - series: 'synthetic_probe_latency_ms{probe="search"}'
+        values: '3500x15'  # 3.5s sustained for 15 eval intervals
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: SyntheticProbeLatencyHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              component: synthetic-probers
+              probe: search
+            exp_annotations:
+              summary: "Synthetic probe latency >3s for 10m (probe: search)"
+              description: |
+                Probe search latency is 3500ms, exceeding
+                the 3s warning threshold for 10 minutes. This may indicate
+                database slowness or resource contention.
+              runbook_url: "docs/runbooks/synthetic-probes.md#high-latency"
+
+  # ── Latency does NOT fire below threshold ────────────────────────────
+  - interval: 1m
+    name: SyntheticProbeLatencyHigh does NOT fire at normal latency
+    input_series:
+      - series: 'synthetic_probe_latency_ms{probe="search"}'
+        values: '500x15'  # 500ms — normal
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: SyntheticProbeLatencyHigh
+        exp_alerts: []

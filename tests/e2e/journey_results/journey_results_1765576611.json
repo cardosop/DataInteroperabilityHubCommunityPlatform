@@ -1,0 +1,43 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DE-005-462a333f",
+      "journey_name": "CI/CD Integration",
+      "persona": "Data Engineer / Contract Author",
+      "status": "failed",
+      "start_time": 1765576611.4495595,
+      "end_time": 1765576611.488316,
+      "duration": 0.038756608963012695,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": "'Persona2DataEngineerJourneys' object has no attribute '_validate_contract_safe'",
+      "error_type": "AttributeError",
+      "steps": [
+        {
+          "step_name": "Create Contract",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765576611.4495683,
+          "end_time": 1765576611.4883082,
+          "duration": 0.038739919662475586,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2025-12-12T21:56:51.488414"
+}

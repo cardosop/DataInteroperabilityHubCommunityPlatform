@@ -1,0 +1,98 @@
+.session-list-page {
+  padding: 2rem;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.session-list-header {
+  margin-bottom: 2rem;
+}
+
+.session-list-header h1 {
+  margin: 0 0 0.5rem;
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.session-list-description {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.95rem;
+}
+
+.session-list-empty {
+  padding: 2rem;
+  text-align: center;
+  color: var(--color-text-secondary);
+}
+
+.session-list-table-wrap {
+  overflow-x: auto;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+}
+
+.session-list-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.session-list-table th,
+.session-list-table td {
+  padding: 1rem;
+  text-align: left;
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.session-list-table thead {
+  background: var(--color-background-tertiary);
+}
+
+.session-list-table th {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+}
+
+.session-status {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.session-status.current {
+  background: var(--color-success-50);
+  color: var(--color-success-700);
+}
+
+.session-status.active {
+  background: var(--color-info-light);
+  color: var(--color-primary-700);
+}
+
+.session-status.revoked {
+  background: var(--color-neutral-200);
+  color: var(--color-neutral-800);
+}
+
+.btn-revoke {
+  padding: 0.4rem 0.8rem;
+  border-radius: 4px;
+  border: 1px solid var(--color-error-500);
+  background: transparent;
+  color: var(--color-error-500);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.btn-revoke:hover:not(:disabled) {
+  background: var(--color-error-500);
+  color: var(--color-text-on-primary);
+}
+
+.btn-revoke:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

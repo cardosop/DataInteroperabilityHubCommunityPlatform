@@ -1,0 +1,186 @@
+{
+  "title": "E2E Flakiness Trend",
+  "uid": "e2e-flakiness-trend",
+  "tags": [
+    "e2e",
+    "quality",
+    "ci"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "refresh": "1h",
+  "panels": [
+    {
+      "title": "E2E Flakiness Rate (Week-over-Week)",
+      "type": "stat",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 8,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 5
+              },
+              {
+                "color": "red",
+                "value": 15
+              }
+            ]
+          },
+          "unit": "percent"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(e2e_test_failures_total[7d])) / sum(rate(e2e_test_runs_total[7d])) * 100",
+          "legendFormat": "Flakiness rate"
+        }
+      ]
+    },
+    {
+      "title": "E2E Flakiness Trend (Daily)",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 8,
+        "y": 0,
+        "w": 16,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(e2e_test_failures_total[1h])) / sum(rate(e2e_test_runs_total[1h])) * 100",
+          "legendFormat": "Flakiness %"
+        },
+        {
+          "expr": "sum(increase(e2e_test_flaky_retries_total[1h])) by (spec_file)",
+          "legendFormat": "Retries: {{spec_file}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 15
+          }
+        }
+      }
+    },
+    {
+      "title": "Top Flaky Specs (7-Day)",
+      "type": "table",
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "topk(10, sum(rate(e2e_test_flaky_retries_total[7d])) by (spec_file))",
+          "format": "table",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "title": "E2E Test Run Duration (p50/p95)",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, rate(e2e_test_duration_seconds_bucket[1h]))",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, rate(e2e_test_duration_seconds_bucket[1h]))",
+          "legendFormat": "p95"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 2
+          }
+        }
+      }
+    },
+    {
+      "title": "Flakiness Rate by Browser (7-Day)",
+      "type": "barchart",
+      "gridPos": {
+        "x": 0,
+        "y": 14,
+        "w": 12,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(e2e_test_failures_total[7d])) by (browser) / sum(rate(e2e_test_runs_total[7d])) by (browser) * 100",
+          "legendFormat": "{{browser}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent"
+        }
+      }
+    },
+    {
+      "title": "Week-over-Week Comparison",
+      "type": "stat",
+      "gridPos": {
+        "x": 12,
+        "y": 14,
+        "w": 6,
+        "h": 3
+      },
+      "targets": [
+        {
+          "expr": "(sum(rate(e2e_test_failures_total[7d] offset 7d)) - sum(rate(e2e_test_failures_total[7d]))) / sum(rate(e2e_test_failures_total[7d] offset 7d)) * 100",
+          "legendFormat": "WoW Change"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 10
+              },
+              {
+                "color": "red",
+                "value": 25
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "_comment": "280.B.3.2 \u2014 E2E flakiness trend dashboard. Requires Prometheus metrics: e2e_test_failures_total, e2e_test_runs_total, e2e_test_flaky_retries_total, e2e_test_duration_seconds. Metrics emitted from CI pipeline (scripts/e2e-metrics.py or GitHub Actions step). Import into Grafana via: curl -X POST http://grafana:3000/api/dashboards/db -H 'Content-Type: application/json' -d @monitoring/grafana/dashboards/e2e-flakiness-trend.json"
+}

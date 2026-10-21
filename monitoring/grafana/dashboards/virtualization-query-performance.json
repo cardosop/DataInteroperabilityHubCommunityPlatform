@@ -1,0 +1,307 @@
+{
+  "title": "Virtualization Query Performance Dashboard",
+  "tags": [
+    "hub",
+    "virtualization",
+    "queries",
+    "performance"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 16,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Query Execution Duration (P50, P95, P99)",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(virtualization_query_execution_duration_seconds_bucket[5m])) by (tenant_id, query_type, execution_mode, le))",
+          "legendFormat": "{{tenant_id}} {{query_type}} {{execution_mode}} P50",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(virtualization_query_execution_duration_seconds_bucket[5m])) by (tenant_id, query_type, execution_mode, le))",
+          "legendFormat": "{{tenant_id}} {{query_type}} {{execution_mode}} P95",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(virtualization_query_execution_duration_seconds_bucket[5m])) by (tenant_id, query_type, execution_mode, le))",
+          "legendFormat": "{{tenant_id}} {{query_type}} {{execution_mode}} P99",
+          "refId": "C"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "yaxes": [
+        {
+          "format": "s",
+          "label": "Duration"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Query Execution Success Rate",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "(sum(rate(virtualization_query_execution_completed_total{status=\"COMPLETED\"}[5m])) by (tenant_id, query_type) / sum(rate(virtualization_query_execution_started_total[5m])) by (tenant_id, query_type)) * 100",
+          "legendFormat": "{{tenant_id}} {{query_type}} Success Rate",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "yaxes": [
+        {
+          "format": "percent",
+          "label": "Success Rate %"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": 0,
+                "color": "red"
+              },
+              {
+                "value": 80,
+                "color": "yellow"
+              },
+              {
+                "value": 95,
+                "color": "green"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Query Result Size (P50, P95, P99)",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(virtualization_query_result_size_bytes_bucket[5m])) by (tenant_id, query_type, le))",
+          "legendFormat": "{{tenant_id}} {{query_type}} P50",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(virtualization_query_result_size_bytes_bucket[5m])) by (tenant_id, query_type, le))",
+          "legendFormat": "{{tenant_id}} {{query_type}} P95",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(virtualization_query_result_size_bytes_bucket[5m])) by (tenant_id, query_type, le))",
+          "legendFormat": "{{tenant_id}} {{query_type}} P99",
+          "refId": "C"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "yaxes": [
+        {
+          "format": "bytes",
+          "label": "Size"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Query Result Rows (P50, P95, P99)",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(virtualization_query_result_rows_total_bucket[5m])) by (tenant_id, query_type, le))",
+          "legendFormat": "{{tenant_id}} {{query_type}} P50",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(virtualization_query_result_rows_total_bucket[5m])) by (tenant_id, query_type, le))",
+          "legendFormat": "{{tenant_id}} {{query_type}} P95",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(virtualization_query_result_rows_total_bucket[5m])) by (tenant_id, query_type, le))",
+          "legendFormat": "{{tenant_id}} {{query_type}} P99",
+          "refId": "C"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "yaxes": [
+        {
+          "format": "short",
+          "label": "Rows"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Cache Hit Rate by Query Type",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "(sum(rate(virtualization_query_result_cache_hits_total[5m])) by (tenant_id, query_type) / (sum(rate(virtualization_query_result_cache_hits_total[5m])) by (tenant_id, query_type) + sum(rate(virtualization_query_result_cache_misses_total[5m])) by (tenant_id, query_type))) * 100",
+          "legendFormat": "{{tenant_id}} {{query_type}} Hit Rate",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "yaxes": [
+        {
+          "format": "percent",
+          "label": "Hit Rate %"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": 0,
+                "color": "red"
+              },
+              {
+                "value": 50,
+                "color": "yellow"
+              },
+              {
+                "value": 80,
+                "color": "green"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 6,
+      "title": "Query Execution Failures by Error Type",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "sum(rate(virtualization_query_execution_failed_total[5m])) by (tenant_id, error_type)",
+          "legendFormat": "{{tenant_id}} {{error_type}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "yaxes": [
+        {
+          "format": "ops",
+          "label": "Failures/sec"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Query Execution Duration by Execution Mode",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(virtualization_query_execution_duration_seconds_bucket[5m])) by (execution_mode, le))",
+          "legendFormat": "{{execution_mode}} P95",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      },
+      "yaxes": [
+        {
+          "format": "s",
+          "label": "Duration"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Query Throughput by Query Type",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "sum(rate(virtualization_query_execution_completed_total[5m])) by (tenant_id, query_type, status)",
+          "legendFormat": "{{tenant_id}} {{query_type}} {{status}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 24
+      },
+      "yaxes": [
+        {
+          "format": "ops",
+          "label": "Queries/sec"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    }
+  ]
+}

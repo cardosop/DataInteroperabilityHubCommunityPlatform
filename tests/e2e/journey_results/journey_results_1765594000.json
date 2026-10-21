@@ -1,0 +1,57 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "CPO-004-1ec59b35",
+      "journey_name": "Review Access Requests",
+      "persona": "Compliance & Privacy Officer",
+      "status": "failed",
+      "start_time": 1765593998.233387,
+      "end_time": 1765594000.1250696,
+      "duration": 1.8916826248168945,
+      "completion_rate": 50.0,
+      "success_rate": 50.0,
+      "error_message": "AccessRequest() got unexpected keyword arguments: 'justification'",
+      "error_type": "TypeError",
+      "steps": [
+        {
+          "step_name": "Create Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765593998.2333944,
+          "end_time": 1765594000.1248963,
+          "duration": 1.8915019035339355,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Create Access Request",
+          "status": "StepStatus.FAILED",
+          "start_time": 1765594000.1249084,
+          "end_time": 1765594000.1250668,
+          "duration": 0.0001583099365234375,
+          "error_message": "AccessRequest() got unexpected keyword arguments: 'justification'",
+          "error_type": "TypeError",
+          "retry_count": 0,
+          "metadata": {
+            "args": "('28b01a93-c2b7-4e88-9ea4-b90cf912ec34',)",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2025-12-13T02:46:40.125201"
+}

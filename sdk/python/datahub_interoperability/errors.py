@@ -1,0 +1,1572 @@
+"""
+SDK Error Classes
+
+Typed exceptions for API errors matching the standard error envelope.
+"""
+
+from typing import Any
+
+
+class DataHubError(Exception):
+    """
+    Base error class for all SDK errors
+    """
+
+    def __init__(
+        self,
+        message: str,
+        code: str,
+        http_status: int,
+        request_id: str | None = None,
+        timestamp: str | None = None,
+        details: dict[str, Any] | None = None,
+    ):
+        super().__init__(message)
+        self.message = message
+        self.code = code
+        self.http_status = http_status
+        self.request_id = request_id
+        self.timestamp = timestamp
+        self.details = details
+
+    def to_dict(self) -> dict[str, Any]:
+        """
+        Convert error to dictionary for serialization
+        """
+        return {
+            "error": {
+                "code": self.code,
+                "message": self.message,
+                "http_status": self.http_status,
+                "request_id": self.request_id,
+                "timestamp": self.timestamp,
+                "details": self.details,
+            }
+        }
+
+    def __repr__(self) -> str:
+        return (
+            f"{self.__class__.__name__}(code={self.code!r}, "
+            f"http_status={self.http_status}, message={self.message!r})"
+        )
+
+
+class ValidationError(DataHubError):
+    """Validation error (400)"""
+
+    def __init__(
+        self,
+        message: str,
+        request_id: str | None = None,
+        details: dict[str, Any] | None = None,
+    ):
+        super().__init__(message, "VALIDATION_ERROR", 400, request_id, None, details)
+
+
+class UnprocessableEntityError(DataHubError):
+    """Unprocessable entity error (422)"""
+
+    def __init__(
+        self,
+        message: str,
+        request_id: str | None = None,
+        details: dict[str, Any] | None = None,
+    ):
+        super().__init__(message, "UNPROCESSABLE_ENTITY", 422, request_id, None, details)
+
+
+class UnauthorizedError(DataHubError):
+    """Authentication error (401)"""
+
+    def __init__(self, message: str = "Authentication required", request_id: str | None = None):
+        super().__init__(message, "AUTH_UNAUTHORIZED", 401, request_id)
+
+
+class ForbiddenError(DataHubError):
+    """Authorization error (403)"""
+
+    def __init__(self, message: str = "Permission denied", request_id: str | None = None):
+        super().__init__(message, "AUTH_FORBIDDEN", 403, request_id)
+
+
+class NotFoundError(DataHubError):
+    """Not found error (404)"""
+
+    def __init__(self, message: str = "Resource not found", request_id: str | None = None):
+        super().__init__(message, "NOT_FOUND", 404, request_id)
+
+
+class MVPGatedFeatureError(NotFoundError):
+    """
+    Raised when a 404 hits an MVP-gated /api/v1/ prefix.
+
+    Subclass of :class:`NotFoundError` so existing ``except NotFoundError:``
+    handlers continue to catch every MVP-gated 404 unchanged (D131
+    backwards-compat contract). Carries the stable
+    ``code='MVP_FEATURE_GATED'`` plus structured fields (``feature``,
+    ``prefix``, ``endpoint``, ``environment_url``) so programmatic consumers
+    can branch on ``error.code`` without parsing the rendered message.
+    """
+
+    # NotFoundError.__init__ does not accept ``code`` (it hardcodes
+    # ``"NOT_FOUND"``), so we override and call DataHubError.__init__
+    # directly to pass the MVP_FEATURE_GATED code through cleanly. (D136)
+    def __init__(
+        self,
+        feature: str,
+        prefix: str,
+        endpoint: str,
+        environment_url: str,
+        request_id: str | None = None,
+    ):
+        from ._mvp_gates import MVP_FEATURE_GATED_CODE, MVP_GATED_MESSAGE_TEMPLATE
+
+        rendered = MVP_GATED_MESSAGE_TEMPLATE.format(
+            feature=feature,
+            endpoint=endpoint or "(unknown)",
+            environment_url=environment_url or "(unknown)",
+            code=MVP_FEATURE_GATED_CODE,
+        )
+        DataHubError.__init__(
+            self,
+            message=rendered,
+            code=MVP_FEATURE_GATED_CODE,
+            http_status=404,
+            request_id=request_id,
+            details={
+                "feature": feature,
+                "prefix": prefix,
+                "endpoint": endpoint,
+                "environment_url": environment_url,
+            },
+        )
+        self.feature = feature
+        self.prefix = prefix
+        self.endpoint = endpoint
+        self.environment_url = environment_url
+
+
+class FeatureNotEnabledError(NotFoundError):
+    """
+    Raised when a capability-gated feature is not enabled for the tenant/plan.
+
+    Subclass of :class:`NotFoundError` so existing ``except NotFoundError:``
+    handlers continue to catch it unchanged. Carries the stable
+    ``code='FEATURE_NOT_ENABLED'`` plus structured fields (``feature``,
+    ``reason``) so programmatic consumers can branch on ``error.code``
+    without parsing the rendered message.
+    """
+
+    # NotFoundError.__init__ does not accept ``code`` (it hardcodes
+    # ``"NOT_FOUND"``), so we override and call DataHubError.__init__
+    # directly to pass the FEATURE_NOT_ENABLED code through cleanly.
+    def __init__(
+        self,
+        feature: str,
+        message: str | None = None,
+        reason: str | None = None,
+        request_id: str | None = None,
+    ):
+        rendered = message or f"Feature '{feature}' is not enabled"
+        if reason:
+            rendered = f"{rendered}: {reason}"
+        DataHubError.__init__(
+            self,
+            message=rendered,
+            code="FEATURE_NOT_ENABLED",
+            http_status=404,
+            request_id=request_id,
+            details={
+                "feature": feature,
+                "reason": reason,
+            },
+        )
+        self.feature = feature
+        self.reason = reason
+
+
+class ConflictError(DataHubError):
+    """Conflict error (409).
+
+    Carries the server's classified ``code`` when present (e.g.
+    ``IDEMPOTENCY_REQUEST_IN_PROGRESS`` — the idempotency guard's
+    "retry shortly" state) so callers can branch on it; falls back to
+    ``CONFLICT_ERROR`` for unclassified 409s.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        request_id: str | None = None,
+        details: dict[str, Any] | None = None,
+        code: str = "CONFLICT_ERROR",
+    ):
+        super().__init__(message, code, 409, request_id, None, details)
+
+
+class RateLimitError(DataHubError):
+    """Rate limit error (429)"""
+
+    def __init__(
+        self,
+        message: str,
+        request_id: str | None = None,
+        retry_after: int | None = None,
+    ):
+        super().__init__(message, "RATE_LIMIT_EXCEEDED", 429, request_id)
+        self.retry_after = retry_after
+
+
+class ServerError(DataHubError):
+    """Server error (5xx)"""
+
+    def __init__(
+        self,
+        message: str,
+        code: str = "INTERNAL_ERROR",
+        http_status: int = 500,
+        request_id: str | None = None,
+    ):
+        super().__init__(message, code, http_status, request_id)
+
+
+class NetworkError(DataHubError):
+    """Network/timeout error"""
+
+    def __init__(self, message: str = "Network error occurred"):
+        super().__init__(message, "NETWORK_ERROR", 0)
+
+
+# ODPS-specific error classes
+class ODPSError(DataHubError):
+    """
+    Base exception class for all ODPS-related errors in the SDK.
+
+    Maps to backend ODPSError hierarchy with structured error information.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        error_code: str = "ODPS_ERROR",
+        http_status: int = 400,
+        request_id: str | None = None,
+        details: dict[str, Any] | None = None,
+        recoverable: bool = False,
+        recovery_strategy: str | None = None,
+        context: dict[str, Any] | None = None,
+    ):
+        """
+        Initialize ODPS error.
+
+        Args:
+            message: Error message
+            error_code: Machine-readable error code
+            http_status: HTTP status code
+            request_id: Request ID from API
+            details: Additional error details
+            recoverable: Whether the error can be recovered from
+            recovery_strategy: Suggested recovery strategy
+            context: Additional context information
+        """
+        super().__init__(message, error_code, http_status, request_id, None, details)
+        self.recoverable = recoverable
+        self.recovery_strategy = recovery_strategy
+        self.context = context or {}
+        # Extract context from details if available
+        if details and isinstance(details, dict):
+            if "context" in details:
+                self.context.update(details["context"])
+            if "recoverable" in details:
+                self.recoverable = details["recoverable"]
+            if "recovery_strategy" in details:
+                self.recovery_strategy = details["recovery_strategy"]
+
+
+class ODPSValidationError(ODPSError):
+    """
+    Exception raised when ODPS document validation fails.
+
+    Used for schema validation, required field validation, and data type validation.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        error_code: str = "ODPS_VALIDATION_ERROR",
+        http_status: int = 400,
+        request_id: str | None = None,
+        details: dict[str, Any] | None = None,
+        field_path: str | None = None,
+        expected: Any | None = None,
+        actual: Any | None = None,
+    ):
+        """
+        Initialize ODPS validation error.
+
+        Args:
+            message: Error message
+            error_code: Machine-readable error code
+            http_status: HTTP status code
+            request_id: Request ID from API
+            details: Additional error details
+            field_path: JSON Pointer path to the field that failed validation
+            expected: Expected value or type
+            actual: Actual value that failed validation
+        """
+        context = {}
+        if field_path:
+            context["field_path"] = field_path
+        if expected is not None:
+            context["expected"] = expected
+        if actual is not None:
+            context["actual"] = actual
+        if details and isinstance(details, dict) and "context" in details:
+            context.update(details["context"])
+
+        super().__init__(
+            message,
+            error_code,
+            http_status,
+            request_id,
+            details,
+            recoverable=False,
+            recovery_strategy="fail",
+            context=context,
+        )
+        self.field_path = field_path
+        self.expected = expected
+        self.actual = actual
+
+
+class ODPSRefResolutionError(ODPSError):
+    """
+    Exception raised when ODPS $ref resolution fails.
+
+    Used for internal, local, and external reference resolution errors.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        error_code: str = "ODPS_REF_RESOLUTION_ERROR",
+        http_status: int = 400,
+        request_id: str | None = None,
+        details: dict[str, Any] | None = None,
+        ref_path: str | None = None,
+        ref_type: str | None = None,
+    ):
+        """
+        Initialize ODPS ref resolution error.
+
+        Args:
+            message: Error message
+            error_code: Machine-readable error code
+            http_status: HTTP status code
+            request_id: Request ID from API
+            details: Additional error details
+            ref_path: The $ref path that failed to resolve
+            ref_type: Type of reference (internal, local, external)
+        """
+        context = {}
+        if ref_path:
+            context["ref_path"] = ref_path
+        if ref_type:
+            context["ref_type"] = ref_type
+        if details and isinstance(details, dict) and "context" in details:
+            context.update(details["context"])
+
+        # Determine recoverability based on error code
+        recoverable = error_code in {
+            "ODPS_REF_RATE_LIMIT_EXCEEDED",
+            "ODPS_REF_TIMEOUT",
+            "ODPS_REF_RESOLUTION_FAILED",
+        }
+        recovery_strategy = "retry" if recoverable else "fail"
+
+        super().__init__(
+            message,
+            error_code,
+            http_status,
+            request_id,
+            details,
+            recoverable=recoverable,
+            recovery_strategy=recovery_strategy,
+            context=context,
+        )
+        self.ref_path = ref_path
+        self.ref_type = ref_type
+
+
+class ODPSExportError(ODPSError):
+    """
+    Exception raised when ODPS export/generation fails.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        error_code: str = "ODPS_EXPORT_ERROR",
+        http_status: int = 500,
+        request_id: str | None = None,
+        details: dict[str, Any] | None = None,
+        field_path: str | None = None,
+    ):
+        """
+        Initialize ODPS export error.
+
+        Args:
+            message: Error message
+            error_code: Machine-readable error code
+            http_status: HTTP status code
+            request_id: Request ID from API
+            details: Additional error details
+            field_path: JSON Pointer path to the field that caused the error
+        """
+        context = {}
+        if field_path:
+            context["field_path"] = field_path
+        if details and isinstance(details, dict) and "context" in details:
+            context.update(details["context"])
+
+        super().__init__(
+            message,
+            error_code,
+            http_status,
+            request_id,
+            details,
+            recoverable=True,  # Export errors are typically recoverable
+            recovery_strategy="retry",
+            context=context,
+        )
+        self.field_path = field_path
+
+
+class ODPSLinkingError(ODPSError):
+    """
+    Exception raised when ODPS/ODCS linking operations fail.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        error_code: str = "ODPS_LINKING_ERROR",
+        http_status: int = 400,
+        request_id: str | None = None,
+        details: dict[str, Any] | None = None,
+    ):
+        """
+        Initialize ODPS linking error.
+
+        Args:
+            message: Error message
+            error_code: Machine-readable error code
+            http_status: HTTP status code
+            request_id: Request ID from API
+            details: Additional error details
+        """
+        super().__init__(
+            message,
+            error_code,
+            http_status,
+            request_id,
+            details,
+            recoverable=False,
+            recovery_strategy="fail",
+        )
+
+
+# ODCS-specific error classes
+class ODCSError(DataHubError):
+    """
+    Base exception class for all ODCS-related errors in the SDK.
+
+    Maps to backend ODCSError hierarchy with structured error information.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        error_code: str = "ODCS_ERROR",
+        http_status: int = 400,
+        request_id: str | None = None,
+        details: dict[str, Any] | None = None,
+        recoverable: bool = False,
+        recovery_strategy: str | None = None,
+        context: dict[str, Any] | None = None,
+    ):
+        """
+        Initialize ODCS error.
+
+        Args:
+            message: Error message
+            error_code: Machine-readable error code
+            http_status: HTTP status code
+            request_id: Request ID from API
+            details: Additional error details
+            recoverable: Whether the error can be recovered from
+            recovery_strategy: Suggested recovery strategy
+            context: Additional context information
+        """
+        super().__init__(message, error_code, http_status, request_id, None, details)
+        self.recoverable = recoverable
+        self.recovery_strategy = recovery_strategy
+        self.context = context or {}
+        # Extract context from details if available
+        if details and isinstance(details, dict):
+            if "context" in details:
+                self.context.update(details["context"])
+            if "recoverable" in details:
+                self.recoverable = details["recoverable"]
+            if "recovery_strategy" in details:
+                self.recovery_strategy = details["recovery_strategy"]
+
+
+class ODCSValidationError(ODCSError):
+    """
+    Exception raised when ODCS document validation fails.
+
+    Used for schema validation, required field validation, and data type validation.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        error_code: str = "ODCS_VALIDATION_ERROR",
+        http_status: int = 400,
+        request_id: str | None = None,
+        details: dict[str, Any] | None = None,
+        field_path: str | None = None,
+        expected: Any | None = None,
+        actual: Any | None = None,
+    ):
+        """
+        Initialize ODCS validation error.
+
+        Args:
+            message: Error message
+            error_code: Machine-readable error code
+            http_status: HTTP status code
+            request_id: Request ID from API
+            details: Additional error details
+            field_path: JSON Pointer path to the field that failed validation
+            expected: Expected value or type
+            actual: Actual value that failed validation
+        """
+        context = {}
+        if field_path:
+            context["field_path"] = field_path
+        if expected is not None:
+            context["expected"] = expected
+        if actual is not None:
+            context["actual"] = actual
+        if details and isinstance(details, dict) and "context" in details:
+            context.update(details["context"])
+
+        super().__init__(
+            message,
+            error_code,
+            http_status,
+            request_id,
+            details,
+            recoverable=False,
+            recovery_strategy="fail",
+            context=context,
+        )
+        self.field_path = field_path
+        self.expected = expected
+        self.actual = actual
+
+
+class ODCSExportError(ODCSError):
+    """
+    Exception raised when ODCS export/generation fails.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        error_code: str = "ODCS_EXPORT_ERROR",
+        http_status: int = 500,
+        request_id: str | None = None,
+        details: dict[str, Any] | None = None,
+        field_path: str | None = None,
+    ):
+        """
+        Initialize ODCS export error.
+
+        Args:
+            message: Error message
+            error_code: Machine-readable error code
+            http_status: HTTP status code
+            request_id: Request ID from API
+            details: Additional error details
+            field_path: JSON Pointer path to the field that caused the error
+        """
+        context = {}
+        if field_path:
+            context["field_path"] = field_path
+        if details and isinstance(details, dict) and "context" in details:
+            context.update(details["context"])
+
+        super().__init__(
+            message,
+            error_code,
+            http_status,
+            request_id,
+            details,
+            recoverable=True,  # Export errors are typically recoverable
+            recovery_strategy="retry",
+            context=context,
+        )
+        self.field_path = field_path
+
+
+def _extract_error_detail(obj: Any) -> dict[str, Any]:
+    """Extract error info from an object that may be a DRF ErrorDetail.
+
+    DRF's ErrorDetail has ``.code`` and ``.string`` attributes but is
+    neither a ``str`` nor a ``dict``.  This helper normalises such
+    objects — and plain strings / dicts — into a ``{"message": ...,
+    "code": ...}`` dict suitable for the ``error`` envelope.
+    """
+    # DRF ErrorDetail / Pydantic error wrapper: has .code and .string attrs
+    if hasattr(obj, "code") and hasattr(obj, "string"):
+        return {"message": obj.string, "code": str(obj.code)}
+    # Object with .code but no .string — use str(obj) as message
+    if hasattr(obj, "code") and not hasattr(obj, "string"):
+        return {"message": str(obj), "code": str(obj.code)}
+    if isinstance(obj, str):
+        return {"message": obj, "code": "ERROR"}
+    if isinstance(obj, dict):
+        return obj
+    return {"message": str(obj), "code": "ERROR"}
+
+
+def _error_for_status(
+    http_status: int,
+    message: str,
+    code: str = "UNKNOWN_ERROR",
+    request_id: str | None = None,
+    timestamp: str | None = None,
+    response_data: dict[str, Any] | None = None,
+    details: dict[str, Any] | None = None,
+) -> DataHubError:
+    """Map an HTTP status code to the appropriate :class:`DataHubError` subclass.
+
+    This is the single source of truth for status→error-class routing,
+    used by both the string-error and dict-error branches of
+    :func:`parse_error`.
+    """
+    if http_status == 429:
+        retry_after = None
+        if isinstance(details, dict):
+            retry_after = details.get("retry_after")
+        if retry_after is None and isinstance(response_data, dict):
+            # Check top-level error dict (DRF format)
+            error = response_data.get("error", {})
+            if isinstance(error, dict):
+                retry_after = error.get("retry_after")
+        if retry_after is None and isinstance(response_data, dict):
+            retry_after = response_data.get("retry_after")
+        # Fallback: parse retry_after from the DRF throttle detail message.
+        # DRF emits: "Request was throttled. Expected available in N seconds."
+        if retry_after is None:
+            import re as _re
+
+            _match = _re.search(r"Expected available in (\d+)\s*seconds?", message or "")
+            if _match:
+                retry_after = int(_match.group(1))
+        if retry_after is not None:
+            try:
+                if isinstance(retry_after, str):
+                    retry_after = int(retry_after.strip())
+                elif hasattr(retry_after, "__str__"):
+                    retry_after = int(str(retry_after).strip())
+                else:
+                    retry_after = int(retry_after)
+            except (ValueError, TypeError):
+                retry_after = None
+        return RateLimitError(message, request_id, retry_after)
+
+    if http_status >= 500:
+        return ServerError(message, code, http_status, request_id)
+
+    error_factories = {
+        400: lambda: ValidationError(message, request_id, details),
+        422: lambda: UnprocessableEntityError(message, request_id, details),
+        401: lambda: UnauthorizedError(message, request_id),
+        403: lambda: ForbiddenError(message, request_id),
+        404: lambda: NotFoundError(message, request_id),
+        409: lambda: ConflictError(message, request_id, details, code=code),
+    }
+    factory = error_factories.get(
+        http_status,
+        lambda: DataHubError(message, code, http_status, request_id, timestamp, details),
+    )
+    return factory()
+
+
+def parse_error(
+    response_data: Any,
+    http_status: int | None = None,
+) -> DataHubError:
+    """
+    Parse API error response and return appropriate error class.
+
+    Args:
+        response_data: Error response from API (dict, str, or other).
+        http_status: Actual HTTP status code from the response.  When
+            provided it takes precedence over any ``http_status``
+            embedded in *response_data*, preventing the parser from
+            misclassifying e.g. a 403 as a 500 when the body omits the
+            status.
+
+    Returns:
+        Appropriate DataHubError subclass
+    """
+    # ── Normalise raw types ──────────────────────────────────────────
+    if isinstance(response_data, str):
+        return ServerError(
+            f"Unexpected error: {response_data}",
+            "UNEXPECTED_ERROR",
+            http_status or 500,
+        )
+    if not isinstance(response_data, dict):
+        return ServerError(
+            f"Unexpected error: {response_data}",
+            "UNEXPECTED_ERROR",
+            http_status or 500,
+        )
+
+    # ── Phase 285 feature-gate format ────────────────────────────────
+    # Backend feature-flag gates return {"error_code": "...", "detail": "..."}
+    # (no "error" envelope).  Normalise into the standard envelope.
+    if "detail" in response_data and "error" not in response_data:
+        detail = response_data["detail"]
+        # If the caller passed the real HTTP status, use it; otherwise
+        # try the body, falling back to 500.
+        effective_status = (
+            http_status if http_status is not None else response_data.get("http_status", 500)
+        )
+        error_code = response_data.get("error_code", None)
+        extracted = _extract_error_detail(detail)
+        response_data = {
+            "error": {
+                "message": extracted.get("message", str(detail)),
+                "code": (
+                    str(error_code) if error_code is not None else extracted.get("code", "ERROR")
+                ),
+                "http_status": effective_status,
+            }
+        }
+
+    if "error" not in response_data:
+        return ServerError("Unexpected error format", "UNKNOWN_ERROR", http_status or 500)
+
+    error = response_data["error"]
+
+    # Handle case where error is a string instead of dict
+    # This happens when API returns {"error": "message"} format
+    if isinstance(error, str):
+        # Use caller-provided http_status if available, otherwise
+        # try the body.  Only default to 400 when *neither* source
+        # provided a real status (500 means "unknown").
+        body_status = response_data.get("http_status", 500)
+        if http_status is not None:
+            effective_status = http_status
+        elif body_status != 500:
+            effective_status = body_status
+        else:
+            effective_status = 400  # default string errors to 400
+        # Route through the same status → error-class mapping used for
+        # dict errors, so a 403 string error becomes ForbiddenError
+        # rather than a misleading ServerError.
+        return _error_for_status(
+            effective_status, error, "UNKNOWN_ERROR", None, None, response_data, None
+        )
+
+    if not isinstance(error, dict):
+        return ServerError(
+            f"Unexpected error format: {error}",
+            "UNKNOWN_ERROR",
+            http_status or 500,
+        )
+
+    # When caller provides the real HTTP status, it wins over the body.
+    code = error.get("code", "UNKNOWN_ERROR")
+    resolved_http_status = http_status if http_status is not None else error.get("http_status", 500)
+    message = error.get("message", "An error occurred")
+    request_id = error.get("request_id")
+    timestamp = error.get("timestamp")
+    details = error.get("details")
+
+    return _error_for_status(
+        resolved_http_status,
+        message,
+        code,
+        request_id,
+        timestamp,
+        response_data,
+        details,
+    )
+
+
+def parse_odcs_error(response_data: Any) -> ODCSError:
+    """
+    Parse ODCS-specific error response and return appropriate ODCS error class.
+
+    Maps backend ODCS error codes to SDK ODCS error classes.
+
+    Args:
+        response_data: Error response from API (dict, str, or other)
+
+    Returns:
+        Appropriate ODCSError subclass
+    """
+    # First parse as standard error
+    base_error = parse_error(response_data)
+
+    # If not a dict or doesn't have error structure, return base error wrapped as ODCS error
+    if not isinstance(response_data, dict) or "error" not in response_data:
+        return ODCSError(
+            base_error.message,
+            base_error.code,
+            base_error.http_status,
+            base_error.request_id,
+            base_error.details,
+        )
+
+    error = response_data["error"]
+    if not isinstance(error, dict):
+        return ODCSError(
+            base_error.message,
+            base_error.code,
+            base_error.http_status,
+            base_error.request_id,
+            base_error.details,
+        )
+
+    code = error.get("code", base_error.code)
+    http_status = error.get("http_status", base_error.http_status)
+    message = error.get("message", base_error.message)
+    request_id = error.get("request_id", base_error.request_id)
+    details = error.get("details", base_error.details or {})
+    context = error.get("context", {})
+
+    # Map ODCS error codes to specific error classes
+    code_upper = code.upper()
+
+    # ODCS Validation Errors
+    if "VALIDATION" in code_upper or "SCHEMA" in code_upper or "REQUIRED_FIELD" in code_upper:
+        field_path = context.get("field_path") if isinstance(context, dict) else None
+        expected = context.get("expected") if isinstance(context, dict) else None
+        actual = context.get("actual") if isinstance(context, dict) else None
+        return ODCSValidationError(
+            message,
+            code,
+            http_status,
+            request_id,
+            details,
+            field_path=field_path,
+            expected=expected,
+            actual=actual,
+        )
+
+    # ODCS Export Errors
+    if "EXPORT" in code_upper or "SERIALIZATION" in code_upper or "FORMAT" in code_upper:
+        field_path = context.get("field_path") if isinstance(context, dict) else None
+        return ODCSExportError(
+            message,
+            code,
+            http_status,
+            request_id,
+            details,
+            field_path=field_path,
+        )
+
+    # Default to base ODCSError
+    recoverable = error.get("recoverable", False) if isinstance(error, dict) else False
+    recovery_strategy = error.get("recovery_strategy") if isinstance(error, dict) else None
+    return ODCSError(
+        message,
+        code,
+        http_status,
+        request_id,
+        details,
+        recoverable=recoverable,
+        recovery_strategy=recovery_strategy,
+        context=context if isinstance(context, dict) else {},
+    )
+
+
+def parse_odps_error(response_data: Any) -> ODPSError:
+    """
+    Parse ODPS-specific error response and return appropriate ODPS error class.
+
+    Maps backend ODPS error codes to SDK ODPS error classes.
+
+    Args:
+        response_data: Error response from API (dict, str, or other)
+
+    Returns:
+        Appropriate ODPSError subclass
+    """
+    # First parse as standard error
+    base_error = parse_error(response_data)
+
+    # If not a dict or doesn't have error structure, return base error wrapped as ODPS error
+    error = response_data.get("error") if isinstance(response_data, dict) else None
+    if not isinstance(error, dict):
+        return ODPSError(
+            base_error.message,
+            base_error.code,
+            base_error.http_status,
+            base_error.request_id,
+            base_error.details,
+        )
+
+    code = error.get("code", base_error.code)
+    http_status = error.get("http_status", base_error.http_status)
+    message = error.get("message", base_error.message)
+    request_id = error.get("request_id", base_error.request_id)
+    details = error.get("details", base_error.details or {})
+    context = error.get("context", {})
+
+    # Map ODPS error codes to specific error classes
+    code_upper = code.upper()
+
+    # ODPS Validation Errors
+    if "VALIDATION" in code_upper or "SCHEMA" in code_upper or "REQUIRED_FIELD" in code_upper:
+        field_path = context.get("field_path") if isinstance(context, dict) else None
+        expected = context.get("expected") if isinstance(context, dict) else None
+        actual = context.get("actual") if isinstance(context, dict) else None
+        return ODPSValidationError(
+            message,
+            code,
+            http_status,
+            request_id,
+            details,
+            field_path=field_path,
+            expected=expected,
+            actual=actual,
+        )
+
+    # ODPS Ref Resolution Errors
+    if "REF" in code_upper or "RESOLUTION" in code_upper:
+        ref_path = context.get("ref_path") if isinstance(context, dict) else None
+        ref_type = context.get("ref_type") if isinstance(context, dict) else None
+        return ODPSRefResolutionError(
+            message,
+            code,
+            http_status,
+            request_id,
+            details,
+            ref_path=ref_path,
+            ref_type=ref_type,
+        )
+
+    # ODPS Export Errors
+    if "EXPORT" in code_upper or "SERIALIZATION" in code_upper or "FORMAT" in code_upper:
+        field_path = context.get("field_path") if isinstance(context, dict) else None
+        return ODPSExportError(
+            message,
+            code,
+            http_status,
+            request_id,
+            details,
+            field_path=field_path,
+        )
+
+    # ODPS Linking Errors
+    if "LINK" in code_upper or "LINKING" in code_upper:
+        return ODPSLinkingError(
+            message,
+            code,
+            http_status,
+            request_id,
+            details,
+        )
+
+    # Default to base ODPSError
+    recoverable = error.get("recoverable", False) if isinstance(error, dict) else False
+    recovery_strategy = error.get("recovery_strategy") if isinstance(error, dict) else None
+    return ODPSError(
+        message,
+        code,
+        http_status,
+        request_id,
+        details,
+        recoverable=recoverable,
+        recovery_strategy=recovery_strategy,
+        context=context if isinstance(context, dict) else {},
+    )
+
+
+# Marketplace-specific error classes
+class MarketplaceError(DataHubError):
+    """
+    Base exception class for all marketplace-related errors in the SDK.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        error_code: str = "MARKETPLACE_ERROR",
+        http_status: int = 400,
+        request_id: str | None = None,
+        details: dict[str, Any] | None = None,
+    ):
+        """
+        Initialize marketplace error.
+
+        Args:
+            message: Error message
+            error_code: Machine-readable error code
+            http_status: HTTP status code
+            request_id: Request ID from API
+            details: Additional error details
+        """
+        super().__init__(message, error_code, http_status, request_id, None, details)
+
+
+class MarketplaceValidationError(MarketplaceError):
+    """
+    Exception raised when marketplace operation validation fails.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        error_code: str = "MARKETPLACE_VALIDATION_ERROR",
+        http_status: int = 400,
+        request_id: str | None = None,
+        details: dict[str, Any] | None = None,
+        field_path: str | None = None,
+        expected: Any | None = None,
+        actual: Any | None = None,
+    ):
+        """
+        Initialize marketplace validation error.
+
+        Args:
+            message: Error message
+            error_code: Machine-readable error code
+            http_status: HTTP status code
+            request_id: Request ID from API
+            details: Additional error details
+            field_path: JSON Pointer path to the field that failed validation
+            expected: Expected value or type
+            actual: Actual value that failed validation
+        """
+        context = {}
+        if field_path:
+            context["field_path"] = field_path
+        if expected is not None:
+            context["expected"] = expected
+        if actual is not None:
+            context["actual"] = actual
+        if details and isinstance(details, dict) and "context" in details:
+            context.update(details["context"])
+
+        if details is None:
+            details = {}
+        if "context" not in details:
+            details["context"] = context
+        else:
+            details["context"].update(context)
+
+        super().__init__(
+            message,
+            error_code,
+            http_status,
+            request_id,
+            details,
+        )
+        self.field_path = field_path
+        self.expected = expected
+        self.actual = actual
+
+
+class MarketplaceConnectionError(MarketplaceError):
+    """
+    Exception raised when marketplace connection operations fail.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        error_code: str = "MARKETPLACE_CONNECTION_ERROR",
+        http_status: int = 400,
+        request_id: str | None = None,
+        details: dict[str, Any] | None = None,
+    ):
+        """
+        Initialize marketplace connection error.
+
+        Args:
+            message: Error message
+            error_code: Machine-readable error code
+            http_status: HTTP status code
+            request_id: Request ID from API
+            details: Additional error details
+        """
+        super().__init__(
+            message,
+            error_code,
+            http_status,
+            request_id,
+            details,
+        )
+
+
+# BaaS-specific error classes
+class BaaSError(DataHubError):
+    """
+    Base exception class for all BaaS-related errors in the SDK.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        error_code: str = "BAAS_ERROR",
+        http_status: int = 400,
+        request_id: str | None = None,
+        details: dict[str, Any] | None = None,
+    ):
+        """
+        Initialize BaaS error.
+
+        Args:
+            message: Error message
+            error_code: Machine-readable error code
+            http_status: HTTP status code
+            request_id: Request ID from API
+            details: Additional error details
+        """
+        super().__init__(message, error_code, http_status, request_id, None, details)
+
+
+class BaaSValidationError(BaaSError):
+    """
+    Exception raised when BaaS operation validation fails.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        error_code: str = "BAAS_VALIDATION_ERROR",
+        http_status: int = 400,
+        request_id: str | None = None,
+        details: dict[str, Any] | None = None,
+        field_path: str | None = None,
+        expected: Any | None = None,
+        actual: Any | None = None,
+    ):
+        """
+        Initialize BaaS validation error.
+
+        Args:
+            message: Error message
+            error_code: Machine-readable error code
+            http_status: HTTP status code
+            request_id: Request ID from API
+            details: Additional error details
+            field_path: JSON Pointer path to the field that failed validation
+            expected: Expected value or type
+            actual: Actual value that failed validation
+        """
+        context = {}
+        if field_path:
+            context["field_path"] = field_path
+        if expected is not None:
+            context["expected"] = expected
+        if actual is not None:
+            context["actual"] = actual
+        if details and isinstance(details, dict) and "context" in details:
+            context.update(details["context"])
+
+        if details is None:
+            details = {}
+        if "context" not in details:
+            details["context"] = context
+        else:
+            details["context"].update(context)
+
+        super().__init__(
+            message,
+            error_code,
+            http_status,
+            request_id,
+            details,
+        )
+        self.field_path = field_path
+        self.expected = expected
+        self.actual = actual
+
+
+# ODH ML-specific error classes
+class ODHMLError(DataHubError):
+    """
+    Base exception class for all ODH ML-related errors in the SDK.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        error_code: str = "ODH_ML_ERROR",
+        http_status: int = 400,
+        request_id: str | None = None,
+        details: dict[str, Any] | None = None,
+    ):
+        """
+        Initialize ODH ML error.
+
+        Args:
+            message: Error message
+            error_code: Machine-readable error code
+            http_status: HTTP status code
+            request_id: Request ID from API
+            details: Additional error details
+        """
+        super().__init__(message, error_code, http_status, request_id, None, details)
+
+
+class ODHMLValidationError(ODHMLError):
+    """
+    Exception raised when ODH ML operation validation fails.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        error_code: str = "ODH_ML_VALIDATION_ERROR",
+        http_status: int = 400,
+        request_id: str | None = None,
+        details: dict[str, Any] | None = None,
+        field_path: str | None = None,
+        expected: Any | None = None,
+        actual: Any | None = None,
+    ):
+        """
+        Initialize ODH ML validation error.
+
+        Args:
+            message: Error message
+            error_code: Machine-readable error code
+            http_status: HTTP status code
+            request_id: Request ID from API
+            details: Additional error details
+            field_path: JSON Pointer path to the field that failed validation
+            expected: Expected value or type
+            actual: Actual value that failed validation
+        """
+        context = {}
+        if field_path:
+            context["field_path"] = field_path
+        if expected is not None:
+            context["expected"] = expected
+        if actual is not None:
+            context["actual"] = actual
+        if details and isinstance(details, dict) and "context" in details:
+            context.update(details["context"])
+
+        if details is None:
+            details = {}
+        if "context" not in details:
+            details["context"] = context
+        else:
+            details["context"].update(context)
+
+        super().__init__(message, error_code, http_status, request_id, details)
+        self.field_path = field_path
+        self.expected = expected
+        self.actual = actual
+
+
+class ODHMLNotFoundError(ODHMLError):
+    """
+    Exception raised when ODH ML resource is not found.
+    """
+
+    def __init__(
+        self,
+        message: str = "ODH ML resource not found",
+        error_code: str = "ODH_ML_NOT_FOUND",
+        http_status: int = 404,
+        request_id: str | None = None,
+        details: dict[str, Any] | None = None,
+    ):
+        """
+        Initialize ODH ML not found error.
+
+        Args:
+            message: Error message
+            error_code: Machine-readable error code
+            http_status: HTTP status code
+            request_id: Request ID from API
+            details: Additional error details
+        """
+        super().__init__(message, error_code, http_status, request_id, details)
+
+
+class ODHMLConflictError(ODHMLError):
+    """
+    Exception raised when ODH ML operation conflicts with existing state.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        error_code: str = "ODH_ML_CONFLICT",
+        http_status: int = 409,
+        request_id: str | None = None,
+        details: dict[str, Any] | None = None,
+    ):
+        """
+        Initialize ODH ML conflict error.
+
+        Args:
+            message: Error message
+            error_code: Machine-readable error code
+            http_status: HTTP status code
+            request_id: Request ID from API
+            details: Additional error details
+        """
+        super().__init__(message, error_code, http_status, request_id, details)
+
+
+# Model Serving-specific error classes
+class ModelServingError(DataHubError):
+    """
+    Base exception class for all model serving-related errors in the SDK.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        error_code: str = "MODEL_SERVING_ERROR",
+        http_status: int = 400,
+        request_id: str | None = None,
+        details: dict[str, Any] | None = None,
+    ):
+        """
+        Initialize model serving error.
+
+        Args:
+            message: Error message
+            error_code: Machine-readable error code
+            http_status: HTTP status code
+            request_id: Request ID from API
+            details: Additional error details
+        """
+        super().__init__(message, error_code, http_status, request_id, None, details)
+
+
+class ModelServingValidationError(ModelServingError):
+    """
+    Exception raised when model serving operation validation fails.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        error_code: str = "MODEL_SERVING_VALIDATION_ERROR",
+        http_status: int = 400,
+        request_id: str | None = None,
+        details: dict[str, Any] | None = None,
+        field_path: str | None = None,
+        expected: Any | None = None,
+        actual: Any | None = None,
+    ):
+        """
+        Initialize model serving validation error.
+
+        Args:
+            message: Error message
+            error_code: Machine-readable error code
+            http_status: HTTP status code
+            request_id: Request ID from API
+            details: Additional error details
+            field_path: JSON Pointer path to the field that failed validation
+            expected: Expected value or type
+            actual: Actual value that failed validation
+        """
+        context = {}
+        if field_path:
+            context["field_path"] = field_path
+        if expected is not None:
+            context["expected"] = expected
+        if actual is not None:
+            context["actual"] = actual
+        if details and isinstance(details, dict) and "context" in details:
+            context.update(details["context"])
+
+        if details is None:
+            details = {}
+        if "context" not in details:
+            details["context"] = context
+        else:
+            details["context"].update(context)
+
+        super().__init__(message, error_code, http_status, request_id, details)
+        self.field_path = field_path
+        self.expected = expected
+        self.actual = actual
+
+
+class ModelServingNotFoundError(ModelServingError):
+    """
+    Exception raised when model serving resource is not found.
+    """
+
+    def __init__(
+        self,
+        message: str = "Model serving resource not found",
+        error_code: str = "MODEL_SERVING_NOT_FOUND",
+        http_status: int = 404,
+        request_id: str | None = None,
+        details: dict[str, Any] | None = None,
+    ):
+        """
+        Initialize model serving not found error.
+
+        Args:
+            message: Error message
+            error_code: Machine-readable error code
+            http_status: HTTP status code
+            request_id: Request ID from API
+            details: Additional error details
+        """
+        super().__init__(message, error_code, http_status, request_id, details)
+
+
+class ModelServingDeploymentError(ModelServingError):
+    """
+    Exception raised when model deployment operation fails.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        error_code: str = "MODEL_SERVING_DEPLOYMENT_ERROR",
+        http_status: int = 500,
+        request_id: str | None = None,
+        details: dict[str, Any] | None = None,
+    ):
+        """
+        Initialize model serving deployment error.
+
+        Args:
+            message: Error message
+            error_code: Machine-readable error code
+            http_status: HTTP status code
+            request_id: Request ID from API
+            details: Additional error details
+        """
+        super().__init__(message, error_code, http_status, request_id, details)
+
+
+class ABTestError(ModelServingError):
+    """
+    Exception raised when A/B testing operation fails.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        error_code: str = "AB_TEST_ERROR",
+        http_status: int = 400,
+        request_id: str | None = None,
+        details: dict[str, Any] | None = None,
+    ):
+        """
+        Initialize A/B test error.
+
+        Args:
+            message: Error message
+            error_code: Machine-readable error code
+            http_status: HTTP status code
+            request_id: Request ID from API
+            details: Additional error details
+        """
+        super().__init__(message, error_code, http_status, request_id, details)
+
+
+# ── Phase 118F.20: New error classes ─────────────────────
+
+
+class BillingError(DataHubError):
+    def __init__(self, msg, code="BILLING_ERROR", status=400, rid=None, details=None):
+        super().__init__(msg, code, status, rid, details=details)
+
+
+class BillingValidationError(BillingError):
+    def __init__(self, msg, rid=None, details=None):
+        super().__init__(msg, "BILLING_VALIDATION_ERROR", 400, rid, details)
+
+
+class DowngradeLimitExceededError(BillingError):
+    def __init__(self, msg, rid=None, details=None):
+        super().__init__(msg, "DOWNGRADE_LIMIT_EXCEEDED", 400, rid, details)
+
+
+class TransformationError(DataHubError):
+    def __init__(self, msg, code="TRANSFORMATION_ERROR", status=400, rid=None, details=None):
+        super().__init__(msg, code, status, rid, details=details)
+
+
+class TransformationValidationError(TransformationError):
+    def __init__(self, msg, rid=None, details=None):
+        super().__init__(msg, "TRANSFORMATION_VALIDATION_ERROR", 400, rid, details)
+
+
+class ComplianceError(DataHubError):
+    def __init__(self, msg, code="COMPLIANCE_ERROR", status=400, rid=None, details=None):
+        super().__init__(msg, code, status, rid, details=details)
+
+
+class ComplianceValidationError(ComplianceError):
+    def __init__(self, msg, rid=None, details=None):
+        super().__init__(msg, "COMPLIANCE_VALIDATION_ERROR", 400, rid, details)
+
+
+class SemanticError(DataHubError):
+    def __init__(self, msg, code="SEMANTIC_ERROR", status=400, rid=None, details=None):
+        super().__init__(msg, code, status, rid, details=details)
+
+
+class SPARQLError(SemanticError):
+    def __init__(self, msg, rid=None, details=None):
+        super().__init__(msg, "SPARQL_ERROR", 400, rid, details)
+
+
+class SHACLValidationError(SemanticError):
+    def __init__(self, msg, rid=None, details=None):
+        super().__init__(msg, "SHACL_VALIDATION_ERROR", 400, rid, details)
+
+
+class WorkflowError(DataHubError):
+    def __init__(self, msg, code="WORKFLOW_ERROR", status=400, rid=None, details=None):
+        super().__init__(msg, code, status, rid, details=details)
+
+
+class DLQError(DataHubError):
+    def __init__(self, msg, code="DLQ_ERROR", status=500, rid=None, details=None):
+        super().__init__(msg, code, status, rid, details=details)
+
+
+class EntitlementRequiredError(ForbiddenError):
+    def __init__(self, msg="Entitlement required", rid=None):
+        super().__init__(msg, rid)
+        self.code = "ENTITLEMENT_REQUIRED"
+
+
+class CircuitBreakerOpenError(ServerError):
+    def __init__(self, msg="Circuit breaker open", rid=None):
+        super().__init__(msg, "CIRCUIT_BREAKER_OPEN", 503, rid)
+
+
+class ModelDeploymentError(DataHubError):
+    def __init__(self, msg, code="MODEL_DEPLOYMENT_ERROR", status=400, rid=None, details=None):
+        super().__init__(msg, code, status, rid, details=details)

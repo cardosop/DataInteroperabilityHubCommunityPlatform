@@ -1,0 +1,44 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-002-ad9d233d",
+      "journey_name": "Publish Asset to Marketplace",
+      "persona": "Data Product Owner",
+      "status": "failed",
+      "start_time": 1765570808.8243535,
+      "end_time": 1765570809.1757734,
+      "duration": 0.35141992568969727,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": "Asset activation failed. Status: DRAFT\nassert 'DRAFT' == AssetStatus.ACTIVE\n  \n  - ACTIVE\n  + DRAFT",
+      "error_type": "AssertionError",
+      "steps": [
+        {
+          "step_name": "Create and Activate Asset",
+          "status": "StepStatus.FAILED",
+          "start_time": 1765570808.8243604,
+          "end_time": 1765570809.1757681,
+          "duration": 0.3514077663421631,
+          "error_message": "Asset activation failed. Status: DRAFT\nassert 'DRAFT' == AssetStatus.ACTIVE\n  \n  - ACTIVE\n  + DRAFT",
+          "error_type": "AssertionError",
+          "retry_count": 0,
+          "metadata": {
+            "args": "()",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2025-12-12T20:20:09.175895"
+}

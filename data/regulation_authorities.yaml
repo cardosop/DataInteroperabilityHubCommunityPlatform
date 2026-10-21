@@ -1,0 +1,36 @@
+# Regulation authorities referenced by DSAR / breach / DPIA flows (Phase 232.0).
+#
+# This file is the human-editable source of truth; ``hub.apps.regulation_policies``
+# resolves it via ``load_regulation_authorities()`` (lazy, cached).
+# Extend with additional authorities as jurisdictions
+# come online — keep ``id`` stable (used in audit metadata and UI deep links).
+
+authorities:
+  - id: ICO_UK
+    name: Information Commissioner's Office
+    jurisdiction: United Kingdom
+    website: "https://ico.org.uk"
+  - id: ANPD_BR
+    name: Autoridade Nacional de Proteção de Dados
+    jurisdiction: Brazil
+    website: "https://www.gov.br/anpd/"
+  - id: EDPS_EU
+    name: European Data Protection Supervisor
+    jurisdiction: European Union
+    website: "https://www.edps.europa.eu/"
+  - id: CNIL_FR
+    name: Commission Nationale de l'Informatique et des Libertés
+    jurisdiction: France
+    website: "https://www.cnil.fr/"
+
+# Phase 232.3 — default supervisory routing for breach notification drafts.
+# Product / counsel tune per deployment; ``regime`` keys match ``breach_statutory_clock_matrix``.
+breach_notification_routing:
+  - regime: GDPR
+    supervisory_authority_ids: [CNIL_FR]
+  - regime: UK_GDPR
+    supervisory_authority_ids: [ICO_UK]
+  - regime: LGPD
+    supervisory_authority_ids: [ANPD_BR]
+  - regime: CCPA
+    supervisory_authority_ids: []

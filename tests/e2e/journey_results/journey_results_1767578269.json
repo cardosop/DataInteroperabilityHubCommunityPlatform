@@ -1,0 +1,72 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.0023038387298583984
+  },
+  "journeys": [
+    {
+      "journey_id": "AUD-001-3f88ddcb",
+      "journey_name": "Review Audit Logs",
+      "persona": "Auditor",
+      "status": "completed",
+      "start_time": 1767578269.8151214,
+      "end_time": 1767578269.8174253,
+      "duration": 0.0023038387298583984,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Access Audit Logs",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1767578269.8151262,
+          "end_time": 1767578269.8174148,
+          "duration": 0.0022885799407958984,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "list"
+          }
+        },
+        {
+          "step_name": "Filter Logs",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1767578269.8174183,
+          "end_time": 1767578269.8174207,
+          "duration": 2.384185791015625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "list"
+          }
+        },
+        {
+          "step_name": "Analyze Patterns",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1767578269.8174226,
+          "end_time": 1767578269.8174243,
+          "duration": 1.6689300537109375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        }
+      ],
+      "metadata": {
+        "logs_count": 0,
+        "filtered_count": 0
+      }
+    }
+  ],
+  "exported_at": "2026-01-05T01:57:49.817487"
+}

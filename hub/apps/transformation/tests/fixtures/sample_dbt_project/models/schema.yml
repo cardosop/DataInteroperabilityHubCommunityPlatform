@@ -1,0 +1,38 @@
+version: 2
+
+models:
+  - name: customers
+    description: Cleaned customer records
+    columns:
+      - name: customer_id
+        description: Primary key
+        tests:
+          - unique
+          - not_null
+      - name: customer_name
+        description: Uppercased customer name
+      - name: email
+        description: Customer email address
+      - name: signup_date
+        description: Date customer signed up
+      - name: customer_status
+        description: Current customer status
+
+  - name: orders
+    description: Orders joined with customer information
+    columns:
+      - name: order_id
+        description: Primary key
+        tests:
+          - unique
+          - not_null
+      - name: customer_id
+        description: Foreign key to customers
+      - name: order_date
+        description: Date of order
+      - name: amount
+        description: Order amount in USD
+      - name: customer_name
+        description: Customer name from customers model
+      - name: customer_status
+        description: Customer status from customers model

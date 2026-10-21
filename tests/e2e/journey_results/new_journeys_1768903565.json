@@ -1,0 +1,191 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 8.818110942840576
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-007-632c72bd",
+      "journey_name": "Use AI Schema Matching for Asset Creation",
+      "persona": "Data Product Owner",
+      "status": "completed",
+      "start_time": 1768903556.2310565,
+      "end_time": 1768903565.0491674,
+      "duration": 8.818110942840576,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Upload Data File",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768903556.2310777,
+          "end_time": 1768903556.700552,
+          "duration": 0.46947431564331055,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Complete File Upload",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768903556.7005632,
+          "end_time": 1768903556.9512002,
+          "duration": 0.2506370544433594,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Create Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768903556.951216,
+          "end_time": 1768903557.123651,
+          "duration": 0.17243504524230957,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Create Dataset (Schema Inference)",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768903557.1236587,
+          "end_time": 1768903557.1659367,
+          "duration": 0.04227805137634277,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "AI Schema Matching Analysis",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768903557.1659474,
+          "end_time": 1768903557.1968055,
+          "duration": 0.03085803985595703,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Review Suggested Field Mappings",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768903557.196821,
+          "end_time": 1768903557.1968315,
+          "duration": 1.049041748046875e-05,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "bool"
+          }
+        },
+        {
+          "step_name": "Accept/Reject Mappings",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768903557.1968336,
+          "end_time": 1768903557.1968381,
+          "duration": 4.5299530029296875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Generate Contract Draft",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768903557.1968496,
+          "end_time": 1768903557.2830818,
+          "duration": 0.08623218536376953,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Review Contract",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768903557.283092,
+          "end_time": 1768903557.291048,
+          "duration": 0.00795602798461914,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "bool"
+          }
+        },
+        {
+          "step_name": "Validate Contract",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768903557.291057,
+          "end_time": 1768903557.3087792,
+          "duration": 0.017722129821777344,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Attach Contract to Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768903557.3087878,
+          "end_time": 1768903565.0379815,
+          "duration": 7.729193687438965,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Activate Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768903565.0379896,
+          "end_time": 1768903565.0491614,
+          "duration": 0.011171817779541016,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "56c23d5b-a0fd-429b-8d79-ef6805b0908a",
+        "contract_id": "b5a9384e-f005-4aef-932f-cedd83c2b26d",
+        "dataset_id": "db04d6d2-cc13-4703-8d0b-a9ec4936dce5",
+        "file_id": "6d0372c3-b219-4b75-a005-062a0b224615"
+      }
+    }
+  ],
+  "exported_at": "2026-01-20T10:06:05.049288"
+}

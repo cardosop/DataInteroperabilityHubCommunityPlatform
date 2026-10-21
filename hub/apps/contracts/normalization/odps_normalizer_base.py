@@ -1,0 +1,1300 @@
+"""
+ODPS Normalizer Base Class
+
+Abstract base class for version-specific ODPS normalizers.
+Provides common normalization logic and defines hooks for version-specific implementations.
+"""
+
+from __future__ import annotations
+
+from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING, Any
+
+import structlog
+
+from hub.apps.contracts.models import NormalizationStatus, OriginalSpecType
+from hub.apps.contracts.normalization.odps_normalizer import ODPSNormalizer
+from hub.apps.contracts.odps_errors import ODPSNormalizationError, ODPSRefResolutionError
+from hub.apps.contracts.odps_version_detection import detect_odps_version
+
+if TYPE_CHECKING:
+    from hub.apps.contracts.normalization_engine import NormalizationResult
+
+logger = structlog.get_logger(__name__)
+
+
+class ODPSNormalizerBase(ODPSNormalizer, ABC):
+    """
+    Abstract base class for version-specific ODPS normalizers.
+
+    Provides common normalization logic and defines hooks for version-specific implementations.
+    Subclasses must implement:
+    - `_supports_version()`: Check if this normalizer supports a specific ODPS version
+    - Optionally override `_map_version_specific_fields()` for version-specific mappings
+
+    Common functionality provided:
+    - Version detection and validation
+    - Contract data validation
+    - HubContract structure initialization
+    - Common normalization methods (info, quality, lifecycle, marketplace, contract extraction)
+    - Error handling and status determination
+    - Helper methods for field normalization
+    """
+
+    spec_type: str = OriginalSpecType.ODPS
+
+    @abstractmethod
+    def _supports_version(self, spec_version: str) -> bool:
+        """
+        Check if this normalizer supports the given ODPS version.
+
+        This is the primary hook for version-specific normalizers.
+        Subclasses must implement this to indicate which versions they support.
+
+        Args:
+            spec_version: ODPS specification version (e.g., "4.1", "4.0", "3.x")
+
+        Returns:
+            True if this normalizer supports the version, False otherwise
+
+        Examples:
+            - ODPS 4.1 normalizer: return spec_version == "4.1"
+            - ODPS 4.0 normalizer: return spec_version == "4.0"
+            - ODPS 3.x normalizer: return spec_version.startswith("3.")
+        """
+
+    def supports(self, spec_type: str, spec_version: str, contract_data: dict[str, Any]) -> bool:
+        """
+        Check if this normalizer supports the given spec type and version.
+
+        This method implements the SpecNormalizer protocol. It checks:
+        1. If the spec_type matches ODPS
+        2. If this normalizer supports the specific version (via _supports_version hook)
+
+        Args:
+            spec_type: Specification type (e.g., "ODPS")
+            spec_version: Specification version (e.g., "4.1")
+            contract_data: Contract data dictionary (not used in base implementation)
+
+        Returns:
+            True if this normalizer supports the spec type and version, False otherwise
+        """
+        if spec_type != self.spec_type:
+            return False
+
+        return self._supports_version(spec_version)
+
+    def normalize(
+        self, contract_data: dict[str, Any], spec_version: str | None = None
+    ) -> NormalizationResult:
+        """
+        Normalize ODPS contract data to HubContract format.
+
+        This is the main entry point for ODPS normalization. It handles:
+        - Version detection if not provided
+        - Error handling with context (field names, expected types)
+        - Graceful degradation for missing optional fields
+        - Type validation and conversion
+        - Field mapping errors
+        - Version-specific field mappings (via hook)
+
+        Args:
+            contract_data: Raw ODPS contract data (dict)
+            spec_version: Optional spec version (auto-detected if not provided)
+
+        Returns:
+            NormalizationResult with hub_contract, status, errors, warnings, etc.
+
+        Raises:
+            ODPSNormalizationError: For normalization errors with context
+        """
+        from hub.apps.contracts.normalization_engine import NormalizationResult
+
+        errors: list[str] = []
+        warnings: list[str] = []
+        hub_contract: dict[str, Any] | None = None
+
+        try:
+            # Detect ODPS version if not provided
+            if spec_version is None:
+                try:
+                    detected_version = detect_odps_version(contract_data)
+                    spec_version = detected_version or "4.1"  # Default to 4.1
+                except (AttributeError, TypeError, ValueError) as e:
+                    error_msg = f"Failed to detect ODPS version: {e!s}"
+                    logger.warning("odps_version_detection_failed", error=str(e), message=error_msg)
+                    warnings.append(error_msg)
+                    spec_version = "4.1"  # Default fallback
+
+            # Check if this normalizer supports the detected/provided version
+            if not self._supports_version(spec_version):
+                error_msg = (
+                    f"This normalizer does not support ODPS version '{spec_version}'. "
+                    f"Use a version-specific normalizer for this version."
+                )
+                errors.append(error_msg)
+                logger.warning(
+                    "odps_version_not_supported",
+                    spec_version=spec_version,
+                    normalizer_class=self.__class__.__name__,
+                    message=error_msg,
+                )
+                return NormalizationResult(
+                    hub_contract=None,
+                    status=NormalizationStatus.NORMALIZATION_FAILED,
+                    errors=errors,
+                    warnings=warnings,
+                    spec_type=self.spec_type,
+                    spec_version=spec_version,
+                    coverage=None,
+                )
+
+            # Validate contract_data is a dict
+            if not isinstance(contract_data, dict):
+                self._raise_normalization_error(
+                    message=f"Contract data must be a dictionary, got {type(contract_data).__name__}",
+                    error_code=ODPSNormalizationError.ERROR_CODE_TYPE_CONVERSION_FAILED,
+                    field_path="/",
+                    context={
+                        "expected": "dict",
+                        "actual": type(contract_data).__name__,
+                    },
+                )
+
+            # Initialize hub_contract structure
+            hub_contract = self._initialize_hub_contract(contract_data, spec_version)
+
+            # Normalize contract sections (common across all versions)
+            # ODPS → HubContract info mapping
+            self._normalize_info(contract_data, hub_contract, warnings)
+            # ODPS → HubContract quality mapping
+            self._normalize_quality(contract_data, hub_contract, warnings)
+            # ODPS → HubContract lifecycle mapping
+            self._normalize_lifecycle(contract_data, hub_contract, warnings)
+            # ODPS → HubContract marketplace mapping
+            self._normalize_marketplace(contract_data, hub_contract, warnings)
+            # Minimal schema normalization (populate from product.dataSchema if available)
+            self._normalize_schema_minimal(contract_data, hub_contract, warnings)
+            # ODPS contract extraction
+            self._extract_contract(contract_data, hub_contract, warnings)
+
+            # Phase 227 Wave 1 — outputPorts/inputPorts → models[]/lineage.
+            # Wired in the base so every version (1.x/2.x/3.x/4.0/4.1/4.2/Bitol)
+            # gets the same port → models[] mapping with a single helper call.
+            # Root cause for the structureless population: the previous
+            # implementation only stored port metadata under
+            # `extensions.x_odps.output_ports` and never extracted the
+            # schema body into `models[]`.
+            self._normalize_ports_to_models(contract_data, hub_contract, warnings)
+
+            # Version-specific field mappings (hook for subclasses)
+            self._map_version_specific_fields(contract_data, hub_contract, warnings, spec_version)
+
+            # Determine normalization status
+            status = self._determine_status(hub_contract, errors, warnings)
+
+            # Calculate coverage (placeholder for now)
+            coverage = None
+            if hub_contract:
+                try:
+                    from hub.apps.contracts.coverage import calculate_coverage
+
+                    coverage_result = calculate_coverage(
+                        hub_contract, spec_type=OriginalSpecType.ODPS
+                    )
+                    if coverage_result:
+                        coverage = {
+                            "overall": coverage_result.overall,
+                            "sections": coverage_result.sections,
+                        }
+                except (AttributeError, TypeError, ValueError) as e:
+                    logger.debug(
+                        "odps_coverage_calculation_failed",
+                        error=str(e),
+                        message="Coverage calculation failed, continuing without coverage",
+                    )
+
+            return NormalizationResult(
+                hub_contract=hub_contract,
+                status=status,
+                errors=errors,
+                warnings=warnings,
+                spec_type=self.spec_type,
+                spec_version=spec_version,
+                coverage=coverage,
+            )
+
+        except ODPSNormalizationError as e:
+            # Re-raise ODPSNormalizationError with full context
+            errors.append(str(e))
+            logger.warning(
+                "odps_normalization_error",
+                error_code=e.error_code,
+                field_path=e.context.get("field_path") if e.context else None,
+                message=str(e),
+                context=e.context,
+            )
+            return NormalizationResult(
+                hub_contract=None,
+                status=NormalizationStatus.NORMALIZATION_FAILED,
+                errors=errors,
+                warnings=warnings,
+                spec_type=self.spec_type,
+                spec_version=spec_version or "4.1",
+                coverage=None,
+            )
+        except Exception as e:
+            # Catch any unexpected errors and wrap in ODPSNormalizationError
+            error = ODPSNormalizationError(
+                message=f"Unexpected error during ODPS normalization: {e!s}",
+                error_code=ODPSNormalizationError.ERROR_CODE_NORMALIZATION_FAILED,
+                cause=e,
+            )
+            errors.append(str(error))
+            logger.exception(
+                "odps_normalization_unexpected_error",
+                error=str(e),
+                error_type=type(e).__name__,
+                message="Unexpected error during normalization",
+            )
+            return NormalizationResult(
+                hub_contract=None,
+                status=NormalizationStatus.NORMALIZATION_FAILED,
+                errors=errors,
+                warnings=warnings,
+                spec_type=self.spec_type,
+                spec_version=spec_version or "4.1",
+                coverage=None,
+            )
+
+    def _map_version_specific_fields(
+        self,
+        contract_data: dict[str, Any],
+        hub_contract: dict[str, Any],
+        warnings: list[str],
+        spec_version: str,
+    ) -> None:
+        """
+        Hook for version-specific field mappings.
+
+        Subclasses can override this method to implement version-specific mappings
+        that are not common across all ODPS versions. This is called after all
+        common normalization methods.
+
+        Default implementation handles product strategy (ODPS 4.1+).
+        Subclasses can override to add version-specific logic or to handle
+        different versions of product strategy.
+
+        Args:
+            contract_data: Raw ODPS contract data
+            hub_contract: HubContract dictionary to update
+            warnings: List to append warnings to
+            spec_version: ODPS spec version (e.g., "4.1", "4.0")
+        """
+        # Default implementation: handle product strategy for 4.1+
+        self._normalize_product_strategy(contract_data, hub_contract, warnings, spec_version)
+
+    def _initialize_hub_contract(
+        self, contract_data: dict[str, Any], spec_version: str
+    ) -> dict[str, Any]:
+        """
+        Initialize HubContract structure with basic fields.
+
+        Args:
+            contract_data: Raw ODPS contract data
+            spec_version: ODPS spec version
+
+        Returns:
+            Initialized HubContract dictionary
+
+        Raises:
+            ODPSNormalizationError: If initialization fails
+        """
+        try:
+            hub_contract = {
+                "info": {},
+                "schema": {"fields": []},
+                "extensions": {},
+            }
+
+            # Add normalization metadata
+            hub_contract["normalization"] = {
+                "original_spec_type": self.spec_type,
+                "original_spec_version": spec_version,
+                "normalized_at": None,  # Will be set by service layer
+            }
+        except Exception as e:
+            raise ODPSNormalizationError(
+                message=f"Failed to initialize HubContract structure: {e!s}",
+                error_code=ODPSNormalizationError.ERROR_CODE_NORMALIZATION_FAILED,
+                field_path="/",
+                cause=e,
+            ) from e
+        else:
+            return hub_contract
+
+    def _determine_status(
+        self, hub_contract: dict[str, Any] | None, errors: list[str], warnings: list[str]
+    ) -> NormalizationStatus:
+        """
+        Determine normalization status based on result.
+
+        Args:
+            hub_contract: Normalized HubContract (None if normalization failed)
+            errors: List of errors
+            warnings: List of warnings
+
+        Returns:
+            NormalizationStatus enum value
+        """
+        if errors or hub_contract is None:
+            return NormalizationStatus.NORMALIZATION_FAILED
+
+        # Check for critical sections
+        info = hub_contract.get("info", {})
+        if "info" not in hub_contract or "name" not in info or not info.get("name"):
+            return NormalizationStatus.NORMALIZATION_FAILED
+
+        # Initialize schema section if missing
+        if "schema" not in hub_contract:
+            hub_contract["schema"] = {}
+
+        schema = hub_contract["schema"]
+        # Initialize schema.fields as empty list if missing
+        # For ODPS contracts, schema.fields may be empty if schema comes from ODCS contract
+        if "fields" not in schema:
+            schema["fields"] = []
+
+        # For ODPS contracts, empty schema.fields is acceptable (schema comes from ODCS)
+        # This is expected in Product-First flow where technical schema is in ODCS contract
+        # Only require schema.fields to exist, not to be non-empty
+
+        # If warnings present, status is WITH_WARNINGS
+        if warnings or hub_contract.get("extensions"):
+            return NormalizationStatus.NORMALIZED_WITH_WARNINGS
+
+        # All critical sections present, no warnings
+        return NormalizationStatus.NORMALIZED_OK
+
+    def _normalize_field_with_error_context(
+        self,
+        field_name: str,
+        field_path: str,
+        value: Any,
+        expected_type: type,
+        default_value: Any = None,
+        required: bool = False,
+    ) -> Any:
+        """
+        Normalize a field with error context and graceful degradation.
+
+        Args:
+            field_name: Name of the field being normalized
+            field_path: JSON Pointer path to the field
+            value: Field value to normalize
+            expected_type: Expected Python type
+            default_value: Default value if field is missing (for optional fields)
+            required: Whether the field is required
+
+        Returns:
+            Normalized field value
+
+        Raises:
+            ODPSNormalizationError: If normalization fails with context
+        """
+        # Handle missing field
+        if value is None:
+            if required:
+                raise ODPSNormalizationError(
+                    message=f"Required field '{field_name}' is missing at path '{field_path}'",
+                    error_code=ODPSNormalizationError.ERROR_CODE_MISSING_REQUIRED_FIELD,
+                    field_path=field_path,
+                    context={
+                        "expected": expected_type.__name__,
+                        "actual": None,
+                    },
+                )
+            else:
+                # Optional field missing - return default
+                return default_value
+
+        # Type validation
+        if not isinstance(value, expected_type):
+            raise ODPSNormalizationError(
+                message=f"Field '{field_name}' at path '{field_path}' has invalid type: expected {expected_type.__name__}, got {type(value).__name__}",
+                error_code=ODPSNormalizationError.ERROR_CODE_TYPE_CONVERSION_FAILED,
+                field_path=field_path,
+                context={
+                    "expected": expected_type.__name__,
+                    "actual": type(value).__name__,
+                },
+            )
+
+        return value
+
+    def _normalize_optional_field(
+        self,
+        field_name: str,
+        field_path: str,
+        value: Any,
+        expected_type: type,
+        default_value: Any = None,
+        warnings: list[str] | None = None,
+    ) -> Any:
+        """
+        Normalize an optional field with graceful degradation.
+
+        If the field is missing or invalid, logs a warning and returns default value.
+
+        Args:
+            field_name: Name of the field being normalized
+            field_path: JSON Pointer path to the field
+            value: Field value to normalize
+            expected_type: Expected Python type
+            default_value: Default value if field is missing or invalid
+            warnings: Optional list to append warnings to
+
+        Returns:
+            Normalized field value or default_value
+        """
+        if value is None:
+            if warnings is not None:
+                warnings.append(
+                    f"Optional field '{field_name}' at path '{field_path}' is missing, using default value"
+                )
+            logger.debug(
+                "odps_optional_field_missing",
+                field_name=field_name,
+                field_path=field_path,
+                message=f"Optional field '{field_name}' missing, using default",
+            )
+            return default_value
+
+        if not isinstance(value, expected_type):
+            if warnings is not None:
+                warnings.append(
+                    f"Optional field '{field_name}' at path '{field_path}' has invalid type "
+                    f"(expected {expected_type.__name__}, got {type(value).__name__}), using default value"
+                )
+            logger.warning(
+                "odps_optional_field_invalid_type",
+                field_name=field_name,
+                field_path=field_path,
+                expected_type=expected_type.__name__,
+                actual_type=type(value).__name__,
+                message=f"Optional field '{field_name}' has invalid type, using default",
+            )
+            return default_value
+
+        return value
+
+    # Common normalization methods (shared across all versions)
+    # These methods are implemented in the base class and can be overridden
+    # by subclasses if version-specific behavior is needed.
+
+    def _normalize_info(
+        self, contract_data: dict[str, Any], hub_contract: dict[str, Any], warnings: list[str]
+    ) -> None:
+        """
+        Normalize ODPS product details and dataHolder to HubContract info section.
+
+        Maps:
+        - product.details.<lang>.productID → HubContract.id
+        - product.details.<lang>.name → HubContract.info.name
+        - product.details.<lang>.description → HubContract.info.description
+        - product.details.<lang>.productVersion → HubContract.info.version
+        - dataHolder.<lang>.legalName → HubContract.info.owners[].name
+        - dataHolder.<lang>.email → HubContract.info.owners[].email
+        - product.details.<lang>.tags → HubContract.info.tags
+        - product.details.<lang>.categories → HubContract.info.tags (merge)
+
+        Args:
+            contract_data: Raw ODPS contract data
+            hub_contract: HubContract dictionary to populate
+            warnings: List to append warnings to
+
+        Raises:
+            ODPSNormalizationError: If required fields are missing or invalid
+        """
+        try:
+            # Ensure info section exists
+            if "info" not in hub_contract:
+                hub_contract["info"] = {}
+
+            # Extract available languages
+            available_languages = self._extract_available_languages(contract_data)
+
+            if not available_languages:
+                # No languages available - this is a critical error
+                self._raise_normalization_error(
+                    message="No language details found in product.details",
+                    error_code=ODPSNormalizationError.ERROR_CODE_MISSING_REQUIRED_FIELD,
+                    field_path="/product/details",
+                    context={
+                        "expected": "dict with at least one language code",
+                        "actual": "empty or missing",
+                    },
+                )
+
+            # Get preferred language (default to "en", fallback to first available)
+            preferred_lang = self._get_preferred_language(available_languages, preferred="en")
+
+            if not preferred_lang:
+                self._raise_normalization_error(
+                    message="Could not determine preferred language",
+                    error_code=ODPSNormalizationError.ERROR_CODE_NORMALIZATION_FAILED,
+                    field_path="/product/details",
+                )
+
+            # Get product details for preferred language
+            product = contract_data.get("product", {})
+            details = product.get("details", {})
+            lang_details = details.get(preferred_lang, {})
+
+            if not isinstance(lang_details, dict):
+                self._raise_normalization_error(
+                    message=f"Product details for language '{preferred_lang}' must be a dictionary",
+                    error_code=ODPSNormalizationError.ERROR_CODE_TYPE_CONVERSION_FAILED,
+                    field_path=f"/product/details/{preferred_lang}",
+                    context={
+                        "expected": "dict",
+                        "actual": type(lang_details).__name__,
+                    },
+                )
+
+            # Map productID → HubContract.id (required)
+            product_id = lang_details.get("productID")
+            if product_id:
+                if not isinstance(product_id, str):
+                    self._raise_normalization_error(
+                        message=f"productID must be a string, got {type(product_id).__name__}",
+                        error_code=ODPSNormalizationError.ERROR_CODE_TYPE_CONVERSION_FAILED,
+                        field_path=f"/product/details/{preferred_lang}/productID",
+                        context={
+                            "expected": "str",
+                            "actual": type(product_id).__name__,
+                        },
+                    )
+                hub_contract["id"] = product_id
+            else:
+                # productID is required in ODPS, but we'll handle gracefully
+                warnings.append(
+                    f"productID missing in product.details.{preferred_lang}, using fallback"
+                )
+
+            # Map name → HubContract.info.name (required)
+            name = lang_details.get("name")
+            if name:
+                if not isinstance(name, str):
+                    self._raise_normalization_error(
+                        message=f"name must be a string, got {type(name).__name__}",
+                        error_code=ODPSNormalizationError.ERROR_CODE_TYPE_CONVERSION_FAILED,
+                        field_path=f"/product/details/{preferred_lang}/name",
+                        context={
+                            "expected": "str",
+                            "actual": type(name).__name__,
+                        },
+                    )
+                hub_contract["info"]["name"] = name
+            else:
+                # Name is required - this will cause normalization to fail
+                self._raise_normalization_error(
+                    message=f"name is required in product.details.{preferred_lang}",
+                    error_code=ODPSNormalizationError.ERROR_CODE_MISSING_REQUIRED_FIELD,
+                    field_path=f"/product/details/{preferred_lang}/name",
+                )
+
+            # Map description → HubContract.info.description (optional)
+            description = lang_details.get("description")
+            if description:
+                if not isinstance(description, str):
+                    warnings.append(
+                        f"description in product.details.{preferred_lang} has invalid type "
+                        f"(expected str, got {type(description).__name__}), skipping"
+                    )
+                else:
+                    hub_contract["info"]["description"] = description
+
+            # Map productVersion → HubContract.info.version (optional)
+            product_version = lang_details.get("productVersion")
+            if product_version:
+                if not isinstance(product_version, str):
+                    warnings.append(
+                        f"productVersion in product.details.{preferred_lang} has invalid type "
+                        f"(expected str, got {type(product_version).__name__}), skipping"
+                    )
+                else:
+                    hub_contract["info"]["version"] = product_version
+
+            # Map tags → HubContract.info.tags (optional)
+            tags = lang_details.get("tags")
+            tag_list = []
+            if tags:
+                if isinstance(tags, list):
+                    # Validate all tags are strings
+                    valid_tags = []
+                    for tag in tags:
+                        if isinstance(tag, str):
+                            valid_tags.append(tag)
+                        else:
+                            warnings.append(
+                                f"Invalid tag type in product.details.{preferred_lang}.tags "
+                                f"(expected str, got {type(tag).__name__}), skipping"
+                            )
+                    tag_list.extend(valid_tags)
+                elif isinstance(tags, str):
+                    # Single tag as string
+                    tag_list.append(tags)
+                else:
+                    warnings.append(
+                        f"tags in product.details.{preferred_lang} has invalid type "
+                        f"(expected list or str, got {type(tags).__name__}), skipping"
+                    )
+
+            # Map categories → HubContract.info.tags (merge with tags)
+            categories = lang_details.get("categories")
+            if categories:
+                if isinstance(categories, list):
+                    # Validate all categories are strings
+                    valid_categories = []
+                    for category in categories:
+                        if isinstance(category, str):
+                            valid_categories.append(category)
+                        else:
+                            warnings.append(
+                                f"Invalid category type in product.details.{preferred_lang}.categories "
+                                f"(expected str, got {type(category).__name__}), skipping"
+                            )
+                    tag_list.extend(valid_categories)
+                elif isinstance(categories, str):
+                    # Single category as string
+                    tag_list.append(categories)
+                else:
+                    warnings.append(
+                        f"categories in product.details.{preferred_lang} has invalid type "
+                        f"(expected list or str, got {type(categories).__name__}), skipping"
+                    )
+
+            # Set tags (merged from tags and categories)
+            if tag_list:
+                # Remove duplicates while preserving order
+                seen = set()
+                unique_tags = []
+                for tag in tag_list:
+                    if tag not in seen:
+                        seen.add(tag)
+                        unique_tags.append(tag)
+                hub_contract["info"]["tags"] = unique_tags
+
+            # Map dataHolder → HubContract.info.owners (optional)
+            data_holder = contract_data.get("dataHolder")
+            if data_holder:
+                owners = []
+
+                # dataHolder can be a dict keyed by language or a single object
+                if isinstance(data_holder, dict):
+                    # Check if it's keyed by language codes
+                    is_language_keyed = all(
+                        isinstance(k, str) and len(k) == 2 and k.islower() for k in data_holder
+                    )
+
+                    if is_language_keyed:
+                        # Multilingual dataHolder - use preferred language
+                        holder_data = data_holder.get(preferred_lang, {})
+                        if not holder_data and available_languages:
+                            # Fallback to first available language
+                            fallback_lang = available_languages[0]
+                            holder_data = data_holder.get(fallback_lang, {})
+                    else:
+                        # Single dataHolder object (not keyed by language)
+                        holder_data = data_holder
+                else:
+                    # Not a dict - skip
+                    warnings.append(
+                        f"dataHolder has invalid type (expected dict, got {type(data_holder).__name__}), skipping"
+                    )
+                    holder_data = None
+
+                if holder_data and isinstance(holder_data, dict):
+                    # Extract legalName and email
+                    legal_name = holder_data.get("legalName")
+                    email = holder_data.get("email")
+
+                    # Create owner object if we have at least one field
+                    if legal_name or email:
+                        owner = {}
+                        if legal_name:
+                            if not isinstance(legal_name, str):
+                                warnings.append(
+                                    f"dataHolder.legalName has invalid type "
+                                    f"(expected str, got {type(legal_name).__name__}), skipping"
+                                )
+                            else:
+                                owner["name"] = legal_name
+
+                        if email:
+                            if not isinstance(email, str):
+                                warnings.append(
+                                    f"dataHolder.email has invalid type "
+                                    f"(expected str, got {type(email).__name__}), skipping"
+                                )
+                            else:
+                                owner["email"] = email
+
+                        if owner:
+                            owners.append(owner)
+
+                if owners:
+                    hub_contract["info"]["owners"] = owners
+
+            # Store multilingual information in extensions for future use
+            if len(available_languages) > 1:
+                if "extensions" not in hub_contract:
+                    hub_contract["extensions"] = {}
+                if "x_odps" not in hub_contract["extensions"]:
+                    hub_contract["extensions"]["x_odps"] = {}
+                hub_contract["extensions"]["x_odps"]["available_languages"] = available_languages
+                hub_contract["extensions"]["x_odps"]["preferred_language"] = preferred_lang
+                # Store all language details for multilingual support
+                hub_contract["extensions"]["x_odps"]["multilingual_details"] = {}
+                for lang in available_languages:
+                    if lang in details and isinstance(details[lang], dict):
+                        hub_contract["extensions"]["x_odps"]["multilingual_details"][lang] = (
+                            details[lang]
+                        )
+
+        except ODPSNormalizationError:
+            # Re-raise ODPSNormalizationError as-is
+            raise
+        except Exception as e:
+            # Wrap unexpected errors
+            raise ODPSNormalizationError(
+                message=f"Unexpected error during info normalization: {e!s}",
+                error_code=ODPSNormalizationError.ERROR_CODE_NORMALIZATION_FAILED,
+                field_path="/product/details",
+                cause=e,
+            ) from e
+
+    def _normalize_quality(
+        self, contract_data: dict[str, Any], hub_contract: dict[str, Any], warnings: list[str]
+    ) -> None:
+        """
+        Normalize ODPS dataQuality section to HubContract quality format.
+
+        Maps:
+        - product.dataQuality.declarative.default → quality.default_profile_key
+        - product.dataQuality.declarative dimensions → quality.rules[]
+        - product.dataQuality.executable → quality.x_odps.executable[]
+
+        Args:
+            contract_data: Raw ODPS contract data
+            hub_contract: HubContract dictionary to update
+            warnings: List to append warnings to
+
+        Raises:
+            ODPSNormalizationError: If normalization fails with context
+        """
+        try:
+            product = contract_data.get("product", {})
+            if not isinstance(product, dict):
+                return
+
+            data_quality = product.get("dataQuality")
+            if not isinstance(data_quality, dict):
+                # No dataQuality section - this is optional, so just return
+                return
+
+            # Initialize quality section in hub_contract
+            if "quality" not in hub_contract:
+                hub_contract["quality"] = {}
+
+            # Map declarative.default → default_profile_key
+            declarative = data_quality.get("declarative")
+            if isinstance(declarative, dict):
+                default_profile = declarative.get("default")
+                if default_profile is not None:
+                    if isinstance(default_profile, str):
+                        hub_contract["quality"]["default_profile_key"] = default_profile
+                    else:
+                        warnings.append(
+                            f"product.dataQuality.declarative.default has invalid type "
+                            f"(expected str, got {type(default_profile).__name__}), skipping"
+                        )
+
+                # Map each declarative dimension → quality.rules[]
+                dimensions = declarative.get("dimensions")
+                if isinstance(dimensions, dict):
+                    rules = []
+                    for dimension_name, dimension_data in dimensions.items():
+                        if not isinstance(dimension_data, dict):
+                            warnings.append(
+                                f"product.dataQuality.declarative.dimensions.{dimension_name} "
+                                f"has invalid type (expected dict, got {type(dimension_data).__name__}), skipping"
+                            )
+                            continue
+
+                        # Generate rule from dimension
+                        rule = self._generate_rule_from_dimension(
+                            dimension_name, dimension_data, warnings
+                        )
+                        if rule:
+                            rules.append(rule)
+
+                    if rules:
+                        if "rules" not in hub_contract["quality"]:
+                            hub_contract["quality"]["rules"] = []
+                        hub_contract["quality"]["rules"].extend(rules)
+
+            # Store executable specs in quality.x_odps.executable[]
+            executable = data_quality.get("executable")
+            if executable is not None:
+                # Initialize x_odps extension if not present
+                if "x_odps" not in hub_contract["quality"]:
+                    hub_contract["quality"]["x_odps"] = {}
+
+                if isinstance(executable, list):
+                    hub_contract["quality"]["x_odps"]["executable"] = executable
+                elif isinstance(executable, dict):
+                    # If executable is a single object, wrap it in a list
+                    hub_contract["quality"]["x_odps"]["executable"] = [executable]
+                else:
+                    warnings.append(
+                        f"product.dataQuality.executable has invalid type "
+                        f"(expected list or dict, got {type(executable).__name__}), skipping"
+                    )
+
+        except Exception as e:
+            # Wrap unexpected errors in ODPSNormalizationError
+            raise ODPSNormalizationError(
+                message=f"Failed to normalize quality section: {e!s}",
+                error_code=ODPSNormalizationError.ERROR_CODE_NORMALIZATION_FAILED,
+                field_path="/product/dataQuality",
+                cause=e,
+            ) from e
+
+    def _generate_rule_from_dimension(
+        self, dimension_name: str, dimension_data: dict[str, Any], warnings: list[str]
+    ) -> dict[str, Any] | None:
+        """
+        Generate a quality rule from an ODPS declarative dimension.
+
+        Args:
+            dimension_name: Name of the dimension (e.g., "completeness", "accuracy")
+            dimension_data: Dimension data dictionary with objectives, units, etc.
+            warnings: List to append warnings to
+
+        Returns:
+            Quality rule dictionary or None if generation fails
+        """
+        try:
+            rule: dict[str, Any] = {
+                "dimension": dimension_name,
+            }
+
+            # Extract rule ID/name
+            rule_id = (
+                dimension_data.get("ruleID") or dimension_data.get("rule_id") or dimension_name
+            )
+            rule["rule_id"] = str(rule_id)
+            rule["name"] = dimension_data.get("name") or dimension_name
+
+            # Extract objectives and generate expression
+            objectives = dimension_data.get("objectives")
+            if objectives is not None:
+                expression = self._generate_expression_from_objectives(
+                    objectives, dimension_data.get("unit"), warnings
+                )
+                if expression:
+                    rule["expression"] = expression
+
+            # Extract threshold
+            threshold = dimension_data.get("threshold")
+            if threshold is not None:
+                rule["threshold"] = threshold
+
+            # Extract unit
+            unit = dimension_data.get("unit")
+            if unit is not None:
+                rule["unit"] = str(unit)
+
+            # Extract severity
+            severity = dimension_data.get("severity")
+            if severity is not None:
+                rule["severity"] = str(severity)
+            else:
+                # Default severity based on dimension type
+                rule["severity"] = (
+                    "ERROR" if dimension_name in ["completeness", "validity"] else "WARNING"
+                )
+
+            # Extract target (column, table, dataset)
+            target = dimension_data.get("target")
+            if target is not None:
+                rule["target"] = str(target)
+
+            # Extract description
+            description = dimension_data.get("description")
+            if description is not None:
+                rule["description"] = str(description)
+
+            # Extract any additional fields
+            for key in [
+                "operator",
+                "valid_values",
+                "sql_query",
+                "engine",
+                "implementation",
+                "method",
+            ]:
+                if key in dimension_data:
+                    rule[key] = dimension_data[key]
+        except (AttributeError, TypeError) as e:
+            warnings.append(f"Failed to generate rule from dimension '{dimension_name}': {e!s}")
+            return None
+        else:
+            return rule
+
+    def _generate_expression_from_objectives(
+        self, objectives: Any, unit: str | None, warnings: list[str]
+    ) -> str | None:
+        """
+        Generate a rule expression from objectives and unit.
+
+        Args:
+            objectives: Objectives data (can be dict, list, or scalar)
+            unit: Optional unit string
+            warnings: List to append warnings to
+
+        Returns:
+            Expression string or None if generation fails
+        """
+
+        def _expression_from_dict(objectives_data: Any, unit: str | None) -> str | None:
+            # Objectives is a dictionary with keys like "min", "max", "target"
+            parts = []
+            if "min" in objectives_data:
+                parts.append(f">= {objectives_data['min']}")
+            if "max" in objectives_data:
+                parts.append(f"<= {objectives_data['max']}")
+            if "target" in objectives_data:
+                parts.append(f"== {objectives_data['target']}")
+            if "range" in objectives_data:
+                range_val = objectives_data["range"]
+                if isinstance(range_val, (list, tuple)) and len(range_val) == 2:
+                    parts.append(f"BETWEEN {range_val[0]} AND {range_val[1]}")
+
+            expression = " AND ".join(parts) if parts else None
+            if expression and unit:
+                expression = f"{expression} {unit}"
+            return expression
+
+        def _expression_from_sequence(objectives_data: Any, unit: str | None) -> str | None:
+            # Objectives is a list of values
+            if unit:
+                return f"IN {objectives_data} {unit}"
+            return f"IN {objectives_data}"
+
+        def _expression_from_number(objectives_data: Any, unit: str | None) -> str | None:
+            # Objectives is a numeric value
+            if unit:
+                return f"== {objectives_data} {unit}"
+            return f"== {objectives_data}"
+
+        def _expression_from_string(objectives_data: Any, unit: str | None) -> str | None:
+            # Objectives is already an expression string
+            if unit:
+                return f"{objectives_data} {unit}"
+            return objectives_data
+
+        handlers = (
+            (dict, _expression_from_dict),
+            ((list, tuple), _expression_from_sequence),
+            ((int, float), _expression_from_number),
+            (str, _expression_from_string),
+        )
+
+        try:
+            for objective_type, handler in handlers:
+                if isinstance(objectives, objective_type):
+                    return handler(objectives, unit)
+            warnings.append(
+                f"Unsupported objectives type: {type(objectives).__name__}, "
+                f"expected dict, list, scalar, or str"
+            )
+        except (AttributeError, TypeError) as e:
+            warnings.append(f"Failed to generate expression from objectives: {e!s}")
+            return None
+        else:
+            return None
+
+    def _normalize_lifecycle(
+        self, contract_data: dict[str, Any], hub_contract: dict[str, Any], warnings: list[str]
+    ) -> None:
+        """
+        Normalize ODPS lifecycle section to HubContract lifecycle format.
+
+        Maps:
+        - product.details.<lang>.status → lifecycle.x_odps.status
+        - product.details.<lang>.visibility → lifecycle.x_odps.visibility
+        - product.SLA.declarative dimensions → lifecycle.slas and lifecycle.x_odps.sla_dimensions[]
+        - product.SLA.executable → lifecycle.x_odps.executable_sla[]
+
+        Args:
+            contract_data: Raw ODPS contract data
+            hub_contract: HubContract dictionary to update
+            warnings: List to append warnings to
+
+        Raises:
+            ODPSNormalizationError: If normalization fails with context
+        """
+        from hub.apps.contracts.normalization.odps_normalizer import ODPSNormalizer
+
+        temp_normalizer = ODPSNormalizer()
+        temp_normalizer._normalize_lifecycle(contract_data, hub_contract, warnings)
+
+    def _normalize_marketplace(
+        self, contract_data: dict[str, Any], hub_contract: dict[str, Any], warnings: list[str]
+    ) -> None:
+        """
+        Normalize ODPS marketplace and license sections to HubContract marketplace format.
+
+        Maps:
+        - license.<lang>.definition → marketplace.license_summary
+        - license.<lang>.restrictions → marketplace.restricted_use[]
+        - license.<lang>.rights[] → marketplace.intended_use[]
+        - product.marketplace.pricingPlans → marketplace.x_odps.pricing_plans[]
+        - product.marketplace.accessMethods → marketplace.x_odps.access_methods{}
+        - product.marketplace.paymentGateways → marketplace.x_odps.payment_gateways{}
+
+        Args:
+            contract_data: Raw ODPS contract data
+            hub_contract: HubContract dictionary to update
+            warnings: List to append warnings to
+
+        Raises:
+            ODPSNormalizationError: If normalization fails with context
+        """
+        from hub.apps.contracts.normalization.odps_normalizer import ODPSNormalizer
+
+        temp_normalizer = ODPSNormalizer()
+        temp_normalizer._normalize_marketplace(contract_data, hub_contract, warnings)
+
+    def _extract_contract(
+        self, contract_data: dict[str, Any], hub_contract: dict[str, Any], warnings: list[str]
+    ) -> None:
+        """
+        Extract and normalize ODPS contract section.
+
+        Handles three formats:
+        - product.contract.$ref → resolve → ODCS → normalize
+        - product.contract.spec → inline ODCS → normalize
+        - product.contract.contractURL → store pointer
+
+        Args:
+            contract_data: Raw ODPS contract data
+            hub_contract: HubContract dictionary to update
+            warnings: List to append warnings to
+
+        Raises:
+            ODPSNormalizationError: If extraction fails with context
+        """
+        from hub.apps.contracts.normalization.odps_normalizer import ODPSNormalizer
+
+        temp_normalizer = ODPSNormalizer()
+        temp_normalizer._extract_contract(contract_data, hub_contract, warnings)
+
+    def _normalize_product_strategy(
+        self,
+        contract_data: dict[str, Any],
+        hub_contract: dict[str, Any],
+        warnings: list[str],
+        spec_version: str,
+    ) -> None:
+        """
+        Normalize ODPS product strategy to HubContract info.x_odps.product_strategy.
+
+        Maps (ODPS 4.1+ only):
+        - productStrategy.objectives[] → info.x_odps.product_strategy.objectives[]
+        - productStrategy.strategicAlignment[] → info.x_odps.product_strategy.strategicAlignment[]
+        - productStrategy.productKPIs[] → info.x_odps.product_strategy.productKPIs[]
+
+        Args:
+            contract_data: Raw ODPS contract data
+            hub_contract: HubContract dictionary to populate
+            warnings: List to append warnings to
+            spec_version: ODPS spec version (e.g., "4.1", "4.0")
+
+        Raises:
+            ODPSNormalizationError: If normalization fails with context
+        """
+        from hub.apps.contracts.normalization.odps_normalizer import ODPSNormalizer
+
+        temp_normalizer = ODPSNormalizer()
+        temp_normalizer._normalize_product_strategy(
+            contract_data, hub_contract, warnings, spec_version
+        )
+
+    def _normalize_schema_minimal(
+        self, contract_data: dict[str, Any], hub_contract: dict[str, Any], warnings: list[str]
+    ) -> None:
+        """
+        Minimal schema normalization - populate schema fields from product.dataSchema or product.contract.spec.schema if available.
+
+        This extracts schema fields from:
+        1. product.dataSchema.fields (if present)
+        2. product.contract.spec.schema.fields (if present, for ODCS contracts embedded in ODPS)
+
+        Args:
+            contract_data: Raw ODPS contract data
+            hub_contract: HubContract dictionary to update
+            warnings: List to append warnings to
+        """
+        try:
+            product = contract_data.get("product", {})
+            if not isinstance(product, dict):
+                return
+
+            # Ensure schema section exists
+            if "schema" not in hub_contract:
+                hub_contract["schema"] = {}
+
+            # Try product.dataSchema first
+            data_schema = product.get("dataSchema")
+            if isinstance(data_schema, dict):
+                fields = data_schema.get("fields")
+                if isinstance(fields, list) and fields:
+                    # Copy fields to hub_contract schema
+                    hub_contract["schema"]["fields"] = fields
+                    return  # Found fields, done
+
+            # Try product.contract.spec.schema (ODCS contract embedded in ODPS)
+            contract_section = product.get("contract", {})
+            if isinstance(contract_section, dict):
+                contract_spec = contract_section.get("spec", {})
+                if isinstance(contract_spec, dict):
+                    contract_schema = contract_spec.get("schema", {})
+                    if isinstance(contract_schema, dict):
+                        fields = contract_schema.get("fields")
+                        if isinstance(fields, list) and fields:
+                            # Phase 227 Wave 1 (227.L2.4) — delegate to the
+                            # recursive ODCS walker so embedded ODCS schemas
+                            # under ODPS ``product.contract.spec.schema``
+                            # get the same nested object/array handling
+                            # as standalone ODCS contracts. The previous
+                            # one-level conversion dropped any nested
+                            # ``properties`` / ``items`` and produced
+                            # objects with no ``fields[]`` — exactly the
+                            # structural-floor violation Wave 1 enforces.
+                            from hub.apps.contracts.normalization_engine import (
+                                _map_fields,
+                            )
+
+                            converted_fields = _map_fields(
+                                contract_schema,
+                                [],
+                                [],
+                                [],
+                            )
+                            if converted_fields:
+                                hub_contract["schema"]["fields"] = converted_fields
+                                return  # Found fields, done
+
+        except (AttributeError, TypeError, KeyError) as e:
+            # Don't fail normalization if schema extraction fails
+            warnings.append(f"Failed to extract schema: {e!s}")
+
+    # ------------------------------------------------------------------
+    # Phase 227 Wave 1 — outputPorts/inputPorts → models[]/lineage
+    # ------------------------------------------------------------------
+
+    def _normalize_ports_to_models(
+        self,
+        contract_data: dict[str, Any],
+        hub_contract: dict[str, Any],
+        warnings: list[str],
+    ) -> None:
+        """Bridge to the canonical ports helper.
+
+        Why this lives in the base
+        --------------------------
+        Pre-Phase-227, only the Bitol-v1 normaliser touched
+        ``outputPorts`` / ``inputPorts``, and even there it only
+        recorded port metadata under ``extensions.x_odps.output_ports``.
+        Spec versions 1.x / 2.x / 3.x / 4.0 / 4.1 / 4.2 ignored ports
+        entirely. Wave 1's root-cause fix is to call the shared helper
+        once from the base so every ODPS variant maps ports → models[]
+        with identical semantics — no per-subclass duplication.
+
+        Subclasses with extra port semantics (Bitol v1's
+        ``customProperties`` / ``tags`` / ``authoritativeDefinitions``)
+        run AFTER this in ``_map_version_specific_fields``; they retain
+        their own metadata-extraction call but no longer claim
+        responsibility for schema-to-models extraction.
+
+        ``visited_contract_ids`` is seeded with the contract currently
+        being normalised (when its ID is reachable through
+        ``hub_contract['extensions']['x_odps_self_id']``) so a
+        self-referential port short-circuits cleanly. In the absence of
+        that hint we pass an empty visited set; cycle protection at the
+        helper level is then the caller's responsibility (typically the
+        management command / RQ task).
+        """
+        try:
+            from hub.apps.contracts.normalization import _ports_helper
+        except ImportError as exc:  # pragma: no cover — defensive
+            warnings.append(
+                f"Failed to import ports helper: {exc}. Ports → models mapping skipped."
+            )
+            return
+
+        try:
+            _ports_helper.normalize_models_from_ports(
+                contract_data=contract_data,
+                hub_contract=hub_contract,
+                warnings=warnings,
+            )
+        except (ODPSRefResolutionError, ValueError, TypeError, AttributeError) as exc:
+            # Fail-soft: a port-mapping failure must not break the rest
+            # of normalisation. The warning surfaces in the dry-run /
+            # live audit trail so ops can locate the offending contract.
+            warnings.append(f"Ports → models mapping failed: {type(exc).__name__}: {exc}")
+            logger.warning(
+                "odps_ports_to_models_failed",
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
+
+    # Helper methods for language extraction (shared across all versions)
+
+    def _extract_available_languages(self, contract_data: dict[str, Any]) -> list[str]:
+        """
+        Extract available language codes from product.details.
+
+        Args:
+            contract_data: Raw ODPS contract data
+
+        Returns:
+            List of language codes (ISO 639-1 format, e.g., ["en", "fr", "de"])
+        """
+        from hub.apps.contracts.normalization.odps_normalizer import ODPSNormalizer
+
+        temp_normalizer = ODPSNormalizer()
+        return temp_normalizer._extract_available_languages(contract_data)
+
+    def _get_preferred_language(
+        self, available_languages: list[str], preferred: str = "en"
+    ) -> str | None:
+        """
+        Get preferred language from available languages.
+
+        Args:
+            available_languages: List of available language codes
+            preferred: Preferred language code (default: "en")
+
+        Returns:
+            Preferred language code if available, otherwise first available language, or None
+        """
+        from hub.apps.contracts.normalization.odps_normalizer import ODPSNormalizer
+
+        temp_normalizer = ODPSNormalizer()
+        return temp_normalizer._get_preferred_language(available_languages, preferred)

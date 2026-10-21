@@ -1,0 +1,53 @@
+{
+  "rows": [
+    {
+      "id": "STUB-001",
+      "status": "deleted",
+      "absent_marker": "class\\s+SAMLProvider",
+      "evidence": "hub/apps/auth/sso.py"
+    },
+    {
+      "id": "STUB-002",
+      "status": "deleted",
+      "absent_marker": "path\\(\\s*[\"']mfa",
+      "evidence": "hub/apps/auth/tests/test_mfa_removed.py"
+    },
+    {
+      "id": "STUB-003",
+      "status": "wired",
+      "present_marker": "setPage|useAuditEvents",
+      "evidence": "frontend/src/features/audit/components/AuditEventListPage.test.tsx"
+    },
+    {
+      "id": "STUB-004",
+      "status": "wired",
+      "present_marker": "test\\.describe",
+      "evidence": "frontend/e2e/features/audit.spec.ts"
+    },
+    {
+      "id": "STUB-005",
+      "status": "wired",
+      "present_marker": "telemetry/webVitals",
+      "evidence": "frontend/src/main.tsx"
+    },
+    {
+      "id": "STUB-006",
+      "status": "wired",
+      "present_marker": "serviceWorker\\.register",
+      "evidence": "frontend/src/main.tsx"
+    },
+    {
+      "id": "STUB-007",
+      "status": "wired",
+      "present_marker": "ENDPOINT_SUNSET",
+      "evidence": "hub/apps/api/versioning.py"
+    },
+    {
+      "id": "STUB-008",
+      "status": "deleted",
+      "absent_marker": null,
+      "absent_file": ".github/workflows/CI_CD_SUMMARY.md",
+      "evidence": "W12.8 — the stale '6 workflows' summary deleted (the W12.7 pin had watched docs/CI_CD_SUMMARY.md, which never shipped; the liar lived under .github/workflows/)"
+    }
+  ]
+}

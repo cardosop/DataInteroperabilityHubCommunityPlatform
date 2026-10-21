@@ -1,0 +1,97 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.3087465763092041
+  },
+  "journeys": [
+    {
+      "journey_id": "CPO-007-8f08dff0",
+      "journey_name": "Set Up GDPR Right to be Forgotten",
+      "persona": "Compliance Officer",
+      "status": "completed",
+      "start_time": 1774696826.6694827,
+      "end_time": 1774696826.9782293,
+      "duration": 0.3087465763092041,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Create Asset for GDPR Policy",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774696826.6694903,
+          "end_time": 1774696826.9430046,
+          "duration": 0.2735142707824707,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Create GDPR Retention Policy",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774696826.94302,
+          "end_time": 1774696826.9538841,
+          "duration": 0.010864019393920898,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Verify Deletion Policy",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774696826.9538913,
+          "end_time": 1774696826.958629,
+          "duration": 0.0047376155853271484,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Run GDPR Compliance Check",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774696826.958634,
+          "end_time": 1774696826.9726725,
+          "duration": 0.014038562774658203,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Monitor Deletion Policies",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774696826.9726772,
+          "end_time": 1774696826.9782271,
+          "duration": 0.005549907684326172,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "d8837295-336f-4a41-a145-0c56f97f169e"
+      }
+    }
+  ],
+  "exported_at": "2026-03-28T11:20:26.978297"
+}

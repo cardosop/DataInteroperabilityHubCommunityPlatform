@@ -1,0 +1,176 @@
+/**
+ * ODPSProductForm styles — follows ListingPublishPage section pattern.
+ * Two-column layout: editor on the left, live preview docked on the right.
+ */
+
+.odps-product-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
+  gap: var(--spacing-xl);
+  align-items: flex-start;
+}
+
+.odps-product-form__editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xl);
+  min-width: 0;
+}
+
+.odps-product-form__preview {
+  position: sticky;
+  top: var(--spacing-lg);
+  background: var(--color-surface);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--border-radius-lg);
+  padding: var(--spacing-md);
+  max-height: calc(100vh - 2 * var(--spacing-lg));
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  min-width: 0;
+}
+
+.odps-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+}
+
+.odps-preview-header h3 {
+  margin: 0;
+  font-size: var(--font-size-lg);
+}
+
+.odps-preview-format {
+  display: flex;
+  gap: var(--spacing-sm);
+  font-size: var(--font-size-sm);
+}
+
+.odps-preview-body {
+  flex: 1 1 auto;
+  margin: 0;
+  padding: var(--spacing-sm);
+  background: var(--color-surface-subtle, #f8f8f8);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--border-radius-md);
+  font-family: var(--font-family-mono, monospace);
+  font-size: var(--font-size-sm);
+  white-space: pre;
+  overflow: auto;
+}
+
+.odps-preview-errors {
+  background: var(--color-error-subtle, #fdecec);
+  border: var(--border-width) solid var(--color-error);
+  border-radius: var(--border-radius-md);
+  padding: var(--spacing-sm);
+  font-size: var(--font-size-sm);
+}
+
+.odps-preview-errors ul {
+  margin: var(--spacing-xs) 0 0 var(--spacing-lg);
+  padding: 0;
+}
+
+.odps-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--spacing-md);
+}
+
+.odps-subheading {
+  margin: var(--spacing-lg) 0 var(--spacing-sm) 0;
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+}
+
+.odps-subsection {
+  background: var(--color-surface-subtle, #fafafa);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--border-radius-md);
+  padding: var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+}
+
+.odps-inline-actions {
+  margin-bottom: var(--spacing-sm);
+}
+
+.odps-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)) auto;
+  gap: var(--spacing-sm);
+  align-items: center;
+  margin-bottom: var(--spacing-sm);
+}
+
+.odps-row input[type='text'],
+.odps-row input[type='email'],
+.odps-row input[type='number'] {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--border-radius-md);
+  font-size: var(--font-size-sm);
+}
+
+.odps-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--spacing-md);
+}
+
+.odps-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--spacing-md);
+}
+
+.odps-empty-hint {
+  color: var(--color-text-muted, #666);
+  font-size: var(--font-size-sm);
+  font-style: italic;
+}
+
+.odps-inline-check {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-size: var(--font-size-sm);
+}
+
+.form-section--collapsible {
+  padding: 0;
+  overflow: hidden;
+}
+
+.odps-collapse-toggle {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: none;
+  border: none;
+  padding: var(--spacing-md) var(--spacing-lg);
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+  text-align: left;
+}
+
+.odps-collapse-body {
+  padding: 0 var(--spacing-lg) var(--spacing-lg);
+}
+
+@media (max-width: 1024px) {
+  .odps-product-form {
+    grid-template-columns: 1fr;
+  }
+  .odps-product-form__preview {
+    position: static;
+    max-height: 400px;
+  }
+}

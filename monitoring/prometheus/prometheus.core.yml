@@ -1,0 +1,123 @@
+# Prometheus scrape configuration — CORE (OSS) variant (Phase P.8).
+#
+# prometheus.yml scrapes paid-only services (semantic/dq/compliance/
+# datacontract/prefect/search) and k8s-only sidecars. In the OSS tree those
+# targets do not exist: Prometheus marks them down, `up == 0` holds, and
+# the ServiceDown / SemanticFusekiDown / PrefectDown rules page for
+# services the deployment does not have. This variant scrapes ONLY the
+# jobs the core stack actually runs, so every up{} rule is inert for paid
+# services and live for core ones — no-data-safe by construction.
+#
+# docker-compose.core.yml replaces the prometheus config mount with this
+# file (the same mechanism that switches traefik onto traefik.core.yml).
+# scripts/tests/test_monitoring_core_safety.py pins the paid-job absence
+# and the compose override.
+#
+# Rule files are shared with the full config on purpose: alert rules are
+# data-driven and only fire when their metrics exist — the shared set
+# keeps ONE source of truth for the rules themselves.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'hub'
+    environment: 'development'
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093
+
+# Load alerting rules (shared with prometheus.yml — see header note)
+rule_files:
+  - 'alerts.yml'
+  - 'alerts/workflow-alerts.yml'
+  - 'alerts/event-bus-alerts.yml'
+  - 'alerts/service-layer-alerts.yml'
+  - 'alerts/odps-alerts.yml'
+  - 'alerts/odcs-alerts.yml'
+  - 'alerts/removal-monitoring.yml'
+  - 'alerts/mesh-alerts.yml'
+  - 'alerts/redis-alerts.yml'
+  - 'alerts/marketplace-alerts.yml'
+  - 'alerts/scheduled-ingestion-alerts.yml'
+  - 'alerts/lineage-alerts.yml'
+  # Phase 260.A.5 — cross-tenant denial burst alert
+  - 'alerts/auth-tenancy.yml'
+  # Phase 250.0.20 — asset-creation alert rules
+  - 'alerts/asset-creation.yml'
+  # Phase 240.1.B.1 — DQ alert rules (8 alerts)
+  - 'alerts/dq.yml'
+  # Databricks control-plane estate (openspec add-databricks-control-plane)
+  - 'alerts/databricks-uc-sync.yml'
+  - 'alerts/databricks-uc-approvals.yml'
+  - 'alerts/databricks-warehouses.yml'
+  - 'alerts/databricks-jobs.yml'
+  - 'alerts/databricks-cost-budget.yml'
+  - 'alerts/databricks-dlt.yml'
+
+# Scrape configurations — CORE stack jobs only.
+scrape_configs:
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # API Service (Django)
+  - job_name: 'api-service'
+    static_configs:
+      - targets: ['api-service:8000']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+
+  # Worker Service
+  - job_name: 'worker-service'
+    static_configs:
+      - targets: ['worker-service:8080']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+
+  # PostgreSQL exporter (if available)
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+    scrape_interval: 30s
+
+  # Redis Cache Exporter
+  - job_name: 'redis-cache'
+    static_configs:
+      - targets: ['redis-exporter-cache:9121']
+        labels:
+          redis_instance: 'cache'
+          redis_port: '6379'
+    scrape_interval: 30s
+
+  # Redis Queue Exporter
+  - job_name: 'redis-queue'
+    static_configs:
+      - targets: ['redis-exporter-queue:9121']
+        labels:
+          redis_instance: 'queue'
+          redis_port: '6380'
+    scrape_interval: 30s
+
+  # Redis Events Exporter
+  - job_name: 'redis-events'
+    static_configs:
+      - targets: ['redis-exporter-events:9121']
+        labels:
+          redis_instance: 'events'
+          redis_port: '6381'
+    scrape_interval: 30s
+
+  # Redis Channels Exporter
+  - job_name: 'redis-channels'
+    static_configs:
+      - targets: ['redis-exporter-channels:9121']
+        labels:
+          redis_instance: 'channels'
+          redis_port: '6382'
+    scrape_interval: 30s

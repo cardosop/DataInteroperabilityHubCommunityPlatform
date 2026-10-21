@@ -1,0 +1,840 @@
+{
+  "title": "Workflow Orchestration",
+  "tags": [
+    "workflow",
+    "orchestration",
+    "monitoring"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 2,
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Workflow Instance Throughput",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(workflow_instances_completed_total[5m])) by (workflow_name, status)",
+          "legendFormat": "{{workflow_name}} - {{status}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "ops",
+          "label": "Workflows/sec"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "xaxis": {
+        "mode": "time"
+      }
+    },
+    {
+      "id": 2,
+      "title": "Workflow Success Rate",
+      "type": "stat",
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 12,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "(sum(rate(workflow_instances_completed_total{status=\"COMPLETED\"}[5m])) by (workflow_name) / sum(rate(workflow_instances_started_total[5m])) by (workflow_name)) * 100",
+          "legendFormat": "{{workflow_name}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "unit": "percent",
+        "min": 0,
+        "max": 100,
+        "thresholds": {
+          "mode": "absolute",
+          "steps": [
+            {
+              "value": 0,
+              "color": "red"
+            },
+            {
+              "value": 80,
+              "color": "yellow"
+            },
+            {
+              "value": 95,
+              "color": "green"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Workflow Execution Duration (P95)",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 18,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(workflow_execution_duration_seconds_bucket[5m])) by (workflow_name, le))",
+          "legendFormat": "{{workflow_name}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "s",
+          "label": "Duration"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "xaxis": {
+        "mode": "time"
+      }
+    },
+    {
+      "id": 4,
+      "title": "Workflow Failure Rate",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(workflow_instances_failed_total[5m])) by (workflow_name, error_type)",
+          "legendFormat": "{{workflow_name}} - {{error_type}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "ops",
+          "label": "Failures/sec"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "xaxis": {
+        "mode": "time"
+      }
+    },
+    {
+      "id": 5,
+      "title": "Current Running Workflows",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 8
+      },
+      "targets": [
+        {
+          "expr": "sum(workflow_instances_running) by (workflow_name)",
+          "legendFormat": "{{workflow_name}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "unit": "short",
+        "colorMode": "value"
+      }
+    },
+    {
+      "id": 6,
+      "title": "Current Failed Workflows",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 8
+      },
+      "targets": [
+        {
+          "expr": "sum(workflow_instances_failed_current) by (workflow_name)",
+          "legendFormat": "{{workflow_name}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "unit": "short",
+        "colorMode": "value",
+        "thresholds": {
+          "mode": "absolute",
+          "steps": [
+            {
+              "value": 0,
+              "color": "green"
+            },
+            {
+              "value": 1,
+              "color": "yellow"
+            },
+            {
+              "value": 5,
+              "color": "red"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": 7,
+      "title": "Workflow Retry Rate",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(workflow_instances_retried_total[5m])) by (workflow_name)",
+          "legendFormat": "{{workflow_name}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "ops",
+          "label": "Retries/sec"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "xaxis": {
+        "mode": "time"
+      }
+    },
+    {
+      "id": 8,
+      "title": "Workflow Timeouts",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(workflow_instances_timed_out_total[5m])) by (workflow_name)",
+          "legendFormat": "{{workflow_name}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "ops",
+          "label": "Timeouts/sec"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "xaxis": {
+        "mode": "time"
+      }
+    },
+    {
+      "id": 9,
+      "title": "Step Execution Duration (P95)",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(workflow_step_execution_duration_seconds_bucket[5m])) by (workflow_name, step_name, le))",
+          "legendFormat": "{{workflow_name}} - {{step_name}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "s",
+          "label": "Duration"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "xaxis": {
+        "mode": "time"
+      }
+    },
+    {
+      "id": 10,
+      "title": "Step Failure Rate",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 24
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(workflow_steps_failed_total[5m])) by (workflow_name, step_name, error_type)",
+          "legendFormat": "{{workflow_name}} - {{step_name}} - {{error_type}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "ops",
+          "label": "Failures/sec"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "xaxis": {
+        "mode": "time"
+      }
+    },
+    {
+      "id": 11,
+      "title": "Workflow Compensation Rate",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 32
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(workflow_compensations_triggered_total[5m])) by (workflow_name)",
+          "legendFormat": "{{workflow_name}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "ops",
+          "label": "Compensations/sec"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "xaxis": {
+        "mode": "time"
+      }
+    },
+    {
+      "id": 12,
+      "title": "Workflow State Size",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 32
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(workflow_state_size_bytes_bucket[5m])) by (workflow_name, le))",
+          "legendFormat": "{{workflow_name}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "bytes",
+          "label": "Size"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "xaxis": {
+        "mode": "time"
+      }
+    },
+    {
+      "id": 13,
+      "title": "Steps per Workflow Instance",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 40
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(workflow_steps_per_instance_bucket[5m])) by (workflow_name, le))",
+          "legendFormat": "{{workflow_name}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "short",
+          "label": "Steps"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "xaxis": {
+        "mode": "time"
+      }
+    },
+    {
+      "id": 14,
+      "title": "Workflow Instance Status Distribution",
+      "type": "piechart",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 40
+      },
+      "targets": [
+        {
+          "expr": "sum(workflow_instances_running) by (workflow_name)",
+          "legendFormat": "{{workflow_name}} - Running",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(workflow_instances_pending) by (workflow_name)",
+          "legendFormat": "{{workflow_name}} - Pending",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(workflow_instances_failed_current) by (workflow_name)",
+          "legendFormat": "{{workflow_name}} - Failed",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "title": "Business Rules Validation Rate",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 48
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(workflow_business_rules_validations_total[5m])) by (workflow_name, step_name, rule_name, status)",
+          "legendFormat": "{{workflow_name}} - {{step_name}} - {{rule_name}} - {{status}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "ops",
+          "label": "Validations/sec"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "xaxis": {
+        "mode": "time"
+      }
+    },
+    {
+      "id": 16,
+      "title": "Business Rules Validation Success Rate",
+      "type": "stat",
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 12,
+        "y": 48
+      },
+      "targets": [
+        {
+          "expr": "(sum(rate(workflow_business_rules_validations_total{status=\"valid\"}[5m])) by (workflow_name, step_name, rule_name) / sum(rate(workflow_business_rules_validations_total[5m])) by (workflow_name, step_name, rule_name)) * 100",
+          "legendFormat": "{{workflow_name}} - {{step_name}} - {{rule_name}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "unit": "percent",
+        "min": 0,
+        "max": 100,
+        "thresholds": {
+          "mode": "absolute",
+          "steps": [
+            {
+              "value": 0,
+              "color": "red"
+            },
+            {
+              "value": 90,
+              "color": "yellow"
+            },
+            {
+              "value": 95,
+              "color": "green"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": 17,
+      "title": "Business Rules Validation Duration (P95)",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 18,
+        "y": 48
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(workflow_business_rules_validation_duration_seconds_bucket[5m])) by (workflow_name, step_name, rule_name, le))",
+          "legendFormat": "{{workflow_name}} - {{step_name}} - {{rule_name}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "s",
+          "label": "Duration"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "xaxis": {
+        "mode": "time"
+      }
+    },
+    {
+      "id": 18,
+      "title": "Business Rules Validation Cache Hit Rate",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 56
+      },
+      "targets": [
+        {
+          "expr": "(sum(rate(workflow_business_rules_validation_cache_hits_total[5m])) by (workflow_name, step_name, rule_name) / (sum(rate(workflow_business_rules_validation_cache_hits_total[5m])) by (workflow_name, step_name, rule_name) + sum(rate(workflow_business_rules_validation_cache_misses_total[5m])) by (workflow_name, step_name, rule_name))) * 100",
+          "legendFormat": "{{workflow_name}} - {{step_name}} - {{rule_name}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "percent",
+          "label": "Cache Hit Rate %"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "xaxis": {
+        "mode": "time"
+      }
+    },
+    {
+      "id": 19,
+      "title": "Business Rules Validation Failures by Rule",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 56
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(workflow_business_rules_validations_total{status=\"invalid\"}[5m])) by (workflow_name, step_name, rule_name)",
+          "legendFormat": "{{workflow_name}} - {{step_name}} - {{rule_name}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "ops",
+          "label": "Failures/sec"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "xaxis": {
+        "mode": "time"
+      }
+    },
+    {
+      "id": 20,
+      "title": "Business Rules Validation Cache Hits vs Misses",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 64
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(workflow_business_rules_validation_cache_hits_total[5m])) by (workflow_name, step_name, rule_name)",
+          "legendFormat": "{{workflow_name}} - {{step_name}} - {{rule_name}} - Hits",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(workflow_business_rules_validation_cache_misses_total[5m])) by (workflow_name, step_name, rule_name)",
+          "legendFormat": "{{workflow_name}} - {{step_name}} - {{rule_name}} - Misses",
+          "refId": "B"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "ops",
+          "label": "Cache Operations/sec"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "xaxis": {
+        "mode": "time"
+      }
+    },
+    {
+      "id": 21,
+      "title": "Business Rules Validation Success/Failure Rate",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 64
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(workflow_business_rules_validations_total{result=\"valid\"}[5m])) by (workflow_name, rule_name)",
+          "legendFormat": "{{workflow_name}} - {{rule_name}} - Valid",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(workflow_business_rules_validations_total{result=\"invalid\"}[5m])) by (workflow_name, rule_name)",
+          "legendFormat": "{{workflow_name}} - {{rule_name}} - Invalid",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(rate(workflow_business_rules_validations_total{result=\"error\"}[5m])) by (workflow_name, rule_name)",
+          "legendFormat": "{{workflow_name}} - {{rule_name}} - Error",
+          "refId": "C"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "ops",
+          "label": "Validations/sec"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "xaxis": {
+        "mode": "time"
+      }
+    },
+    {
+      "id": 22,
+      "title": "Business Rules Validation Duration (P95)",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 64
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(workflow_business_rules_validation_duration_seconds_bucket[5m])) by (workflow_name, rule_name, validation_type, le))",
+          "legendFormat": "{{workflow_name}} - {{rule_name}} - {{validation_type}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "s",
+          "label": "Duration"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "xaxis": {
+        "mode": "time"
+      }
+    },
+    {
+      "id": 23,
+      "title": "Business Rules Validation Cache Hit Rate",
+      "type": "stat",
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 0,
+        "y": 72
+      },
+      "targets": [
+        {
+          "expr": "(sum(rate(workflow_business_rules_validation_cache_hits_total[5m])) by (workflow_name, rule_name) / (sum(rate(workflow_business_rules_validation_cache_hits_total[5m])) by (workflow_name, rule_name) + sum(rate(workflow_business_rules_validation_cache_misses_total[5m])) by (workflow_name, rule_name))) * 100",
+          "legendFormat": "{{workflow_name}} - {{rule_name}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "unit": "percent",
+        "min": 0,
+        "max": 100,
+        "thresholds": {
+          "mode": "absolute",
+          "steps": [
+            {
+              "value": 0,
+              "color": "red"
+            },
+            {
+              "value": 50,
+              "color": "yellow"
+            },
+            {
+              "value": 80,
+              "color": "green"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": 24,
+      "title": "Business Rules Validation by Validation Type",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 6,
+        "y": 72
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(workflow_business_rules_validations_total[5m])) by (workflow_name, validation_type, result)",
+          "legendFormat": "{{workflow_name}} - {{validation_type}} - {{result}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "ops",
+          "label": "Validations/sec"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "xaxis": {
+        "mode": "time"
+      }
+    },
+    {
+      "id": 25,
+      "title": "Business Rules Validation Failure Rate",
+      "type": "stat",
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 18,
+        "y": 72
+      },
+      "targets": [
+        {
+          "expr": "(sum(rate(workflow_business_rules_validations_total{result=\"invalid\"}[5m])) by (workflow_name, rule_name) / sum(rate(workflow_business_rules_validations_total[5m])) by (workflow_name, rule_name)) * 100",
+          "legendFormat": "{{workflow_name}} - {{rule_name}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "unit": "percent",
+        "min": 0,
+        "max": 100,
+        "thresholds": {
+          "mode": "absolute",
+          "steps": [
+            {
+              "value": 0,
+              "color": "green"
+            },
+            {
+              "value": 5,
+              "color": "yellow"
+            },
+            {
+              "value": 10,
+              "color": "red"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "workflow_name",
+        "type": "query",
+        "label": "Workflow Name",
+        "datasource": "Prometheus",
+        "query": "label_values(workflow_instances_created_total, workflow_name)",
+        "multi": true,
+        "includeAll": true
+      },
+      {
+        "name": "tenant_id",
+        "type": "query",
+        "label": "Tenant ID",
+        "datasource": "Prometheus",
+        "query": "label_values(workflow_instances_created_total, tenant_id)",
+        "multi": true,
+        "includeAll": true
+      }
+    ]
+  }
+}

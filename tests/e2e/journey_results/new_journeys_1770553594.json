@@ -1,0 +1,44 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DE-011-cba124fe",
+      "journey_name": "Set Up Reverse ETL",
+      "persona": "Data Engineer",
+      "status": "failed",
+      "start_time": 1770553594.4854434,
+      "end_time": 1770553594.5005717,
+      "duration": 0.015128374099731445,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": "Failed to create asset: 500 - {'error': {'code': 'PLAN_NOT_FOUND', 'message': 'No plan assigned to tenant and default FREE plan not found', 'http_status': 500, 'request_id': '1fe2d5f8-2038-4cd0-b814-015c41086a71', 'timestamp': '2026-02-08T12:26:34.493862+00:00'}}",
+      "error_type": "Exception",
+      "steps": [
+        {
+          "step_name": "Select Data Source",
+          "status": "StepStatus.FAILED",
+          "start_time": 1770553594.485451,
+          "end_time": 1770553594.500565,
+          "duration": 0.015114068984985352,
+          "error_message": "Failed to create asset: 500 - {'error': {'code': 'PLAN_NOT_FOUND', 'message': 'No plan assigned to tenant and default FREE plan not found', 'http_status': 500, 'request_id': '1fe2d5f8-2038-4cd0-b814-015c41086a71', 'timestamp': '2026-02-08T12:26:34.493862+00:00'}}",
+          "error_type": "Exception",
+          "retry_count": 0,
+          "metadata": {
+            "args": "()",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-08T12:26:34.500710"
+}

@@ -1,0 +1,69 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-012-3485739f",
+      "journey_name": "Join Data Community",
+      "persona": "Data Product Owner",
+      "status": "failed",
+      "start_time": 1772244496.8054254,
+      "end_time": 1772244499.1242096,
+      "duration": 2.318784236907959,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": "An error occurred in the current transaction. You can't execute queries until the end of the 'atomic' block.",
+      "error_type": "TransactionManagementError",
+      "steps": [
+        {
+          "step_name": "Browse Data Communities",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772244496.8054357,
+          "end_time": 1772244496.8127034,
+          "duration": 0.00726771354675293,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Join Community",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772244496.8279233,
+          "end_time": 1772244496.8386168,
+          "duration": 0.010693550109863281,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Participate in Discussions",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772244496.8386288,
+          "end_time": 1772244496.8485959,
+          "duration": 0.00996708869934082,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-28T02:08:19.124305"
+}

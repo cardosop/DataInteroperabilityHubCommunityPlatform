@@ -1,0 +1,215 @@
+/**
+ * Shared sidebar navigation items (223.5).
+ *
+ * Single source of truth for the Sidebar and CommandPalette so both
+ * surfaces stay in sync as routes are added / removed. Kept as a `.ts`
+ * file (no JSX) to satisfy `react-refresh/only-export-components`.
+ */
+
+export interface NavItem {
+  path: string;
+  label: string;
+  icon?: string;
+  requiredRole?: string[];
+  requiredCapability?: string;
+  /** Optional unread-style badge shown next to the label when > 0. */
+  badge?: number;
+  /** When true, this item is hidden unless FEATURE_SIDEBAR_ADVANCED is enabled.
+   *  Used for non-core features (Mesh, Virtualization, AI, etc.). */
+  advanced?: boolean;
+  /**
+   * Phase 240.4.A.9 — optional sub-menu.  When present, the parent
+   * entry expands to a collapsible group whose children render below
+   * it.  Each child uses the same NavItem shape so role / capability
+   * gates apply uniformly.
+   *
+   * Sub-items are gated on ``data_quality_advanced_enabled`` per the
+   * 240.4.B contract by setting ``requiredCapability`` on each child.
+   */
+  children?: NavItem[];
+}
+
+export const SIDEBAR_NAV_ITEMS: NavItem[] = [
+  { path: '/', label: 'Home', icon: '🏠' },
+  {
+    path: '/assets',
+    label: 'Assets',
+    icon: '📦',
+    requiredRole: ['DATA_PROVIDER', 'DATA_CONSUMER'],
+  },
+  { path: '/datasets', label: 'Datasets', icon: '📊' },
+  { path: '/files', label: 'Files', icon: '📁' },
+  { path: '/contracts', label: 'Contracts', icon: '📄' },
+  {
+    path: '/marketplace',
+    label: 'Marketplace',
+    icon: '🛒',
+    // 313.H.4 — marketplace is a PAID surface; the sidebar hides the
+    // link in core-only deployments (mirror of the route gate in
+    // routes.tsx /marketplace).
+    requiredCapability: 'marketplace',
+  },
+  {
+    path: '/integrations/connections',
+    label: 'Integrations',
+    icon: '🔌',
+    requiredCapability: 'integrations.marketplace',
+  },
+  {
+    path: '/dq',
+    label: 'Data Quality',
+    icon: '✅',
+    // Phase 240.4.B.4 — parent gated on ``data_quality`` capability
+    // (mirror of ``Tenant.data_quality_enabled``).  When False the
+    // entire DQ navigation is hidden from the sidebar; the route
+    // wrappers in ``routes.tsx`` redirect direct URL navigation as
+    // well.  Default True per D240.18 so existing tenants keep the
+    // current behaviour.
+    requiredCapability: 'data_quality',
+    // Phase 240.4.A.9 — sub-menu.
+    //
+    // All children additionally require ``data_quality_advanced``
+    // (conjunctive ``data_quality AND data_quality_advanced_enabled``
+    // resolved server-side per Phase 240.4.B.4).  ``Alerting Rules``
+    // keeps its TENANT_ADMIN role gate — role and capability gates
+    // are independent, both must pass.
+    children: [
+      {
+        path: '/dq/anomalies',
+        label: 'Anomalies',
+        icon: '🔔',
+        requiredCapability: 'data_quality_advanced',
+      },
+      {
+        path: '/dq/trends',
+        label: 'Trends',
+        icon: '📈',
+        requiredCapability: 'data_quality_advanced',
+      },
+      {
+        path: '/dq/scorecards',
+        label: 'Scorecards',
+        icon: '📊',
+        requiredCapability: 'data_quality_advanced',
+      },
+      {
+        path: '/dq/alerting-rules',
+        label: 'Alerting Rules',
+        icon: '🚨',
+        requiredRole: ['TENANT_ADMIN', 'PLATFORM_ADMIN'],
+        requiredCapability: 'data_quality_advanced',
+      },
+      {
+        path: '/dq/rca',
+        label: 'Root Cause',
+        icon: '🔬',
+        requiredCapability: 'data_quality_advanced',
+      },
+    ],
+  },
+  { path: '/compliance', label: 'Compliance', icon: '🛡️' },
+  { path: '/mesh', label: 'Data Mesh', icon: '🌐', requiredCapability: 'mesh.domains', advanced: true },
+  {
+    path: '/virtualization',
+    label: 'Virtualization',
+    icon: '🔮',
+    requiredCapability: 'virtualization.datasets',
+    advanced: true,
+  },
+  { path: '/search', label: 'Search', icon: '🔍' },
+  {
+    path: '/semantic',
+    label: 'Semantic',
+    icon: '🔗',
+    requiredCapability: 'semantic.sparql',
+    advanced: true,
+  },
+  {
+    path: '/ai/search',
+    label: 'AI Search',
+    icon: '🤖',
+    requiredCapability: 'ai.natural-language-search',
+    advanced: true,
+  },
+  {
+    path: '/ai/schema-matching',
+    label: 'Schema Matching',
+    icon: '🔀',
+    requiredCapability: 'ai.schema-matching',
+    advanced: true,
+  },
+  { path: '/communities', label: 'Communities', icon: '👥', requiredCapability: 'social.communities', advanced: true },
+  { path: '/developer', label: 'Developer', icon: '🛠️', requiredCapability: 'developer.plugins', advanced: true },
+  { path: '/baas', label: 'BaaS', icon: '🔑', requiredCapability: 'baas.api-keys', advanced: true },
+  { path: '/ml', label: 'ML', icon: '🧠', requiredCapability: 'ml.models', advanced: true },
+  { path: '/observability', label: 'Observability', icon: '📈', advanced: true },
+  {
+    path: '/transformation',
+    label: 'Transformation',
+    icon: '🔄',
+    requiredCapability: 'transformation',
+    advanced: true,
+  },
+  { path: '/jobs', label: 'Jobs', icon: '⚙️' },
+  { path: '/webhooks', label: 'Webhooks', icon: '🔗' },
+  {
+    path: '/governance',
+    label: 'Governance',
+    icon: '📋',
+    requiredRole: ['TENANT_ADMIN', 'PLATFORM_ADMIN'],
+  },
+  {
+    // close-test-coverage-gaps 2.3 — the approvers' inbox. Role-gated to
+    // the SAME set as the governance subtree's ProtectedRoute (routes.tsx
+    // governance children): approvers (DPO/LEGAL/SECURITY admins) can
+    // reach the route but were invisible in the sidebar before this
+    // entry. Primary nav (not advanced) — it is the landing surface the
+    // approval-inbox E2E suite navigates.
+    path: '/governance/my-approvals',
+    label: 'My Approvals',
+    icon: '✅',
+    requiredRole: [
+      'TENANT_ADMIN',
+      'DPO',
+      'LEGAL_ADMIN',
+      'SECURITY_ADMIN',
+      'PLATFORM_ADMIN',
+    ],
+  },
+  {
+    path: '/audit',
+    label: 'Audit',
+    icon: '🔍',
+    requiredRole: ['AUDITOR', 'TENANT_ADMIN', 'PLATFORM_ADMIN'],
+  },
+  {
+    path: '/scheduled-ingestions',
+    label: 'Scheduled Ingestion',
+    icon: '⏰',
+    requiredRole: ['DATA_PROVIDER', 'TENANT_ADMIN', 'PLATFORM_ADMIN'],
+  },
+  { path: '/admin', label: 'Admin', icon: '⚙️', requiredRole: ['TENANT_ADMIN', 'PLATFORM_ADMIN'] },
+  {
+    // openspec add-databricks-control-plane task 0.15 — workspace registry.
+    path: '/databricks',
+    label: 'Databricks',
+    icon: '🏭',
+    requiredRole: ['TENANT_ADMIN', 'PLATFORM_ADMIN'],
+    requiredCapability: 'databricks',
+  },
+];
+
+/** Roles required to access compliance sidebar routes. */
+export const COMPLIANCE_SIDEBAR_REQUIRED_ROLES: string[] = [
+  'COMPLIANCE_OFFICER',
+  'DPO',
+  'DATA_PROVIDER',
+  'TENANT_ADMIN',
+  'PLATFORM_ADMIN',
+];
+// DATA_PROVIDER: the compliance runs view (hub/apps/compliance/views.py)
+// is IsAuthenticated-only, the sidebar advertises /compliance to every
+// role, and the DPO onboarding journey (asset → DQ → compliance scan)
+// runs AS the DATA_PROVIDER persona — gating the route to the privacy
+// roles alone bounced the journey to /403. Keep the route aligned with
+// the backend + sidebar rather than stricter than both.

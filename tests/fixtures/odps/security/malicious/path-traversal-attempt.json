@@ -1,0 +1,18 @@
+{
+  "schema": "https://opendataproducts.org/schema/v4.1",
+  "version": "4.1",
+  "product": {
+    "details": {
+      "en": {
+        "productID": "malicious-path-traversal",
+        "name": "Path Traversal Attack Attempt",
+        "description": "This file contains a path traversal attack attempt in the contractURL field: ../../../etc/passwd"
+      }
+    },
+    "contract": {
+      "contractURL": "../../../etc/passwd"
+    }
+  },
+  "_security_note": "This file is intentionally malicious for security testing. It attempts path traversal via contractURL field."
+}
+

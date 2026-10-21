@@ -1,0 +1,57 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DMO-003-3bdb4536",
+      "journey_name": "Manage Domain Topology",
+      "persona": "Data Mesh Domain Owner",
+      "status": "failed",
+      "start_time": 1774660855.9666612,
+      "end_time": 1774660855.9920225,
+      "duration": 0.025361299514770508,
+      "completion_rate": 50.0,
+      "success_rate": 50.0,
+      "error_message": "Step 'Update Relationships' returned HTTP 405: {'error': {'code': 'UNKNOWN_ERROR', 'message': 'Method \"POST\" not allowed.', 'http_status': 405, 'request_id': '59757573-e1c7-404a-881b-7099438a2eca', 'timestamp': '2026-03-28T01:20:55.988802+00:00', 'details': {'message': 'Method \"POST\" not allowed.'}}}",
+      "error_type": "AssertionError",
+      "steps": [
+        {
+          "step_name": "View Topology",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774660855.966672,
+          "end_time": 1774660855.985657,
+          "duration": 0.01898503303527832,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Update Relationships",
+          "status": "StepStatus.FAILED",
+          "start_time": 1774660855.9856668,
+          "end_time": 1774660855.9920182,
+          "duration": 0.006351470947265625,
+          "error_message": "Step 'Update Relationships' returned HTTP 405: {'error': {'code': 'UNKNOWN_ERROR', 'message': 'Method \"POST\" not allowed.', 'http_status': 405, 'request_id': '59757573-e1c7-404a-881b-7099438a2eca', 'timestamp': '2026-03-28T01:20:55.988802+00:00', 'details': {'message': 'Method \"POST\" not allowed.'}}}",
+          "error_type": "AssertionError",
+          "retry_count": 0,
+          "metadata": {
+            "args": "()",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-03-28T01:20:55.992114"
+}

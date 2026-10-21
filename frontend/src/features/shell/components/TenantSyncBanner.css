@@ -1,0 +1,48 @@
+/* 278.C.2 — Multi-tab tenant-sync banner */
+.tenant-sync-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: var(--color-warning-bg);
+  border-bottom: 1px solid var(--color-warning-border);
+  color: var(--color-warning-800);
+  font-size: 0.85rem;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.tenant-sync-banner__text {
+  font-weight: 500;
+}
+
+.tenant-sync-banner__action {
+  background: var(--color-warning-dark);
+  color: var(--color-text-inverse);
+  border: none;
+  border-radius: 4px;
+  padding: 4px 12px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tenant-sync-banner__action:hover {
+  background: var(--color-warning-700);
+}
+
+.tenant-sync-banner__dismiss {
+  background: transparent;
+  border: none;
+  color: var(--color-warning-800);
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.tenant-sync-banner__dismiss:hover {
+  background: rgba(0, 0, 0, 0.05);
+}

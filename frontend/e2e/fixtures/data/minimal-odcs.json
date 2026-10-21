@@ -1,0 +1,15 @@
+{
+  "apiVersion": "odcs.io/v3.0.2",
+  "kind": "DataContract",
+  "id": "e2e-minimal-odcs-contract",
+  "name": "E2E Minimal ODCS Contract",
+  "version": "1.0.0",
+  "description": "Minimal valid ODCS v3 contract for E2E upload tests. Contains schema with three fields matching sample-upload.csv columns.",
+  "schema": {
+    "fields": [
+      { "name": "id",    "type": "string",  "nullable": false, "description": "Unique identifier" },
+      { "name": "name",  "type": "string",  "nullable": true,  "description": "Display name" },
+      { "name": "value", "type": "integer", "nullable": true,  "description": "Numeric value" }
+    ]
+  }
+}

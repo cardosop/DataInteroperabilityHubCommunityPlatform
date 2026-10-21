@@ -1,0 +1,46 @@
+.pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.125rem 0.5rem;
+  border-radius: var(--border-radius-sm, 4px);
+  font-size: var(--font-size-xs, 0.75rem);
+  font-weight: var(--font-weight-semibold, 600);
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.pillPending {
+  background: color-mix(in srgb, var(--color-warning, #f5a623) 18%, transparent);
+  color: var(--color-warning-strong, #8a5a00);
+  border: 1px solid color-mix(in srgb, var(--color-warning, #f5a623) 40%, transparent);
+}
+
+.pillClean {
+  background: color-mix(in srgb, var(--color-success, #22c55e) 16%, transparent);
+  color: var(--color-success-strong, #166534);
+  border: 1px solid color-mix(in srgb, var(--color-success, #22c55e) 35%, transparent);
+}
+
+.pillInfected {
+  background: color-mix(in srgb, var(--color-danger, #ef4444) 18%, transparent);
+  color: var(--color-danger-strong, #991b1b);
+  border: 1px solid color-mix(in srgb, var(--color-danger, #ef4444) 45%, transparent);
+}
+
+.pillUnavailable {
+  background: var(--color-background-secondary, #f3f4f6);
+  color: var(--color-text-secondary, #6b7280);
+  border: 1px solid var(--color-border, #e5e7eb);
+}
+
+.pillError {
+  background: color-mix(in srgb, var(--color-accent-coral, #ea580c) 15%, transparent);
+  color: var(--color-accent-coral-strong, #9a3412);
+  border: 1px solid color-mix(in srgb, var(--color-accent-coral, #ea580c) 40%, transparent);
+}
+
+.pillUnknown {
+  background: var(--color-background-tertiary, #e5e7eb);
+  color: var(--color-text-primary, #111827);
+  border: 1px dashed var(--color-border, #d1d5db);
+}

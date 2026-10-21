@@ -1,0 +1,33 @@
+{
+  "id": "multilingual-dataset-1",
+  "name": "multilingual-dataset-1",
+  "title": {
+    "en": "Multilingual Dataset",
+    "fr": "Jeu de données multilingue",
+    "es": "Conjunto de datos multilingüe"
+  },
+  "notes": {
+    "en": "This is a multilingual dataset",
+    "fr": "Ceci est un jeu de données multilingue",
+    "es": "Este es un conjunto de datos multilingüe"
+  },
+  "tags": [
+    {
+      "id": "tag-multi-1",
+      "name": "multilingual",
+      "vocabulary_id": null,
+      "display_name": "Multilingual"
+    }
+  ],
+  "organization": {
+    "id": "test-org",
+    "name": "test-org",
+    "title": "Test Organization"
+  },
+  "license_id": "cc-by",
+  "metadata_created": "2024-01-15T10:00:00Z",
+  "metadata_modified": "2024-01-15T10:00:00Z",
+  "type": "dataset",
+  "state": "active"
+}
+

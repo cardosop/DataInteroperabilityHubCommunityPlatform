@@ -1,0 +1,120 @@
+{
+  "title": "Databricks \u2014 Cost Budgets",
+  "uid": "databricks-cost-budget",
+  "description": "Phase 7 (add-databricks-cost-guardrails 7.6) \u2014 per-tenant rolling-hour cost-budget observability: consumed/budget ratio per scope, and crossing spikes. Metrics from hub/apps/databricks_admin/metrics.py (the SAME window read the enforcement and the U9 budget page compute).",
+  "tags": [
+    "databricks",
+    "cost",
+    "budgets",
+    "production"
+  ],
+  "timezone": "browser",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Worst Scope \u2014 Consumed / Budget Ratio",
+      "type": "stat",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 8,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "max(databricks_cost_budget_consumed_ratio)",
+          "legendFormat": "worst ratio"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "steps": [
+              {
+                "value": 0,
+                "color": "green"
+              },
+              {
+                "value": 0.9,
+                "color": "yellow"
+              },
+              {
+                "value": 1,
+                "color": "red"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Consumed / Budget per Scope",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 8,
+        "y": 0,
+        "w": 16,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "databricks_cost_budget_consumed_ratio",
+          "legendFormat": "{{tenant_id}}/{{scope}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Budget Crossings (fires)",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 6,
+        "w": 8,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "sum by (tenant_id) (increase(databricks_cost_budget_crossings_total[1h]))",
+          "legendFormat": "tenant {{tenant_id}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Crossings Total",
+      "type": "stat",
+      "gridPos": {
+        "x": 8,
+        "y": 6,
+        "w": 8,
+        "h": 6
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(databricks_cost_budget_crossings_total[24h]))",
+          "legendFormat": "crossings / 24h"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        }
+      }
+    }
+  ],
+  "schemaVersion": 39,
+  "version": 1
+}

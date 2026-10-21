@@ -1,0 +1,41 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 0,
+    "in_progress": 1,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "TA-008-1c03f4a7",
+      "journey_name": "Configure Integration Ecosystem",
+      "persona": "Tenant Admin",
+      "status": "in_progress",
+      "start_time": 1769027535.9351294,
+      "end_time": null,
+      "duration": null,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Install Connectors",
+          "status": "StepStatus.IN_PROGRESS",
+          "start_time": 1769027535.9351356,
+          "end_time": null,
+          "duration": null,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {}
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-01-21T20:32:15.940686"
+}

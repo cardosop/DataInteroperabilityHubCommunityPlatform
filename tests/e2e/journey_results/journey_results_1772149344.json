@@ -1,0 +1,84 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.01047062873840332
+  },
+  "journeys": [
+    {
+      "journey_id": "DEV-001-d7b36fad",
+      "journey_name": "Build Custom Integration",
+      "persona": "External Developer / Integrator",
+      "status": "completed",
+      "start_time": 1772149344.7927623,
+      "end_time": 1772149344.803233,
+      "duration": 0.01047062873840332,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Authenticate with API",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772149344.7927666,
+          "end_time": 1772149344.7927713,
+          "duration": 4.76837158203125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Explore API Endpoints",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772149344.7927735,
+          "end_time": 1772149344.7979956,
+          "duration": 0.0052220821380615234,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Test API Calls",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772149344.798,
+          "end_time": 1772149344.8032203,
+          "duration": 0.005220174789428711,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Implement Integration",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772149344.8032238,
+          "end_time": 1772149344.8032317,
+          "duration": 7.867813110351562e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        }
+      ],
+      "metadata": {
+        "integration_id": "df0b1cb4-d60b-458f-be7a-40e4acad4095"
+      }
+    }
+  ],
+  "exported_at": "2026-02-26T23:42:24.803295"
+}

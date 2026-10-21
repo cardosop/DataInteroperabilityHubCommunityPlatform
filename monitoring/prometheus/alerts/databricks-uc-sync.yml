@@ -1,0 +1,70 @@
+# Phase 1 (openspec add-databricks-uc-read task 1.10) — Databricks UC
+# metadata sync alerts.
+#
+# Metrics emitted by hub/apps/databricks_admin/metrics.py (the sync
+# engine records outcome/duration/rows per workspace run):
+#   databricks_uc_sync_runs_total{outcome, tenant_id}
+#   databricks_uc_sync_last_success_timestamp{tenant_id, workspace}
+#
+# Alert definitions:
+#   DatabricksUCMetadataSyncFailed            — a workspace sync failed
+#   DatabricksUCMetadataSyncHighFailureRate   — >25% of sync runs fail
+#   DatabricksUCMetadataSyncStale             — a workspace's mirror is
+#                                              stale (>36h since success —
+#                                              the DB-005 freshness marker)
+#
+# Runbook: docs/user-guides/databricks-control-plane.md (BYO runbook,
+# 0b.8) — the sync job + RQ queue are the remediation surface.
+
+groups:
+  - name: databricks_uc_sync
+    rules:
+      # ------------------------------------------------------------------
+      # DatabricksUCMetadataSyncFailed
+      # Any workspace sync failure in the window. The sync is idempotent
+      # and retried once by the RQ layer — a firing rule means the
+      # retry ALSO failed or the failure repeats across the daily cycle.
+      # ------------------------------------------------------------------
+      - alert: DatabricksUCMetadataSyncFailed
+        expr: increase(databricks_uc_sync_runs_total{outcome="failure"}[15m]) > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Databricks UC metadata sync failures detected"
+          description: "Tenant {{ $labels.tenant_id }} has {{ $value | humanize }} failed UC metadata sync runs in the last 15m. Check the RQ job + workspace M2M credential linkage."
+
+      # ------------------------------------------------------------------
+      # DatabricksUCMetadataSyncHighFailureRate
+      # More than a quarter of sync runs failing over a 30m window.
+      # ------------------------------------------------------------------
+      - alert: DatabricksUCMetadataSyncHighFailureRate
+        expr: |
+          (
+            sum(rate(databricks_uc_sync_runs_total{outcome="failure"}[30m]))
+            /
+            sum(rate(databricks_uc_sync_runs_total[30m]))
+          ) > 0.25
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High Databricks UC metadata sync failure rate"
+          description: "{{ $value | humanizePercentage }} of UC metadata sync runs are failing (threshold: 25%)."
+
+      # ------------------------------------------------------------------
+      # DatabricksUCMetadataSyncStale
+      # A workspace whose mirror has not refreshed in 36h (the sync
+      # cadence is daily — one missed run leaves headroom; two missed
+      # runs mean the mirror is stale and browse/search surface old
+      # metadata, per the DB-005 freshness marker).
+      # ------------------------------------------------------------------
+      - alert: DatabricksUCMetadataSyncStale
+        expr: |
+          time() - databricks_uc_sync_last_success_timestamp > 129600
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Databricks UC mirror is stale"
+          description: "Workspace {{ $labels.workspace }} (tenant {{ $labels.tenant_id }}) has not synced its UC mirror in {{ $value | humanize }}s (threshold: 36h). Check the databricks-uc-metadata-sync CronJob and the workspace's M2M credential."

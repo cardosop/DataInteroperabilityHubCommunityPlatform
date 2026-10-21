@@ -1,0 +1,28 @@
+"""
+Governance URLs
+
+URL configuration for governance endpoints.
+"""
+
+from django.urls import include, path
+from rest_framework.routers import DefaultRouter
+
+from .access_request_views import AccessRequestViewSet
+from .compliance_report_views import ComplianceReportViewSet
+from .delegation_views import DelegationViewSet
+from .retention_views import RetentionPolicyViewSet
+from .views import AccessAnalyticsViewSet, AccessCertificationViewSet
+
+router = DefaultRouter()
+router.register(r"analytics", AccessAnalyticsViewSet, basename="access-analytics")
+router.register(r"certifications", AccessCertificationViewSet, basename="access-certification")
+router.register(r"access-requests", AccessRequestViewSet, basename="access-request")
+router.register(r"delegations", DelegationViewSet, basename="delegation")
+router.register(r"retention-policies", RetentionPolicyViewSet, basename="retention-policy")
+router.register(r"compliance-reports", ComplianceReportViewSet, basename="compliance-report")
+
+urlpatterns = [
+    path("access/", include(router.urls)),
+    # Also register at governance/ level for direct access
+    path("", include(router.urls)),
+]

@@ -1,0 +1,3206 @@
+{
+  "files": {
+    "hub/apps/ai/llm_client.py": [
+      136,
+      201
+    ],
+    "hub/apps/ai/throttles.py": [
+      54
+    ],
+    "hub/apps/ai/views.py": [
+      382
+    ],
+    "hub/apps/api/analytics/analytics.py": [
+      83,
+      93
+    ],
+    "hub/apps/api/analytics/cost_tracking.py": [
+      74
+    ],
+    "hub/apps/api/analytics/middleware.py": [
+      81
+    ],
+    "hub/apps/api/apps.py": [
+      62
+    ],
+    "hub/apps/api/capabilities.py": [
+      662
+    ],
+    "hub/apps/api/middleware/idempotency.py": [
+      339,
+      354
+    ],
+    "hub/apps/api/middleware/idempotency_utils.py": [
+      129,
+      134,
+      371
+    ],
+    "hub/apps/api/middleware/tracing.py": [
+      77
+    ],
+    "hub/apps/api/views.py": [
+      143,
+      210
+    ],
+    "hub/apps/api/webhook_sink_views.py": [
+      197
+    ],
+    "hub/apps/assets/business_rules.py": [
+      1733
+    ],
+    "hub/apps/assets/caching.py": [
+      169,
+      219,
+      258,
+      291,
+      365,
+      393
+    ],
+    "hub/apps/assets/models.py": [
+      781
+    ],
+    "hub/apps/assets/views.py": [
+      774,
+      1651,
+      1899,
+      1911,
+      1998,
+      2010,
+      3001,
+      3023,
+      3043,
+      3054,
+      3351,
+      3433,
+      3466,
+      3777,
+      3809,
+      3882
+    ],
+    "hub/apps/audit/involvement.py": [
+      131
+    ],
+    "hub/apps/audit/management/commands/audit_merkle_snapshot_sweep.py": [
+      146
+    ],
+    "hub/apps/audit/management/commands/audit_permanent_delete_sweep.py": [
+      126
+    ],
+    "hub/apps/audit/management/commands/backfill_audit_chain.py": [
+      139
+    ],
+    "hub/apps/audit/merkle.py": [
+      485
+    ],
+    "hub/apps/audit/odps_event_subscriber.py": [
+      91,
+      234,
+      429
+    ],
+    "hub/apps/audit/retention_purge.py": [
+      252
+    ],
+    "hub/apps/audit/tasks.py": [
+      65,
+      145
+    ],
+    "hub/apps/audit/utils.py": [
+      507
+    ],
+    "hub/apps/auth/idp_metadata.py": [
+      56,
+      130
+    ],
+    "hub/apps/auth/management/commands/api_key_rotation_reminder.py": [
+      212
+    ],
+    "hub/apps/auth/oidc_verifier.py": [
+      100
+    ],
+    "hub/apps/auth/password_validators.py": [
+      196
+    ],
+    "hub/apps/auth/sso.py": [
+      190
+    ],
+    "hub/apps/auth/sso_state.py": [
+      72,
+      101
+    ],
+    "hub/apps/auth/sso_views.py": [
+      235
+    ],
+    "hub/apps/auth/throttles.py": [
+      75
+    ],
+    "hub/apps/auth/views.py": [
+      137,
+      637,
+      755,
+      1352,
+      1452,
+      1724,
+      1743,
+      1786,
+      2193
+    ],
+    "hub/apps/baas/billing_email.py": [
+      54,
+      68
+    ],
+    "hub/apps/baas/customer_billing_service.py": [
+      170,
+      185,
+      207,
+      250,
+      264,
+      290
+    ],
+    "hub/apps/baas/developer_portal.py": [
+      203,
+      363,
+      437,
+      594,
+      620
+    ],
+    "hub/apps/baas/management/commands/generate_billing_reports.py": [
+      167
+    ],
+    "hub/apps/baas/middleware.py": [
+      80,
+      159
+    ],
+    "hub/apps/baas/services.py": [
+      161
+    ],
+    "hub/apps/baas/throttles.py": [
+      74,
+      108
+    ],
+    "hub/apps/baas/views.py": [
+      210,
+      290,
+      359
+    ],
+    "hub/apps/baas/workflows/api_key_management.py": [
+      279,
+      546,
+      587,
+      636,
+      716,
+      781
+    ],
+    "hub/apps/billing/events.py": [
+      102
+    ],
+    "hub/apps/billing/management/commands/reconcile_stripe.py": [
+      226,
+      271,
+      345,
+      377
+    ],
+    "hub/apps/billing/metrics.py": [
+      83
+    ],
+    "hub/apps/billing/middleware.py": [
+      164
+    ],
+    "hub/apps/billing/services.py": [
+      206
+    ],
+    "hub/apps/billing/views.py": [
+      830,
+      1105,
+      1862,
+      1868
+    ],
+    "hub/apps/breach/management/commands/breach_notification_clock_check.py": [
+      54
+    ],
+    "hub/apps/breach/sla_metrics.py": [
+      64
+    ],
+    "hub/apps/compliance/intake_scan.py": [
+      157,
+      172,
+      194,
+      236
+    ],
+    "hub/apps/compliance/metrics_phase231.py": [
+      28
+    ],
+    "hub/apps/compliance/service_client.py": [
+      114,
+      250,
+      416
+    ],
+    "hub/apps/compliance/services.py": [
+      273,
+      475,
+      600,
+      837,
+      1105,
+      1108,
+      1159
+    ],
+    "hub/apps/compliance/signals.py": [
+      96,
+      141,
+      152,
+      213
+    ],
+    "hub/apps/compliance/tasks.py": [
+      140,
+      157
+    ],
+    "hub/apps/compliance/views.py": [
+      1030
+    ],
+    "hub/apps/compliance/webhook_emission.py": [
+      132,
+      172
+    ],
+    "hub/apps/consent/webhook_emission.py": [
+      42,
+      62
+    ],
+    "hub/apps/contracts/apps.py": [
+      48
+    ],
+    "hub/apps/contracts/cache_invalidation.py": [
+      63,
+      85,
+      120,
+      197,
+      224
+    ],
+    "hub/apps/contracts/caching.py": [
+      279,
+      308,
+      361
+    ],
+    "hub/apps/contracts/caching_enhanced.py": [
+      179,
+      191,
+      257,
+      344,
+      360,
+      391
+    ],
+    "hub/apps/contracts/cli_client.py": [
+      296
+    ],
+    "hub/apps/contracts/impact_analysis.py": [
+      129
+    ],
+    "hub/apps/contracts/impact_notifications.py": [
+      128,
+      248
+    ],
+    "hub/apps/contracts/job_utils.py": [
+      66,
+      123,
+      189,
+      246,
+      307
+    ],
+    "hub/apps/contracts/lineage.py": [
+      131
+    ],
+    "hub/apps/contracts/lineage_edit_service.py": [
+      199,
+      214,
+      814,
+      836
+    ],
+    "hub/apps/contracts/lineage_impact_dispatcher.py": [
+      542,
+      587,
+      689
+    ],
+    "hub/apps/contracts/lineage_service.py": [
+      132,
+      287,
+      397,
+      522,
+      630,
+      814
+    ],
+    "hub/apps/contracts/lineage_sync.py": [
+      109,
+      364,
+      380,
+      490,
+      601,
+      626,
+      922,
+      940
+    ],
+    "hub/apps/contracts/management/commands/archive_lineage_edges.py": [
+      73
+    ],
+    "hub/apps/contracts/management/commands/backfill_lineage_edges.py": [
+      225,
+      240
+    ],
+    "hub/apps/contracts/management/commands/delete_lineage_edges_for_tenant.py": [
+      43,
+      118
+    ],
+    "hub/apps/contracts/management/commands/migrate_contracts.py": [
+      154
+    ],
+    "hub/apps/contracts/management/commands/migrate_contracts_to_odps.py": [
+      166,
+      408,
+      454
+    ],
+    "hub/apps/contracts/management/commands/renormalize_contracts.py": [
+      456,
+      643,
+      817,
+      878,
+      955,
+      1057,
+      1128,
+      1171
+    ],
+    "hub/apps/contracts/management/commands/rollback_odps_migration.py": [
+      132,
+      269,
+      350,
+      389,
+      430,
+      457,
+      511,
+      572
+    ],
+    "hub/apps/contracts/management/commands/seed_contract_lineage.py": [
+      373,
+      455
+    ],
+    "hub/apps/contracts/management/commands/validate_migration.py": [
+      135
+    ],
+    "hub/apps/contracts/management/commands/warm_odps_ref_cache.py": [
+      102,
+      139
+    ],
+    "hub/apps/contracts/management/commands/wave2_send_schema_editor_available_notifications.py": [
+      203,
+      336
+    ],
+    "hub/apps/contracts/management/commands/wave4_escalate_residue.py": [
+      353
+    ],
+    "hub/apps/contracts/management/commands/wave4_send_residue_reminders.py": [
+      239,
+      412
+    ],
+    "hub/apps/contracts/management/commands/wave5_send_final_warning_notifications.py": [
+      235,
+      420
+    ],
+    "hub/apps/contracts/migration.py": [
+      308,
+      320
+    ],
+    "hub/apps/contracts/normalization/_ports_helper.py": [
+      171
+    ],
+    "hub/apps/contracts/normalization/odcs_normalizer_base.py": [
+      234,
+      248,
+      528
+    ],
+    "hub/apps/contracts/normalization/odps_normalizer.py": [
+      109,
+      165,
+      184,
+      226,
+      237,
+      290,
+      543,
+      631,
+      706,
+      881,
+      975,
+      1461,
+      1657,
+      1911
+    ],
+    "hub/apps/contracts/normalization/odps_normalizer_base.py": [
+      246,
+      326,
+      769,
+      866
+    ],
+    "hub/apps/contracts/normalization/odps_normalizer_bitol_v1.py": [
+      139
+    ],
+    "hub/apps/contracts/normalization_engine.py": [
+      1410
+    ],
+    "hub/apps/contracts/normalization_service.py": [
+      132,
+      186,
+      243,
+      271,
+      313,
+      371,
+      386,
+      399
+    ],
+    "hub/apps/contracts/notifications/asset_auto_revert_warning.py": [
+      168
+    ],
+    "hub/apps/contracts/notifications/asset_auto_reverted.py": [
+      178,
+      223
+    ],
+    "hub/apps/contracts/notifications/schema_editor_available.py": [
+      122
+    ],
+    "hub/apps/contracts/notifications/schema_editor_residue_reminder.py": [
+      171
+    ],
+    "hub/apps/contracts/notifications/structureless.py": [
+      196
+    ],
+    "hub/apps/contracts/odcs_format_converter.py": [
+      160,
+      306,
+      421,
+      555
+    ],
+    "hub/apps/contracts/odcs_generator.py": [
+      394,
+      807,
+      1236,
+      1856,
+      2474,
+      3337,
+      3371,
+      3392,
+      3411,
+      3589,
+      3854
+    ],
+    "hub/apps/contracts/odps_compensation.py": [
+      103,
+      165,
+      289,
+      306,
+      316
+    ],
+    "hub/apps/contracts/odps_errors.py": [
+      660,
+      712,
+      763,
+      807
+    ],
+    "hub/apps/contracts/odps_format_converter.py": [
+      167,
+      320
+    ],
+    "hub/apps/contracts/odps_generator.py": [
+      1008,
+      1088,
+      1170,
+      1229,
+      1314
+    ],
+    "hub/apps/contracts/odps_linking_compensation.py": [
+      117,
+      154,
+      338,
+      400,
+      415,
+      427
+    ],
+    "hub/apps/contracts/odps_parser.py": [
+      183,
+      477
+    ],
+    "hub/apps/contracts/odps_rate_limiting.py": [
+      307
+    ],
+    "hub/apps/contracts/odps_schema.py": [
+      87
+    ],
+    "hub/apps/contracts/odps_security_logging.py": [
+      281,
+      302,
+      324,
+      429,
+      451,
+      539,
+      562,
+      623,
+      642,
+      709,
+      741,
+      979,
+      984,
+      991,
+      1026,
+      1089,
+      1123,
+      1178,
+      1218,
+      1277,
+      1311,
+      1363
+    ],
+    "hub/apps/contracts/ref_resolver.py": [
+      871,
+      1448,
+      1477,
+      2022
+    ],
+    "hub/apps/contracts/ref_warming.py": [
+      254,
+      342
+    ],
+    "hub/apps/contracts/services/contract_service.py": [
+      181,
+      218,
+      735,
+      1208,
+      2336,
+      2352,
+      2390,
+      2407,
+      2449,
+      2474,
+      2524,
+      2568,
+      3458,
+      3478,
+      3495,
+      3529,
+      3563,
+      3592,
+      3690,
+      3756,
+      3798,
+      4122,
+      4146,
+      4154,
+      4188,
+      4203
+    ],
+    "hub/apps/contracts/signals.py": [
+      121,
+      161,
+      211,
+      339,
+      403
+    ],
+    "hub/apps/contracts/structural_floor.py": [
+      291,
+      314,
+      352
+    ],
+    "hub/apps/contracts/tasks.py": [
+      137,
+      273
+    ],
+    "hub/apps/contracts/urls.py": [
+      118,
+      300,
+      456
+    ],
+    "hub/apps/contracts/views.py": [
+      466
+    ],
+    "hub/apps/contracts/views_crud.py": [
+      186,
+      225,
+      356,
+      430,
+      458,
+      869,
+      952,
+      1062,
+      1082,
+      1130
+    ],
+    "hub/apps/contracts/views_export.py": [
+      352,
+      433,
+      470,
+      485,
+      494,
+      519,
+      548,
+      563,
+      572,
+      613,
+      683,
+      692,
+      800,
+      813,
+      831,
+      1172,
+      1210,
+      1247,
+      1268,
+      1345,
+      1538,
+      1587
+    ],
+    "hub/apps/contracts/views_lineage.py": [
+      47,
+      99
+    ],
+    "hub/apps/contracts/views_odps.py": [
+      130,
+      215,
+      280
+    ],
+    "hub/apps/contracts/views_product.py": [
+      272,
+      490,
+      625,
+      737
+    ],
+    "hub/apps/contracts/views_schema_editor_metrics.py": [
+      177
+    ],
+    "hub/apps/contracts/views_validation.py": [
+      111,
+      258,
+      378,
+      484,
+      575
+    ],
+    "hub/apps/core/bug_prevention/transaction_utils.py": [
+      143
+    ],
+    "hub/apps/core/bug_prevention/validators.py": [
+      72,
+      161
+    ],
+    "hub/apps/core/business_rules/base.py": [
+      172,
+      258,
+      356,
+      418,
+      490,
+      517,
+      544,
+      551,
+      570,
+      579,
+      598,
+      640,
+      697,
+      736
+    ],
+    "hub/apps/core/business_rules/chains.py": [
+      75,
+      156,
+      184,
+      214,
+      236
+    ],
+    "hub/apps/core/business_rules/registry.py": [
+      281,
+      294
+    ],
+    "hub/apps/core/caching/cache.py": [
+      246,
+      330,
+      424,
+      461
+    ],
+    "hub/apps/core/caching/decorators.py": [
+      124,
+      142,
+      149,
+      168,
+      196,
+      207,
+      294,
+      322
+    ],
+    "hub/apps/core/caching/warming.py": [
+      126,
+      135,
+      214,
+      223,
+      312,
+      320,
+      353,
+      364,
+      375,
+      432
+    ],
+    "hub/apps/core/distributed_lock.py": [
+      114
+    ],
+    "hub/apps/core/error_handling/error_recovery.py": [
+      213,
+      280
+    ],
+    "hub/apps/core/events/acknowledgment.py": [
+      119,
+      175,
+      279,
+      348,
+      447
+    ],
+    "hub/apps/core/events/bus.py": [
+      150,
+      263,
+      306,
+      445,
+      527,
+      572,
+      588,
+      610,
+      626,
+      648,
+      735,
+      776,
+      884,
+      979,
+      1054,
+      1056,
+      1193,
+      1300,
+      1456,
+      1530
+    ],
+    "hub/apps/core/events/dlq_processor.py": [
+      236,
+      287
+    ],
+    "hub/apps/core/events/kafka_poc.py": [
+      160,
+      314
+    ],
+    "hub/apps/core/events/persistence_tasks.py": [
+      101,
+      211,
+      278
+    ],
+    "hub/apps/core/events/rabbitmq_poc.py": [
+      155,
+      265
+    ],
+    "hub/apps/core/events/retry_policy.py": [
+      218
+    ],
+    "hub/apps/core/events/service_publishers.py": [
+      1545,
+      2523,
+      2991
+    ],
+    "hub/apps/core/events/streams_bus.py": [
+      146,
+      269,
+      309,
+      341,
+      393,
+      481,
+      575,
+      649,
+      680,
+      713,
+      753,
+      783,
+      826
+    ],
+    "hub/apps/core/events/subscriber.py": [
+      130,
+      163,
+      214,
+      249
+    ],
+    "hub/apps/core/events/subscribers.py": [
+      62,
+      124,
+      244,
+      310,
+      357
+    ],
+    "hub/apps/core/events/views.py": [
+      184,
+      228,
+      483,
+      515
+    ],
+    "hub/apps/core/events/write_behind.py": [
+      181,
+      212,
+      247,
+      318
+    ],
+    "hub/apps/core/idempotency.py": [
+      372,
+      401,
+      426,
+      474
+    ],
+    "hub/apps/core/limit_registry.py": [
+      329
+    ],
+    "hub/apps/core/management/commands/replay_events.py": [
+      254,
+      322,
+      365
+    ],
+    "hub/apps/core/management/commands/seed_demo_data.py": [
+      325,
+      350
+    ],
+    "hub/apps/core/management/commands/warm_cache.py": [
+      72,
+      101,
+      151
+    ],
+    "hub/apps/core/rate_limiting/utils.py": [
+      219,
+      230,
+      240,
+      319,
+      331
+    ],
+    "hub/apps/core/resilience/circuit_breaker.py": [
+      186,
+      211,
+      230,
+      267,
+      703
+    ],
+    "hub/apps/core/resilience/service_breakers.py": [
+      94
+    ],
+    "hub/apps/core/services/availability.py": [
+      103
+    ],
+    "hub/apps/core/services/base.py": [
+      377,
+      491,
+      586,
+      598
+    ],
+    "hub/apps/core/services/cross_service_access.py": [
+      624,
+      914
+    ],
+    "hub/apps/core/services/health.py": [
+      155,
+      251
+    ],
+    "hub/apps/core/services/health_client.py": [
+      178
+    ],
+    "hub/apps/core/transaction_safe.py": [
+      46
+    ],
+    "hub/apps/core/utils/prefect_deployment.py": [
+      90
+    ],
+    "hub/apps/databricks_admin/account_ops.py": [
+      100
+    ],
+    "hub/apps/databricks_admin/budget_crossing.py": [
+      58,
+      148
+    ],
+    "hub/apps/databricks_admin/budget_enforce.py": [
+      82
+    ],
+    "hub/apps/databricks_admin/client.py": [
+      235
+    ],
+    "hub/apps/databricks_admin/delta_sharing_snapshot.py": [
+      178,
+      382,
+      394,
+      572
+    ],
+    "hub/apps/databricks_admin/delta_sharing_views.py": [
+      298,
+      321
+    ],
+    "hub/apps/databricks_admin/dlt_lifecycle.py": [
+      64
+    ],
+    "hub/apps/databricks_admin/dlt_update_observability.py": [
+      280,
+      315,
+      331,
+      381,
+      403
+    ],
+    "hub/apps/databricks_admin/dlt_webhooks.py": [
+      53
+    ],
+    "hub/apps/databricks_admin/identity.py": [
+      113
+    ],
+    "hub/apps/databricks_admin/job_runs.py": [
+      377,
+      455,
+      469,
+      517
+    ],
+    "hub/apps/databricks_admin/job_webhooks.py": [
+      51
+    ],
+    "hub/apps/databricks_admin/jobs_lifecycle.py": [
+      118
+    ],
+    "hub/apps/databricks_admin/management/commands/databricks_cost_sync.py": [
+      65
+    ],
+    "hub/apps/databricks_admin/management/commands/databricks_delta_share_snapshot.py": [
+      113,
+      125,
+      144
+    ],
+    "hub/apps/databricks_admin/management/commands/databricks_uc_change_reaper.py": [
+      65
+    ],
+    "hub/apps/databricks_admin/management/commands/databricks_uc_metadata_sync.py": [
+      64
+    ],
+    "hub/apps/databricks_admin/metrics.py": [
+      70,
+      88,
+      96,
+      109,
+      120,
+      148,
+      165,
+      173,
+      201,
+      240,
+      266,
+      290,
+      304,
+      312,
+      320,
+      329,
+      359,
+      381,
+      406,
+      420,
+      431,
+      448,
+      461,
+      470,
+      483,
+      504
+    ],
+    "hub/apps/databricks_admin/ml_assets.py": [
+      91,
+      337
+    ],
+    "hub/apps/databricks_admin/obo_tokens.py": [
+      211,
+      332
+    ],
+    "hub/apps/databricks_admin/oidc_provider.py": [
+      294
+    ],
+    "hub/apps/databricks_admin/sql_warehouse_lifecycle.py": [
+      127
+    ],
+    "hub/apps/databricks_admin/sql_warehouse_pool.py": [
+      145
+    ],
+    "hub/apps/databricks_admin/sql_warehouse_views.py": [
+      186
+    ],
+    "hub/apps/databricks_admin/sso_views.py": [
+      239
+    ],
+    "hub/apps/databricks_admin/throttles.py": [
+      76,
+      138
+    ],
+    "hub/apps/databricks_admin/uc_change_reaper.py": [
+      248
+    ],
+    "hub/apps/databricks_admin/uc_change_ux.py": [
+      101,
+      241,
+      261,
+      276
+    ],
+    "hub/apps/databricks_admin/uc_changes.py": [
+      130
+    ],
+    "hub/apps/databricks_admin/uc_grants_bridge.py": [
+      82
+    ],
+    "hub/apps/databricks_admin/uc_sync.py": [
+      558,
+      644,
+      662
+    ],
+    "hub/apps/databricks_admin/views.py": [
+      104,
+      154,
+      265,
+      430
+    ],
+    "hub/apps/datasets/business_rules.py": [
+      1073
+    ],
+    "hub/apps/datasets/caching.py": [
+      147,
+      184,
+      213,
+      239,
+      297,
+      318
+    ],
+    "hub/apps/datasets/management/commands/cleanup_retired_datasets.py": [
+      120
+    ],
+    "hub/apps/datasets/orphan_file_reconcile.py": [
+      239
+    ],
+    "hub/apps/datasets/rollback.py": [
+      290
+    ],
+    "hub/apps/datasets/schema_inference.py": [
+      858,
+      886
+    ],
+    "hub/apps/datasets/services.py": [
+      440,
+      463
+    ],
+    "hub/apps/datasets/signals.py": [
+      46,
+      67,
+      88,
+      167,
+      198
+    ],
+    "hub/apps/datasets/storage_fetch.py": [
+      49,
+      148,
+      164,
+      252,
+      270,
+      288
+    ],
+    "hub/apps/datasets/versioning.py": [
+      128
+    ],
+    "hub/apps/datasets/versioning_service.py": [
+      158,
+      242,
+      281,
+      342
+    ],
+    "hub/apps/datasets/views.py": [
+      338,
+      352,
+      454,
+      523,
+      1206,
+      1465,
+      1517,
+      1569
+    ],
+    "hub/apps/dpia/management/commands/dpia_review_due_scan.py": [
+      44
+    ],
+    "hub/apps/dq/alerting.py": [
+      209
+    ],
+    "hub/apps/dq/clients/base.py": [
+      54,
+      301
+    ],
+    "hub/apps/dq/clients/email_client.py": [
+      95
+    ],
+    "hub/apps/dq/management/commands/collect_dq_s3_metrics.py": [
+      106
+    ],
+    "hub/apps/dq/management/commands/purge_dq_runs.py": [
+      95,
+      292,
+      328
+    ],
+    "hub/apps/dq/management/commands/sample_dq_queue_depth.py": [
+      74
+    ],
+    "hub/apps/dq/service_client.py": [
+      201,
+      259,
+      382,
+      436
+    ],
+    "hub/apps/dq/services.py": [
+      357,
+      409,
+      507,
+      739,
+      742,
+      997
+    ],
+    "hub/apps/dq/tasks.py": [
+      297,
+      326,
+      348,
+      377,
+      396,
+      506
+    ],
+    "hub/apps/dq/views.py": [
+      1365,
+      1376,
+      1472,
+      1548,
+      1596,
+      1599
+    ],
+    "hub/apps/dsar/management/commands/dsar_statutory_clock_check.py": [
+      44
+    ],
+    "hub/apps/dsar/webhook_emission.py": [
+      42
+    ],
+    "hub/apps/files/business_rules.py": [
+      645,
+      2031
+    ],
+    "hub/apps/files/gdpr_hard_delete.py": [
+      108
+    ],
+    "hub/apps/files/magic_bytes.py": [
+      208
+    ],
+    "hub/apps/files/management/commands/cleanup_orphan_files.py": [
+      89
+    ],
+    "hub/apps/files/management/commands/purge_deleted_files.py": [
+      288
+    ],
+    "hub/apps/files/metrics.py": [
+      67
+    ],
+    "hub/apps/files/scan_policy.py": [
+      59
+    ],
+    "hub/apps/files/scanner.py": [
+      91
+    ],
+    "hub/apps/files/services.py": [
+      79,
+      140,
+      258,
+      381,
+      414,
+      495
+    ],
+    "hub/apps/files/storage.py": [
+      344,
+      1124,
+      1140,
+      1181
+    ],
+    "hub/apps/files/tasks.py": [
+      69,
+      115,
+      175,
+      195
+    ],
+    "hub/apps/files/views.py": [
+      336,
+      995
+    ],
+    "hub/apps/gdpr/services.py": [
+      116,
+      199,
+      355,
+      376,
+      397,
+      416,
+      706,
+      889
+    ],
+    "hub/apps/gdpr/views.py": [
+      148
+    ],
+    "hub/apps/governance/abac.py": [
+      141,
+      330,
+      378
+    ],
+    "hub/apps/governance/access_request_views.py": [
+      156,
+      221,
+      283,
+      537
+    ],
+    "hub/apps/governance/access_requests.py": [
+      114
+    ],
+    "hub/apps/governance/admin_abac.py": [
+      63,
+      83,
+      142,
+      165
+    ],
+    "hub/apps/governance/classification.py": [
+      263
+    ],
+    "hub/apps/governance/management/commands/retention_enforcement_sweep.py": [
+      55
+    ],
+    "hub/apps/governance/management/commands/revoke_expired_access.py": [
+      69
+    ],
+    "hub/apps/governance/metrics.py": [
+      89,
+      115,
+      130,
+      141,
+      153,
+      167
+    ],
+    "hub/apps/governance/middleware.py": [
+      74
+    ],
+    "hub/apps/governance/report_scheduler.py": [
+      248
+    ],
+    "hub/apps/governance/retention_views.py": [
+      233,
+      276
+    ],
+    "hub/apps/governance/services.py": [
+      402,
+      835,
+      929,
+      1314,
+      1433
+    ],
+    "hub/apps/graphql/schema.py": [
+      162
+    ],
+    "hub/apps/graphql/validators.py": [
+      333
+    ],
+    "hub/apps/graphql/views.py": [
+      150,
+      197,
+      625,
+      667
+    ],
+    "hub/apps/graphql_graphene/schema.py": [
+      341,
+      373,
+      403,
+      476,
+      484,
+      564,
+      572,
+      626,
+      634,
+      680,
+      711,
+      759,
+      796,
+      825,
+      1271,
+      1274,
+      1348,
+      1366,
+      1371,
+      1383,
+      1386,
+      1403,
+      1594,
+      1620,
+      1736,
+      1800,
+      1915,
+      1952,
+      1987,
+      2021,
+      2054
+    ],
+    "hub/apps/graphql_graphene/views.py": [
+      143,
+      211
+    ],
+    "hub/apps/graphql_ld/views.py": [
+      268,
+      511,
+      654
+    ],
+    "hub/apps/health/services.py": [
+      51,
+      170,
+      181
+    ],
+    "hub/apps/health/synthetic_probes.py": [
+      76,
+      95,
+      202,
+      230
+    ],
+    "hub/apps/health/views.py": [
+      76
+    ],
+    "hub/apps/integrations/base.py": [
+      770,
+      789,
+      829
+    ],
+    "hub/apps/integrations/business_rules.py": [
+      760,
+      842,
+      846,
+      1066,
+      1103,
+      1155,
+      1161,
+      1279,
+      1295,
+      1921,
+      1970,
+      2070,
+      2155,
+      2260,
+      2297,
+      2354,
+      2426
+    ],
+    "hub/apps/integrations/connectors/aws_data_exchange_connector.py": [
+      357,
+      426,
+      451,
+      492,
+      579,
+      615,
+      1078,
+      1111,
+      1195,
+      1205,
+      1354,
+      1443,
+      1481,
+      1640,
+      1804,
+      1907,
+      1990,
+      2152,
+      2287,
+      2295,
+      2370,
+      2414,
+      2423
+    ],
+    "hub/apps/integrations/connectors/azure_marketplace_connector.py": [
+      92,
+      399,
+      412,
+      460
+    ],
+    "hub/apps/integrations/connectors/ckan_connector.py": [
+      443,
+      1173,
+      1471,
+      1479,
+      1537,
+      1559,
+      1566
+    ],
+    "hub/apps/integrations/connectors/dados_gov_br_client.py": [
+      125
+    ],
+    "hub/apps/integrations/connectors/dados_gov_br_connector.py": [
+      179,
+      206,
+      303,
+      404,
+      412,
+      556,
+      876,
+      967,
+      989,
+      999,
+      1025,
+      1140
+    ],
+    "hub/apps/integrations/connectors/databricks_connector.py": [
+      428,
+      540,
+      592,
+      752,
+      1267,
+      1311,
+      1385,
+      1502,
+      1700,
+      1937,
+      1959,
+      1970,
+      2001
+    ],
+    "hub/apps/integrations/connectors/gcp_marketplace_connector.py": [
+      446,
+      467,
+      515,
+      709,
+      892,
+      901,
+      1553,
+      1842,
+      2065,
+      2239,
+      2386,
+      2394,
+      2480,
+      2526,
+      2535
+    ],
+    "hub/apps/integrations/connectors/snowflake_connector.py": [
+      179,
+      219,
+      754,
+      1962,
+      2111,
+      2136,
+      2361
+    ],
+    "hub/apps/integrations/encryption.py": [
+      156,
+      192,
+      214,
+      295
+    ],
+    "hub/apps/integrations/factory.py": [
+      413,
+      487,
+      684
+    ],
+    "hub/apps/integrations/federated_import_views.py": [
+      217,
+      312
+    ],
+    "hub/apps/integrations/logging_utils.py": [
+      40,
+      54,
+      68
+    ],
+    "hub/apps/integrations/management/commands/create_demo_ckan_federated_asset.py": [
+      126,
+      164
+    ],
+    "hub/apps/integrations/management/commands/harvest_ckan.py": [
+      229,
+      275
+    ],
+    "hub/apps/integrations/management/commands/harvest_dados_gov_br_direct.py": [
+      304
+    ],
+    "hub/apps/integrations/management/commands/rotate_openlineage_keys.py": [
+      44
+    ],
+    "hub/apps/integrations/metrics_utils.py": [
+      67,
+      124,
+      178
+    ],
+    "hub/apps/integrations/models.py": [
+      759
+    ],
+    "hub/apps/integrations/openlineage/tasks.py": [
+      180
+    ],
+    "hub/apps/integrations/openlineage/views.py": [
+      156,
+      328,
+      463,
+      486
+    ],
+    "hub/apps/integrations/services/connection_service.py": [
+      225,
+      267,
+      300,
+      336,
+      362,
+      498,
+      543,
+      575,
+      604,
+      629,
+      707,
+      749,
+      779,
+      796,
+      815,
+      905,
+      925,
+      994,
+      1014,
+      1087,
+      1099,
+      1122,
+      1146,
+      1189,
+      1206,
+      1227,
+      1256,
+      1279
+    ],
+    "hub/apps/integrations/services/discovery_service.py": [
+      92,
+      122,
+      191,
+      627,
+      639,
+      649,
+      661,
+      686,
+      709,
+      714,
+      822,
+      867,
+      974,
+      1030,
+      1059,
+      1733,
+      1765,
+      1797,
+      1833,
+      1861,
+      1885,
+      1911,
+      1926
+    ],
+    "hub/apps/integrations/services/mapping_service.py": [
+      173,
+      202,
+      221,
+      242,
+      313,
+      332,
+      428,
+      446,
+      609,
+      636,
+      655,
+      675,
+      782,
+      813,
+      828,
+      846
+    ],
+    "hub/apps/integrations/services/sync_service.py": [
+      200,
+      214,
+      256,
+      283,
+      302,
+      322,
+      495,
+      509,
+      552,
+      579,
+      598,
+      618,
+      784,
+      790,
+      798,
+      839,
+      863,
+      883,
+      903,
+      975,
+      994,
+      1090,
+      1111,
+      1221,
+      1260,
+      1277,
+      1296,
+      1316,
+      1473,
+      1485,
+      1665,
+      1738,
+      1755,
+      1770,
+      1790,
+      1899,
+      1913,
+      1924,
+      1941
+    ],
+    "hub/apps/integrations/signals.py": [
+      83
+    ],
+    "hub/apps/integrations/tasks.py": [
+      177,
+      228,
+      286,
+      390,
+      416,
+      502,
+      528,
+      709,
+      732,
+      751,
+      791,
+      895,
+      1005,
+      1067,
+      1084,
+      1178,
+      1316,
+      1352
+    ],
+    "hub/apps/integrations/utils.py": [
+      570
+    ],
+    "hub/apps/integrations/views.py": [
+      457,
+      612,
+      716,
+      848,
+      1140,
+      1288,
+      1595,
+      1682,
+      1699,
+      1837,
+      1852
+    ],
+    "hub/apps/jobs/latency_metrics.py": [
+      48,
+      66,
+      90
+    ],
+    "hub/apps/jobs/management/commands/check_job_timeouts.py": [
+      20
+    ],
+    "hub/apps/jobs/management/commands/detect_stuck_dq_compliance_runs.py": [
+      177,
+      260,
+      292,
+      344,
+      423,
+      452,
+      504,
+      583,
+      613,
+      647
+    ],
+    "hub/apps/jobs/management/commands/recover_stuck_jobs.py": [
+      163
+    ],
+    "hub/apps/jobs/models.py": [
+      309,
+      330,
+      352,
+      374,
+      416
+    ],
+    "hub/apps/jobs/queue_metrics.py": [
+      83
+    ],
+    "hub/apps/jobs/scheduled_ingestion_job.py": [
+      209
+    ],
+    "hub/apps/jobs/tasks_base.py": [
+      90,
+      399,
+      425,
+      459,
+      489
+    ],
+    "hub/apps/jobs/tasks_compliance.py": [
+      110
+    ],
+    "hub/apps/jobs/tasks_contract.py": [
+      71,
+      83,
+      110,
+      219,
+      247,
+      308
+    ],
+    "hub/apps/jobs/tasks_dq.py": [
+      95
+    ],
+    "hub/apps/jobs/tasks_governance.py": [
+      65,
+      99
+    ],
+    "hub/apps/jobs/tasks_odps.py": [
+      115,
+      142,
+      168,
+      217,
+      244,
+      275,
+      302,
+      345,
+      382,
+      484,
+      509,
+      537,
+      578,
+      621,
+      647,
+      715,
+      748,
+      858,
+      884,
+      924,
+      957,
+      996,
+      1047,
+      1074,
+      1110,
+      1117,
+      1145,
+      1247,
+      1274,
+      1300,
+      1335,
+      1381,
+      1414,
+      1522,
+      1549,
+      1585,
+      1612,
+      1637,
+      1700,
+      1740,
+      1799
+    ],
+    "hub/apps/jobs/tasks_prefect_sync.py": [
+      119,
+      177
+    ],
+    "hub/apps/jobs/tasks_ropa.py": [
+      23
+    ],
+    "hub/apps/jobs/tasks_search.py": [
+      96
+    ],
+    "hub/apps/jobs/tasks_virtualization.py": [
+      112
+    ],
+    "hub/apps/jobs/utils.py": [
+      297,
+      521,
+      566,
+      781,
+      800
+    ],
+    "hub/apps/marketplace/caching.py": [
+      53,
+      69,
+      158,
+      189,
+      219,
+      244,
+      273,
+      293
+    ],
+    "hub/apps/marketplace/compliance_gate.py": [
+      238,
+      284
+    ],
+    "hub/apps/marketplace/entitlement_utils.py": [
+      72,
+      108,
+      287
+    ],
+    "hub/apps/marketplace/events.py": [
+      80,
+      150
+    ],
+    "hub/apps/marketplace/lineage_audit.py": [
+      63,
+      141
+    ],
+    "hub/apps/marketplace/lineage_rate_limit.py": [
+      87
+    ],
+    "hub/apps/marketplace/models.py": [
+      352
+    ],
+    "hub/apps/marketplace/order_views.py": [
+      592,
+      699,
+      1158
+    ],
+    "hub/apps/marketplace/payment_gateway_service.py": [
+      170
+    ],
+    "hub/apps/marketplace/payment_gateway_utils.py": [
+      60
+    ],
+    "hub/apps/marketplace/payment_gateway_views.py": [
+      114,
+      141,
+      214,
+      308
+    ],
+    "hub/apps/marketplace/payment_service.py": [
+      323,
+      741
+    ],
+    "hub/apps/marketplace/recommendations.py": [
+      53,
+      60
+    ],
+    "hub/apps/marketplace/services.py": [
+      218,
+      527,
+      725,
+      811,
+      938,
+      1064,
+      1152,
+      1277
+    ],
+    "hub/apps/marketplace/signals.py": [
+      142,
+      167,
+      220,
+      234,
+      301,
+      310
+    ],
+    "hub/apps/marketplace/throttles.py": [
+      23,
+      47
+    ],
+    "hub/apps/marketplace/views.py": [
+      402,
+      456,
+      553,
+      606,
+      789,
+      1031,
+      1105,
+      1170,
+      1218,
+      1238,
+      1465,
+      1897
+    ],
+    "hub/apps/marketplace/webhook_views.py": [
+      356
+    ],
+    "hub/apps/marketplace/workflows/marketplace_publication.py": [
+      640,
+      702
+    ],
+    "hub/apps/marketplace/workflows/marketplace_purchase_saga.py": [
+      100,
+      149,
+      214,
+      289,
+      340
+    ],
+    "hub/apps/marketplace/workflows/marketplace_sync.py": [
+      520,
+      532,
+      612,
+      977,
+      1065,
+      1402,
+      1583,
+      1848,
+      1855
+    ],
+    "hub/apps/marketplace/workflows/product_creation.py": [
+      408,
+      568,
+      716,
+      817,
+      848,
+      894,
+      929,
+      1047,
+      1179,
+      1367,
+      1410,
+      1626,
+      1686,
+      1702,
+      1862,
+      2357,
+      2373,
+      2435,
+      2532,
+      2578,
+      2588,
+      2605,
+      2723,
+      2732
+    ],
+    "hub/apps/mesh/services.py": [
+      391,
+      477,
+      525,
+      555,
+      861,
+      886,
+      915,
+      1007,
+      1026,
+      1046,
+      1208,
+      1230,
+      1255,
+      1451,
+      1468,
+      1731,
+      1960,
+      2052
+    ],
+    "hub/apps/mesh/signals.py": [
+      40,
+      63
+    ],
+    "hub/apps/ml/apps.py": [
+      25,
+      35
+    ],
+    "hub/apps/ml/business_rules.py": [
+      322,
+      359,
+      390,
+      444,
+      449,
+      560,
+      563,
+      726,
+      763,
+      795,
+      901,
+      927,
+      1008,
+      1138,
+      1264
+    ],
+    "hub/apps/ml/inference_monitoring.py": [
+      129,
+      153,
+      173
+    ],
+    "hub/apps/ml/inference_service.py": [
+      86,
+      586
+    ],
+    "hub/apps/ml/services.py": [
+      92,
+      185,
+      319,
+      391,
+      404,
+      495,
+      507,
+      608,
+      632,
+      644,
+      650,
+      815,
+      827,
+      877,
+      934,
+      945,
+      994,
+      1054,
+      1121
+    ],
+    "hub/apps/ml/throttles.py": [
+      53,
+      102
+    ],
+    "hub/apps/ml/training_orchestrator.py": [
+      86,
+      108,
+      217,
+      276,
+      326,
+      370,
+      445,
+      580,
+      598
+    ],
+    "hub/apps/ml/training_service.py": [
+      350,
+      377,
+      411
+    ],
+    "hub/apps/ml/views.py": [
+      408,
+      583,
+      718,
+      769,
+      894,
+      1001,
+      1060,
+      1122,
+      1169,
+      1268
+    ],
+    "hub/apps/ml/workflows/model_inference.py": [
+      172,
+      698,
+      785,
+      933,
+      956
+    ],
+    "hub/apps/ml/workflows/model_training.py": [
+      189,
+      775,
+      855,
+      941,
+      1178,
+      1202
+    ],
+    "hub/apps/notifications/apps.py": [
+      25,
+      41
+    ],
+    "hub/apps/notifications/business_rules.py": [
+      634
+    ],
+    "hub/apps/notifications/odps_event_subscriber.py": [
+      127,
+      269,
+      407
+    ],
+    "hub/apps/notifications/services.py": [
+      196,
+      312,
+      437
+    ],
+    "hub/apps/notifications/stream_views.py": [
+      156
+    ],
+    "hub/apps/notifications/tasks.py": [
+      341,
+      403,
+      530,
+      590,
+      676,
+      755,
+      854,
+      958,
+      1084,
+      1199,
+      1311,
+      1419
+    ],
+    "hub/apps/notifications/utils.py": [
+      100,
+      139
+    ],
+    "hub/apps/notifications/views.py": [
+      128
+    ],
+    "hub/apps/observability/apps.py": [
+      22
+    ],
+    "hub/apps/observability/cross_tenant_metrics.py": [
+      88,
+      98
+    ],
+    "hub/apps/observability/db_instrumentation.py": [
+      133,
+      143,
+      166,
+      176,
+      240,
+      280,
+      292,
+      300
+    ],
+    "hub/apps/observability/management/commands/benchmark_views.py": [
+      79
+    ],
+    "hub/apps/observability/management/commands/n_plus_1_check.py": [
+      83
+    ],
+    "hub/apps/observability/metrics.py": [
+      162,
+      191
+    ],
+    "hub/apps/observability/middleware/span_middleware.py": [
+      98,
+      106,
+      202,
+      208,
+      216,
+      245,
+      251
+    ],
+    "hub/apps/observability/otel_config.py": [
+      365,
+      390,
+      408
+    ],
+    "hub/apps/observability/otel_metrics.py": [
+      131,
+      1868
+    ],
+    "hub/apps/observability/services.py": [
+      113,
+      149,
+      157,
+      174,
+      227,
+      268,
+      276,
+      293,
+      344,
+      380,
+      388,
+      405,
+      502,
+      519,
+      553,
+      559
+    ],
+    "hub/apps/observability/span_instrumentation.py": [
+      61,
+      80,
+      102,
+      132,
+      165,
+      252,
+      319,
+      391
+    ],
+    "hub/apps/orchestration/alerting.py": [
+      469
+    ],
+    "hub/apps/orchestration/business_rules.py": [
+      282,
+      389,
+      606,
+      614,
+      679,
+      688,
+      737,
+      831,
+      875,
+      1356,
+      1428
+    ],
+    "hub/apps/orchestration/compensation.py": [
+      149,
+      268,
+      284
+    ],
+    "hub/apps/orchestration/dependency_executor.py": [
+      215,
+      261,
+      293,
+      327
+    ],
+    "hub/apps/orchestration/dependency_resolver.py": [
+      247,
+      366
+    ],
+    "hub/apps/orchestration/execution_validators.py": [
+      294,
+      485
+    ],
+    "hub/apps/orchestration/management/commands/check_workflow_v1_removal_readiness.py": [
+      168
+    ],
+    "hub/apps/orchestration/management/commands/clean_pipeline_deps.py": [
+      113
+    ],
+    "hub/apps/orchestration/management/commands/derive_dependencies_from_lineage.py": [
+      144
+    ],
+    "hub/apps/orchestration/management/commands/process_workflows.py": [
+      98,
+      143,
+      195,
+      206,
+      238,
+      251
+    ],
+    "hub/apps/orchestration/management/commands/recover_failed_workflows.py": [
+      71
+    ],
+    "hub/apps/orchestration/registry.py": [
+      156
+    ],
+    "hub/apps/orchestration/saga.py": [
+      242,
+      301,
+      317,
+      469
+    ],
+    "hub/apps/orchestration/trigger_engine.py": [
+      44,
+      92,
+      168,
+      346,
+      380,
+      435
+    ],
+    "hub/apps/orchestration/views.py": [
+      180
+    ],
+    "hub/apps/orchestration/workflow_engine.py": [
+      185,
+      275,
+      335,
+      547,
+      552,
+      583,
+      607,
+      857,
+      860,
+      1009,
+      1012,
+      1035,
+      1060,
+      1165,
+      1383,
+      2018,
+      2244,
+      2254,
+      2309,
+      2510,
+      2776,
+      2841,
+      2900,
+      2942,
+      2997
+    ],
+    "hub/apps/orchestration/workflows/access_request.py": [
+      892,
+      1101,
+      1151,
+      1159,
+      1245
+    ],
+    "hub/apps/orchestration/workflows/asset_activation_saga.py": [
+      82,
+      158,
+      237,
+      305,
+      378
+    ],
+    "hub/apps/orchestration/workflows/asset_creation.py": [
+      919,
+      1045,
+      1097,
+      1125,
+      1732,
+      1855,
+      2232,
+      2341,
+      2480,
+      2960,
+      3218,
+      3247,
+      3301,
+      3386,
+      3417,
+      3505,
+      3834,
+      3971,
+      4009
+    ],
+    "hub/apps/orchestration/workflows/compliance_reporting.py": [
+      542,
+      645
+    ],
+    "hub/apps/orchestration/workflows/contract_creation.py": [
+      747,
+      797,
+      817,
+      882,
+      910,
+      979,
+      1334,
+      1473
+    ],
+    "hub/apps/orchestration/workflows/data_mesh.py": [
+      104,
+      196,
+      727,
+      972,
+      1163,
+      1190,
+      1237
+    ],
+    "hub/apps/orchestration/workflows/dataset_creation.py": [
+      333,
+      390,
+      424,
+      490,
+      508,
+      791,
+      838,
+      954,
+      999,
+      1045
+    ],
+    "hub/apps/orchestration/workflows/scheduled_ingestion.py": [
+      429,
+      476,
+      528,
+      682,
+      921,
+      1025,
+      1037,
+      1173,
+      1274,
+      1323,
+      1407,
+      1466,
+      1521
+    ],
+    "hub/apps/orchestration/workflows/version_creation.py": [
+      637,
+      829,
+      891,
+      1012,
+      1047,
+      1076
+    ],
+    "hub/apps/orchestration/workflows/virtualization.py": [
+      170,
+      190,
+      474,
+      534,
+      558,
+      580,
+      664,
+      723,
+      812,
+      1096,
+      1228,
+      1306
+    ],
+    "hub/apps/platform/views.py": [
+      199,
+      277
+    ],
+    "hub/apps/processor_agreements/management/commands/processor_agreement_expiry_check.py": [
+      47
+    ],
+    "hub/apps/processor_agreements/models.py": [
+      81
+    ],
+    "hub/apps/ropa/services/renderers.py": [
+      60
+    ],
+    "hub/apps/scheduled_export/business_rules.py": [
+      365,
+      391,
+      415
+    ],
+    "hub/apps/scheduled_export/internal_views.py": [
+      217,
+      340,
+      455,
+      558,
+      565,
+      599
+    ],
+    "hub/apps/scheduled_export/management/commands/detect_and_remediate_stuck_export_runs.py": [
+      151
+    ],
+    "hub/apps/scheduled_export/models.py": [
+      198
+    ],
+    "hub/apps/scheduled_export/serializers.py": [
+      73
+    ],
+    "hub/apps/scheduled_export/services.py": [
+      799
+    ],
+    "hub/apps/scheduled_export/throttles.py": [
+      49
+    ],
+    "hub/apps/scheduled_export/views.py": [
+      88,
+      143,
+      752
+    ],
+    "hub/apps/scheduled_export/worker_run_lifecycle.py": [
+      110,
+      136
+    ],
+    "hub/apps/scheduled_ingestion/business_rules.py": [
+      410,
+      563,
+      789,
+      1366,
+      1777,
+      1811,
+      2025,
+      2051,
+      2172
+    ],
+    "hub/apps/scheduled_ingestion/catalog_records.py": [
+      230,
+      244,
+      298,
+      375,
+      508,
+      527,
+      563,
+      586
+    ],
+    "hub/apps/scheduled_ingestion/credential_manager.py": [
+      195,
+      211
+    ],
+    "hub/apps/scheduled_ingestion/dead_letter_queue.py": [
+      134
+    ],
+    "hub/apps/scheduled_ingestion/ingestion.py": [
+      154,
+      196,
+      252,
+      274,
+      536,
+      678,
+      691
+    ],
+    "hub/apps/scheduled_ingestion/internal_views.py": [
+      362,
+      457,
+      495,
+      651,
+      728,
+      745,
+      751,
+      768,
+      801,
+      812
+    ],
+    "hub/apps/scheduled_ingestion/management/commands/detect_and_remediate_stuck_runs.py": [
+      212,
+      246
+    ],
+    "hub/apps/scheduled_ingestion/management/commands/retry_failed_dlq_sync.py": [
+      52
+    ],
+    "hub/apps/scheduled_ingestion/models.py": [
+      288
+    ],
+    "hub/apps/scheduled_ingestion/serializers.py": [
+      134,
+      309
+    ],
+    "hub/apps/scheduled_ingestion/services.py": [
+      186
+    ],
+    "hub/apps/scheduled_ingestion/stuck_run_detection.py": [
+      71
+    ],
+    "hub/apps/scheduled_ingestion/tasks.py": [
+      73,
+      132
+    ],
+    "hub/apps/scheduled_ingestion/views.py": [
+      108,
+      163,
+      250,
+      343,
+      465,
+      784,
+      817,
+      1090,
+      1225,
+      1244
+    ],
+    "hub/apps/scheduled_ingestion/worker_run_lifecycle.py": [
+      100,
+      115,
+      138
+    ],
+    "hub/apps/scheduled_ingestion/worker_services.py": [
+      197
+    ],
+    "hub/apps/search/apps.py": [
+      40
+    ],
+    "hub/apps/search/business_rules.py": [
+      270,
+      789
+    ],
+    "hub/apps/search/cache_invalidation.py": [
+      50,
+      71
+    ],
+    "hub/apps/search/indexing.py": [
+      493,
+      517,
+      527,
+      535,
+      548
+    ],
+    "hub/apps/search/metrics.py": [
+      78
+    ],
+    "hub/apps/search/search_engine.py": [
+      271,
+      296
+    ],
+    "hub/apps/search/services.py": [
+      187,
+      338,
+      349,
+      409,
+      496,
+      505,
+      528
+    ],
+    "hub/apps/search/tasks.py": [
+      177,
+      204
+    ],
+    "hub/apps/search/throttles.py": [
+      39,
+      54,
+      85
+    ],
+    "hub/apps/search/views.py": [
+      273,
+      305,
+      366,
+      440,
+      887,
+      970,
+      984
+    ],
+    "hub/apps/security/url_validators.py": [
+      124,
+      230
+    ],
+    "hub/apps/semantic/business_rules.py": [
+      200,
+      916,
+      1055,
+      1066,
+      1072
+    ],
+    "hub/apps/semantic/caching.py": [
+      78,
+      92,
+      120,
+      152,
+      171,
+      193,
+      255,
+      320
+    ],
+    "hub/apps/semantic/federation.py": [
+      73,
+      298,
+      341,
+      361,
+      443,
+      461
+    ],
+    "hub/apps/semantic/ldn_signature.py": [
+      287
+    ],
+    "hub/apps/semantic/management/commands/migrate_triples_to_named_graphs.py": [
+      127
+    ],
+    "hub/apps/semantic/management/commands/rebuild_fuseki.py": [
+      161,
+      179,
+      195
+    ],
+    "hub/apps/semantic/management/commands/rotate_ldn_keys.py": [
+      108,
+      147
+    ],
+    "hub/apps/semantic/ontology_validator.py": [
+      119,
+      159
+    ],
+    "hub/apps/semantic/query_expansion.py": [
+      44,
+      65,
+      101
+    ],
+    "hub/apps/semantic/service_client.py": [
+      281,
+      330,
+      368,
+      388,
+      398,
+      510,
+      570,
+      648,
+      725,
+      771,
+      834,
+      901,
+      953,
+      985,
+      1037,
+      1086,
+      1112,
+      1138,
+      1162,
+      1176
+    ],
+    "hub/apps/semantic/services.py": [
+      112,
+      290,
+      421,
+      462,
+      549,
+      710,
+      785
+    ],
+    "hub/apps/semantic/signals.py": [
+      53,
+      96,
+      102,
+      139,
+      176,
+      244,
+      304
+    ],
+    "hub/apps/semantic/tasks.py": [
+      159,
+      400
+    ],
+    "hub/apps/semantic/tasks_ldn.py": [
+      87,
+      184,
+      231,
+      279,
+      296,
+      334,
+      396
+    ],
+    "hub/apps/semantic/throttles.py": [
+      56
+    ],
+    "hub/apps/semantic/tombstone.py": [
+      159,
+      190,
+      232
+    ],
+    "hub/apps/semantic/uri_validators.py": [
+      286,
+      491
+    ],
+    "hub/apps/semantic/utils.py": [
+      182,
+      297,
+      380,
+      480,
+      581,
+      781,
+      820,
+      861
+    ],
+    "hub/apps/semantic/views.py": [
+      341,
+      385,
+      787,
+      884,
+      907,
+      1022,
+      1106,
+      1552,
+      1591,
+      1623
+    ],
+    "hub/apps/semantic/views_ldn.py": [
+      79,
+      101,
+      450
+    ],
+    "hub/apps/semantic/views_ontology.py": [
+      231,
+      278,
+      317,
+      360,
+      404
+    ],
+    "hub/apps/social/throttles.py": [
+      49
+    ],
+    "hub/apps/social/views.py": [
+      168,
+      369,
+      738,
+      993,
+      1230,
+      1270
+    ],
+    "hub/apps/tenants/admin_dashboard_summary.py": [
+      288,
+      489,
+      526,
+      541
+    ],
+    "hub/apps/tenants/admin_flag_flip_rate_limit.py": [
+      135
+    ],
+    "hub/apps/tenants/admin_impersonate.py": [
+      445,
+      532
+    ],
+    "hub/apps/tenants/admin_tenant_create.py": [
+      349
+    ],
+    "hub/apps/tenants/ephemeral_views.py": [
+      137
+    ],
+    "hub/apps/tenants/expire_impersonation_sweep.py": [
+      155
+    ],
+    "hub/apps/tenants/impersonation_middleware.py": [
+      89,
+      116
+    ],
+    "hub/apps/tenants/management/commands/backfill_enterprise_limits.py": [
+      119,
+      156
+    ],
+    "hub/apps/tenants/management/commands/disable_ux_v2_for_tenant.py": [
+      75
+    ],
+    "hub/apps/tenants/management/commands/enable_ux_v2_for_tenant.py": [
+      67
+    ],
+    "hub/apps/tenants/management/commands/expire_impersonation_sessions.py": [
+      81
+    ],
+    "hub/apps/tenants/management/commands/list_ux_v2_tenants.py": [
+      91
+    ],
+    "hub/apps/tenants/management/commands/seed_default_plans.py": [
+      234
+    ],
+    "hub/apps/tenants/management/commands/seed_pilot_exit_drill_tenant.py": [
+      121
+    ],
+    "hub/apps/tenants/management/commands/send_deprecation_notices.py": [
+      50
+    ],
+    "hub/apps/tenants/management/commands/tenant_data_export.py": [
+      172,
+      199
+    ],
+    "hub/apps/tenants/management/commands/tenant_hard_delete_sweep.py": [
+      93
+    ],
+    "hub/apps/tenants/middleware.py": [
+      138,
+      239
+    ],
+    "hub/apps/tenants/services.py": [
+      1051,
+      1259
+    ],
+    "hub/apps/tenants/signals.py": [
+      121,
+      206,
+      383,
+      392,
+      451,
+      475,
+      583,
+      628
+    ],
+    "hub/apps/tenants/tasks.py": [
+      51,
+      87
+    ],
+    "hub/apps/tenants/tax_id_service.py": [
+      160
+    ],
+    "hub/apps/tenants/tenant_hard_delete_sweep.py": [
+      337
+    ],
+    "hub/apps/tenants/views.py": [
+      600,
+      689,
+      1058
+    ],
+    "hub/apps/transformation/apps.py": [
+      16,
+      23
+    ],
+    "hub/apps/transformation/business_rules.py": [
+      1640,
+      1943,
+      2026,
+      2165,
+      2202,
+      2241
+    ],
+    "hub/apps/transformation/compensation.py": [
+      117,
+      155,
+      189,
+      239,
+      253
+    ],
+    "hub/apps/transformation/credential_resolver.py": [
+      273
+    ],
+    "hub/apps/transformation/databricks_cost.py": [
+      116
+    ],
+    "hub/apps/transformation/databricks_staging.py": [
+      91,
+      107,
+      134
+    ],
+    "hub/apps/transformation/dbt_executor.py": [
+      348,
+      394
+    ],
+    "hub/apps/transformation/execution_targets.py": [
+      128
+    ],
+    "hub/apps/transformation/management/commands/migrate_legacy_transformation_pipelines.py": [
+      126
+    ],
+    "hub/apps/transformation/services.py": [
+      562,
+      617,
+      634,
+      650,
+      811,
+      841,
+      864,
+      931,
+      975,
+      998,
+      1091,
+      1359,
+      1519,
+      1557,
+      1632,
+      1688,
+      1706,
+      1740,
+      1781,
+      1799,
+      1862,
+      1886,
+      1925,
+      2006,
+      2136,
+      2316,
+      2542,
+      2583,
+      2605,
+      2899,
+      2919,
+      3074,
+      3293,
+      3353,
+      3377,
+      3681
+    ],
+    "hub/apps/transformation/signals.py": [
+      91,
+      150,
+      159
+    ],
+    "hub/apps/transformation/views.py": [
+      328
+    ],
+    "hub/apps/users/services.py": [
+      500,
+      611
+    ],
+    "hub/apps/users/views.py": [
+      167,
+      596
+    ],
+    "hub/apps/virtualization/business_rules.py": [
+      637,
+      1643,
+      1937,
+      2527,
+      2660,
+      2794,
+      3177,
+      3351
+    ],
+    "hub/apps/virtualization/cross_tenant_helpers.py": [
+      156,
+      223
+    ],
+    "hub/apps/virtualization/services/dataset_service.py": [
+      396,
+      434,
+      451,
+      484,
+      742,
+      866,
+      904,
+      933
+    ],
+    "hub/apps/virtualization/services/query_service.py": [
+      415,
+      433,
+      753,
+      824,
+      1843,
+      1866,
+      1907,
+      2042,
+      2061,
+      2114,
+      2340,
+      2424,
+      2523,
+      2708,
+      2774,
+      2863,
+      2914,
+      2960,
+      2990,
+      2999,
+      3033,
+      3304,
+      3426,
+      3497,
+      3601,
+      3685,
+      3759,
+      3781,
+      3962,
+      4148,
+      4388,
+      4415,
+      4709,
+      4726
+    ],
+    "hub/apps/virtualization/views.py": [
+      334,
+      503,
+      747,
+      886,
+      1250,
+      1361,
+      1497,
+      1650,
+      1677,
+      1734,
+      1890,
+      1970,
+      2119,
+      2272,
+      2355,
+      2516,
+      2662
+    ],
+    "hub/apps/warehouses/base.py": [
+      180
+    ],
+    "hub/apps/warehouses/cache.py": [
+      47,
+      73
+    ],
+    "hub/apps/warehouses/connectors/athena.py": [
+      91
+    ],
+    "hub/apps/warehouses/connectors/bigquery.py": [
+      82
+    ],
+    "hub/apps/warehouses/connectors/databricks.py": [
+      175,
+      205
+    ],
+    "hub/apps/warehouses/connectors/snowflake.py": [
+      87,
+      137
+    ],
+    "hub/apps/warehouses/cost_recording.py": [
+      87
+    ],
+    "hub/apps/warehouses/export_adapter.py": [
+      99,
+      118
+    ],
+    "hub/apps/warehouses/lineage.py": [
+      75,
+      86
+    ],
+    "hub/apps/warehouses/management/commands/check_warehouse_schema_drift.py": [
+      97
+    ],
+    "hub/apps/warehouses/schema_drift.py": [
+      46,
+      77
+    ],
+    "hub/apps/warehouses/schema_reflection.py": [
+      66
+    ],
+    "hub/apps/warehouses/signals.py": [
+      33
+    ],
+    "hub/apps/warehouses/tasks.py": [
+      145
+    ],
+    "hub/apps/warehouses/views.py": [
+      195,
+      209,
+      278,
+      335,
+      458,
+      498,
+      518
+    ],
+    "hub/apps/webhooks/asset_event_subscriber.py": [
+      127,
+      192
+    ],
+    "hub/apps/webhooks/encryption.py": [
+      57
+    ],
+    "hub/apps/webhooks/management/commands/drill_webhook_key_rotation.py": [
+      189
+    ],
+    "hub/apps/webhooks/mesh_event_subscriber.py": [
+      104,
+      117
+    ],
+    "hub/apps/webhooks/metrics.py": [
+      127,
+      176,
+      198
+    ],
+    "hub/apps/webhooks/odps_event_subscriber.py": [
+      102,
+      223
+    ],
+    "hub/apps/webhooks/rate_limit.py": [
+      71,
+      161,
+      195
+    ],
+    "hub/apps/webhooks/service.py": [
+      253,
+      296,
+      342,
+      551,
+      609,
+      676
+    ],
+    "hub/apps/webhooks/tasks.py": [
+      76
+    ],
+    "hub/apps/webhooks/views.py": [
+      263
+    ],
+    "hub/apps/webhooks/virtualization_event_subscriber.py": [
+      118,
+      131
+    ],
+    "hub/apps/websocket/consumers/event_consumer.py": [
+      269,
+      385,
+      517,
+      703,
+      721,
+      898,
+      916,
+      1095,
+      1113,
+      1242,
+      1250,
+      1546,
+      1559,
+      1613
+    ],
+    "hub/apps/websocket/middleware/auth.py": [
+      96,
+      111,
+      173
+    ],
+    "hub/aws_secrets_loader.py": [
+      238
+    ],
+    "hub/data_movement/audit_events.py": [
+      54
+    ],
+    "hub/data_movement/dlt_credentials.py": [
+      177,
+      197,
+      220
+    ],
+    "hub/data_movement/dlt_pipeline.py": [
+      193
+    ],
+    "hub/data_movement/export_execution.py": [
+      115,
+      258,
+      301
+    ],
+    "hub/data_movement/ingestion_catalog.py": [
+      162
+    ],
+    "hub/data_movement/ingestion_execution.py": [
+      250,
+      377,
+      391,
+      468
+    ],
+    "hub/data_movement/internal_views.py": [
+      113
+    ],
+    "hub/data_movement/management/commands/migrate_credentials_to_refs.py": [
+      73,
+      93
+    ],
+    "hub/data_movement/retry_policy.py": [
+      125
+    ],
+    "hub/data_movement/staging.py": [
+      254,
+      262
+    ],
+    "hub/data_movement/warehouse_query_runner.py": [
+      254,
+      272,
+      332,
+      408
+    ],
+    "hub/data_movement/worker_run_lifecycle.py": [
+      38,
+      66,
+      94
+    ],
+    "hub/db_router.py": [
+      124
+    ],
+    "hub/settings.py": [
+      415,
+      1194
+    ]
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "test_name": "test",
+  "test_type": "load",
+  "version": "test_v1",
+  "created_at": "2025-12-12T19:21:44.853919",
+  "environment": "default",
+  "metrics": [
+    {
+      "name": "test_metric",
+      "mean": 115.0,
+      "median": 115.0,
+      "min": 100.0,
+      "max": 130.0,
+      "stdev": 11.180339887498949,
+      "p50": 115.0,
+      "p95": 130.0,
+      "p99": 130.0,
+      "sample_count": 5,
+      "unit": "ms",
+      "metadata": {}
+    }
+  ],
+  "metadata": {}
+}

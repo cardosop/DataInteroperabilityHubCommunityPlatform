@@ -1,0 +1,4 @@
+# REDIS INSTANCE SEPARATION ARCHITECTURE REVIEW
+
+This document is referenced by `openspec/changes/odps1/design.md`.
+Detailed content is pending — see the design document for context.

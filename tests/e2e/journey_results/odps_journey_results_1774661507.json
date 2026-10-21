@@ -1,0 +1,31 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.1062624454498291
+  },
+  "journeys": [
+    {
+      "journey_id": "ODPS-002-ERRORS-53b7a746",
+      "journey_name": "ODPS Linking - Error Scenarios",
+      "persona": "Data Product Owner",
+      "status": "completed",
+      "start_time": 1774661507.8062956,
+      "end_time": 1774661507.912558,
+      "duration": 0.1062624454498291,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [],
+      "metadata": {
+        "error_scenarios_tested": 3
+      }
+    }
+  ],
+  "exported_at": "2026-03-28T01:31:47.912613"
+}

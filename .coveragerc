@@ -1,0 +1,15 @@
+# Coverage configuration for hub and tests
+# See https://coverage.readthedocs.io/
+
+[run]
+source = hub
+omit =
+    # (notifications/business_rules_template_validation.py deleted by W12.2
+    # GATE-57 — the class-body-only fragment had zero importers)
+
+[report]
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    raise AssertionError
+    raise NotImplementedError

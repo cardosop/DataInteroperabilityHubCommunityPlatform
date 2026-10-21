@@ -1,0 +1,268 @@
+{
+  "title": "Engineering Health (DORA)",
+  "uid": "engineering-health",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "60s",
+  "description": "DORA metrics: lead time for changes, deploy frequency trend, and pipeline health. 277.B.116.",
+  "panels": [
+    {
+      "type": "row",
+      "title": "Lead Time for Changes",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "type": "stat",
+      "title": "Lead time (most recent)",
+      "description": "Time from first commit to deploy start for the most recent deployment. < 1h = elite, < 1d = high, < 1w = medium.",
+      "gridPos": { "x": 0, "y": 1, "w": 8, "h": 4 },
+      "targets": [
+        {
+          "expr": "dora_lead_time_seconds",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 7200 },
+              { "color": "orange", "value": 14400 },
+              { "color": "red", "value": 28800 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Lead time (staging)",
+      "gridPos": { "x": 8, "y": 1, "w": 8, "h": 4 },
+      "targets": [
+        {
+          "expr": "dora_lead_time_seconds{environment=\"staging\"}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 7200 },
+              { "color": "orange", "value": 14400 },
+              { "color": "red", "value": 28800 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Lead time (production)",
+      "gridPos": { "x": 16, "y": 1, "w": 8, "h": 4 },
+      "targets": [
+        {
+          "expr": "dora_lead_time_seconds{environment=\"production\"}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 14400 },
+              { "color": "orange", "value": 43200 },
+              { "color": "red", "value": 86400 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Lead time trend (90 days)",
+      "description": "Each point is one deployment. DORA benchmark: elite < 1h, high < 1d, medium 1d-1w. Track whether the trend is improving or degrading.",
+      "gridPos": { "x": 0, "y": 5, "w": 24, "h": 9 },
+      "targets": [
+        {
+          "expr": "dora_lead_time_seconds{environment=\"staging\"}",
+          "legendFormat": "staging ({{branch}})",
+          "refId": "A"
+        },
+        {
+          "expr": "dora_lead_time_seconds{environment=\"production\"}",
+          "legendFormat": "production ({{branch}})",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 7200 },
+              { "color": "orange", "value": 14400 },
+              { "color": "red", "value": 28800 }
+            ]
+          },
+          "custom": { "thresholdsStyle": { "mode": "line+area" } }
+        }
+      },
+      "options": { "legend": { "displayMode": "table", "placement": "right" } }
+    },
+    {
+      "type": "row",
+      "title": "Deploy Frequency",
+      "gridPos": { "x": 0, "y": 14, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "type": "stat",
+      "title": "Deploys (last 7 days)",
+      "description": "Total deployments in the last week. DORA elite: on-demand (multiple/day).",
+      "gridPos": { "x": 0, "y": 15, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "count_over_time(dora_lead_time_seconds[7d])",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 1 },
+              { "color": "yellow", "value": 3 },
+              { "color": "green", "value": 7 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Deploys (last 30 days)",
+      "gridPos": { "x": 6, "y": 15, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "count_over_time(dora_lead_time_seconds[30d])",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 4 },
+              { "color": "yellow", "value": 12 },
+              { "color": "green", "value": 30 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Deploy frequency trend (90 days)",
+      "description": "Deployments per week rolling window. Shows cadence trend.",
+      "gridPos": { "x": 0, "y": 19, "w": 24, "h": 8 },
+      "targets": [
+        {
+          "expr": "count_over_time(dora_lead_time_seconds{environment=\"staging\"}[7d])",
+          "legendFormat": "staging deploys/week",
+          "refId": "A"
+        },
+        {
+          "expr": "count_over_time(dora_lead_time_seconds{environment=\"production\"}[7d])",
+          "legendFormat": "production deploys/week",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" } }
+    },
+    {
+      "type": "row",
+      "title": "Alert State",
+      "gridPos": { "x": 0, "y": 27, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "type": "stat",
+      "title": "DoraLeadTimeHighWarning",
+      "gridPos": { "x": 0, "y": 28, "w": 8, "h": 4 },
+      "targets": [
+        {
+          "expr": "max(ALERTS{alertname=\"DoraLeadTimeHighWarning\", alertstate=\"firing\"}) OR on() vector(0)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [{ "type": "value", "options": { "0": { "text": "OK", "color": "green" }, "1": { "text": "FIRING", "color": "yellow" } } }],
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }] }
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "DoraLeadTimeCritical",
+      "gridPos": { "x": 8, "y": 28, "w": 8, "h": 4 },
+      "targets": [
+        {
+          "expr": "max(ALERTS{alertname=\"DoraLeadTimeCritical\", alertstate=\"firing\"}) OR on() vector(0)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [{ "type": "value", "options": { "0": { "text": "OK", "color": "green" }, "1": { "text": "PAGE", "color": "red" } } }],
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] }
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "DoraNoRecentDeploy",
+      "gridPos": { "x": 16, "y": 28, "w": 8, "h": 4 },
+      "targets": [
+        {
+          "expr": "max(ALERTS{alertname=\"DoraNoRecentDeploy\", alertstate=\"firing\"}) OR on() vector(0)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [{ "type": "value", "options": { "0": { "text": "OK", "color": "green" }, "1": { "text": "FIRING", "color": "yellow" } } }],
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }] }
+        }
+      }
+    }
+  ]
+}

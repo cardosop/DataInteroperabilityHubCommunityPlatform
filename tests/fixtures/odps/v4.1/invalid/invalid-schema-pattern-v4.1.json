@@ -1,0 +1,14 @@
+{
+  "schema": "https://invalid-schema-url.com/schema/v4.1",
+  "version": "4.1",
+  "product": {
+    "details": {
+      "en": {
+        "productID": "sample-product-v4.1",
+        "name": "Sample Data Product v4.1",
+        "description": "This is invalid because the schema URL does not match the required pattern"
+      }
+    }
+  }
+}
+

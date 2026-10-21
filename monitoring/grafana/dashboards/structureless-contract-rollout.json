@@ -1,0 +1,288 @@
+{
+  "title": "Phase 227 \u2014 Structureless Contract Rollout",
+  "uid": "hub-structureless-rollout-227",
+  "tags": [
+    "contracts",
+    "structureless",
+    "phase-227",
+    "rollout"
+  ],
+  "timezone": "browser",
+  "editable": true,
+  "refresh": "30s",
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "tenant_id",
+        "label": "Tenant",
+        "type": "query",
+        "datasource": "Prometheus",
+        "query": "label_values(contract_validation_failed_total, tenant_id)",
+        "includeAll": true,
+        "multi": true
+      },
+      {
+        "name": "spec_type",
+        "label": "Spec",
+        "type": "query",
+        "datasource": "Prometheus",
+        "query": "label_values(contract_validation_failed_total, spec_type)",
+        "includeAll": true,
+        "multi": true
+      }
+    ]
+  },
+  "panels": [
+    {
+      "title": "STRUCTURELESS Rejection Rate (per minute)",
+      "description": "Phase 227 L7.1/L7.5 \u2014 Layer-3 raises tagged STRUCTURELESS_CONTRACT, broken down by subcode and spec_type. Source: contract_validation_failed_total (otel_metrics.py).",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(contract_validation_failed_total{code=\"STRUCTURELESS_CONTRACT\", spec_type=~\"$spec_type\"}[5m])) by (subcode, spec_type) * 60",
+          "legendFormat": "{{spec_type}} / {{subcode}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "rejections/min",
+          "color": {
+            "mode": "palette-classic"
+          }
+        }
+      }
+    },
+    {
+      "title": "Structureless Source Distribution",
+      "description": "Where are floor violations originating? creation = POST, update = PATCH, migration = self-heal pass. Source: contract_structureless_total (otel_metrics.py).",
+      "type": "piechart",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(contract_structureless_total{spec_type=~\"$spec_type\"}[1h])) by (source)",
+          "legendFormat": "{{source}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        }
+      }
+    },
+    {
+      "title": "Structureless Backlog (current count)",
+      "description": "Phase 227 L7.6 \u2014 outstanding structureless contracts pending remediation. Updated daily by `renormalize_contracts --filter=structureless --output=count`. Drains to 0 once Wave 3 / Wave 5 finish. Source: contract_structureless_backlog (otel_metrics.py).",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 0,
+        "y": 8
+      },
+      "targets": [
+        {
+          "expr": "sum(contract_structureless_backlog{tenant_id=~\"$tenant_id\"})",
+          "legendFormat": "outstanding"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "steps": [
+              {
+                "value": 0,
+                "color": "green"
+              },
+              {
+                "value": 1,
+                "color": "yellow"
+              },
+              {
+                "value": 100,
+                "color": "red"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Models-per-Contract Distribution (p50/p95/p99)",
+      "description": "Phase 227 L7.1 \u2014 distribution of models[] count produced by successful normalizations. A healthy population peaks at 1-5 models per contract. Source: contract_normalization_models_count (otel_metrics.py).",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 16,
+        "x": 8,
+        "y": 8
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(contract_normalization_models_count_bucket{spec_type=~\"$spec_type\"}[5m])) by (le, spec_type))",
+          "legendFormat": "p50 \u2014 {{spec_type}}"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(contract_normalization_models_count_bucket{spec_type=~\"$spec_type\"}[5m])) by (le, spec_type))",
+          "legendFormat": "p95 \u2014 {{spec_type}}"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(contract_normalization_models_count_bucket{spec_type=~\"$spec_type\"}[5m])) by (le, spec_type))",
+          "legendFormat": "p99 \u2014 {{spec_type}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        }
+      }
+    },
+    {
+      "title": "Renormalize Batch Duration (Wave 3 self-heal)",
+      "description": "Phase 227 L7.1 \u2014 wall-clock duration of `renormalize_contracts --apply` batches. Outcome \u2208 {healed, residual, mixed, failed}. Source: contracts_renormalize_batch_duration_seconds (otel_metrics.py).",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(contracts_renormalize_batch_duration_seconds_bucket[5m])) by (le, outcome))",
+          "legendFormat": "p95 \u2014 {{outcome}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        }
+      }
+    },
+    {
+      "title": "Schema Editor Adoption Funnel",
+      "description": "Phase 227 L7.2/L7.5 \u2014 opens vs. saves. A healthy adoption curve has the save line tracking ~80%+ of opens. Sources: schema_editor_opened_total, schema_editor_save_total (otel_metrics.py).",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(schema_editor_opened_total{tenant_id=~\"$tenant_id\", spec_type=~\"$spec_type\"}[1h])) by (spec_type) * 3600",
+          "legendFormat": "opens/hr \u2014 {{spec_type}}"
+        },
+        {
+          "expr": "sum(rate(schema_editor_save_total{tenant_id=~\"$tenant_id\", spec_type=~\"$spec_type\", outcome=\"success\"}[1h])) by (spec_type) * 3600",
+          "legendFormat": "successful saves/hr \u2014 {{spec_type}}"
+        },
+        {
+          "expr": "sum(rate(schema_editor_save_total{tenant_id=~\"$tenant_id\", spec_type=~\"$spec_type\", outcome=\"conflict\"}[1h])) by (spec_type) * 3600",
+          "legendFormat": "412 conflicts/hr \u2014 {{spec_type}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "/hour"
+        }
+      }
+    },
+    {
+      "title": "Schema Editor \u2014 Time to First Save (p50/p95)",
+      "description": "Phase 227 L7.2 \u2014 wall-clock seconds between editor open and first successful save. p95 should land under 5 minutes for the editor UX to be considered shippable. Source: schema_editor_time_to_first_save_seconds (otel_metrics.py).",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(schema_editor_time_to_first_save_seconds_bucket{tenant_id=~\"$tenant_id\", spec_type=~\"$spec_type\"}[1h])) by (le, spec_type))",
+          "legendFormat": "p50 \u2014 {{spec_type}}"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(schema_editor_time_to_first_save_seconds_bucket{tenant_id=~\"$tenant_id\", spec_type=~\"$spec_type\"}[1h])) by (le, spec_type))",
+          "legendFormat": "p95 \u2014 {{spec_type}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "steps": [
+              {
+                "value": 0,
+                "color": "green"
+              },
+              {
+                "value": 300,
+                "color": "yellow"
+              },
+              {
+                "value": 600,
+                "color": "red"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Asset Auto-Reverts (Wave 5)",
+      "description": "Phase 227 L7.3 \u2014 assets demoted to DRAFT by `renormalize_contracts --apply-asset-revert` because their currently-active contract remained structureless after self-heal. Wave 5 only \u2014 should be 0 in steady state. Computed from audit-event log via the audit aggregator.",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 12,
+        "x": 12,
+        "y": 24
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(audit_events_total{action=\"ASSET_AUTO_REVERTED_STRUCTURELESS\"}[24h])) or vector(0)",
+          "legendFormat": "reverts/24h"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "steps": [
+              {
+                "value": 0,
+                "color": "green"
+              },
+              {
+                "value": 1,
+                "color": "yellow"
+              },
+              {
+                "value": 10,
+                "color": "red"
+              }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

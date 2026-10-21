@@ -1,0 +1,49 @@
+.unavailable-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  padding: var(--spacing-xl);
+}
+
+.unavailable-container {
+  text-align: center;
+  max-width: 600px;
+}
+
+.unavailable-container h1 {
+  /* Phase 226.F5 a11y fix — color-warning-700 (#F57C00) had ~3:1
+   * contrast against the page background (white), failing WCAG 2 AA's
+   * 4.5:1 threshold for normal text. Stepping to color-warning-800
+   * (#7D4200) brings the contrast to ~8.4:1, well above AA, while
+   * staying on-brand for the "warning" tone of the unavailable/
+   * coming-soon state. */
+  color: var(--color-warning-800);
+  margin-bottom: var(--spacing-md);
+}
+
+.unavailable-details {
+  margin-top: var(--spacing-lg);
+  font-weight: var(--font-weight-medium);
+}
+
+.unavailable-container ul {
+  text-align: left;
+  display: inline-block;
+  margin: var(--spacing-md) 0;
+}
+
+.back-link {
+  display: inline-block;
+  margin-top: var(--spacing-lg);
+  padding: var(--spacing-md) var(--spacing-lg);
+  background-color: var(--color-primary-500);
+  color: var(--color-text-on-primary);
+  text-decoration: none;
+  border-radius: var(--border-radius-md);
+  transition: background-color 0.2s;
+}
+
+.back-link:hover {
+  background-color: var(--color-primary-600);
+}

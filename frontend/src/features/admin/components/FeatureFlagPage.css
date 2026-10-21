@@ -1,0 +1,93 @@
+/* Phase 235.1 — PLATFORM_ADMIN per-tenant feature-flag UI. */
+
+.feature-flag-page {
+  padding: 1.5rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.feature-flag-page__subhead {
+  color: var(--color-text-secondary, #555);
+  margin-bottom: 1.5rem;
+}
+
+.feature-flag-page__tenant-picker {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.feature-flag-page__tenant-picker label {
+  font-weight: 600;
+}
+
+.feature-flag-page__pending {
+  border: 1px solid var(--color-warning-500, #c08a00);
+  padding: 1rem;
+  border-radius: 0.5rem;
+  margin-bottom: 1.5rem;
+  background: var(--color-warning-50, #fffaf0);
+}
+
+.feature-flag-page__pending h2 {
+  margin-top: 0;
+  font-size: 1rem;
+}
+
+.feature-flag-page__pending ul {
+  list-style: none;
+  padding-left: 0;
+}
+
+.feature-flag-page__pending li {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.35rem 0;
+}
+
+.feature-flag-page__error {
+  color: var(--color-error-500, #b00020);
+  margin: 0.35rem 0 0;
+  font-size: 0.875rem;
+}
+
+.feature-flag-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.feature-flag-table th,
+.feature-flag-table td {
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid var(--color-border, #e0e0e0);
+  text-align: left;
+  vertical-align: top;
+}
+
+.feature-flag-table th {
+  background: var(--color-surface-2, #f7f7f9);
+  font-weight: 600;
+}
+
+.feature-flag-table__desc {
+  color: var(--color-text-secondary, #666);
+  font-size: 0.85rem;
+  margin-top: 0.25rem;
+  max-width: 600px;
+}
+
+.feature-flag-table__badge {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  background: var(--color-surface-2, #eee);
+}
+
+.feature-flag-table__badge--sensitive {
+  background: var(--color-warning-100, #ffe3a0);
+  color: var(--color-warning-900, #5a3b00);
+  font-weight: 600;
+}

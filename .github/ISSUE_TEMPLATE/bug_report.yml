@@ -1,0 +1,46 @@
+name: Bug report
+description: Report a defect in the platform (backend, frontend, SDK, CLI, or infrastructure).
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug.  Please include enough detail for a
+        maintainer to reproduce it.  Security issues must NOT be filed
+        here — follow SECURITY.md instead.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Platform version (VERSION file / helm appVersion) or the package version.
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: The observed behavior, with the request/response where relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should have happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction steps
+      description: Minimal steps (commands, endpoints, curl, playwright spec) to reproduce.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs / error codes
+      description: Error codes (e.g. AUTH_FORBIDDEN), stack traces, or container logs.
+    validations:
+      required: false

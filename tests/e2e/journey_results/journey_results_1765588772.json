@@ -1,0 +1,97 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.0034177303314208984
+  },
+  "journeys": [
+    {
+      "journey_id": "PA-001-9a91bb2f",
+      "journey_name": "Onboard New Tenant",
+      "persona": "Platform Admin / Marketplace Operator",
+      "status": "completed",
+      "start_time": 1765588772.8261771,
+      "end_time": 1765588772.8295949,
+      "duration": 0.0034177303314208984,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Create Tenant Account",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765588772.8261833,
+          "end_time": 1765588772.8273003,
+          "duration": 0.0011169910430908203,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "UUID"
+          }
+        },
+        {
+          "step_name": "Configure Tenant Settings",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765588772.8273036,
+          "end_time": 1765588772.827622,
+          "duration": 0.00031828880310058594,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "UUID"
+          }
+        },
+        {
+          "step_name": "Set Up KYC Verification",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765588772.827625,
+          "end_time": 1765588772.8279119,
+          "duration": 0.0002868175506591797,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "UUID"
+          }
+        },
+        {
+          "step_name": "Verify KYC",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765588772.8279147,
+          "end_time": 1765588772.8289979,
+          "duration": 0.0010831356048583984,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "UUID"
+          }
+        },
+        {
+          "step_name": "Activate Tenant",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765588772.829001,
+          "end_time": 1765588772.829591,
+          "duration": 0.0005900859832763672,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "UUID"
+          }
+        }
+      ],
+      "metadata": {
+        "tenant_id": "7f42927a-be76-4cf4-ae7a-2de079fb67e8"
+      }
+    }
+  ],
+  "exported_at": "2025-12-13T01:19:32.829664"
+}

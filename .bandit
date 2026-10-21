@@ -1,0 +1,11 @@
+# Bandit security scanner configuration (YAML — bandit 1.8+).
+# The previous INI-style file ("[bandit]" section) silently FAILED to parse
+# ("expected '<document start>', but found '<scalar>'") — bandit exited 2 and
+# code-quality.yml's `|| true` masked a dead security scan (the Phase Q review
+# found it, 2026-08-23). Verify with: bandit -r hub/ -c .bandit
+exclude_dirs: [".git", ".venv", "venv", "__pycache__", ".pytest_cache", ".mypy_cache", "build", "dist", "migrations", "node_modules", "tests"]
+# B101: assert_used — Allow asserts in non-test production code (rare but intentional)
+skips: ["B101"]
+tests: []
+severity_level: low
+confidence_level: low

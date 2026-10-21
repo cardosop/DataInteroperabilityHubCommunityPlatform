@@ -1,0 +1,153 @@
+# CODEOWNERS — Phase 277.B.109
+#
+# Every subsystem must have >=1 primary owner + >=1 secondary owner.
+# GitHub auto-assigns reviewers from this file on every PR touching
+# the listed paths.  Last-order-wins: a later rule overrides an
+# earlier one for the same path.
+#
+# Owners are GitHub usernames under the organisation that owns this
+# repository (cardosop). Team aliases are added here once the
+# organisation provisions them — until then the owner username is the
+# fallback so review assignment actually resolves.
+#
+# Reference: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# ── Backend — App layer ──────────────────────────────────────────────
+
+# Assets & data lifecycle
+hub/apps/assets/        @cardosop @cardosop
+hub/apps/datasets/       @cardosop @cardosop
+hub/apps/files/          @cardosop @cardosop
+
+# Contracts & lineage
+hub/apps/contracts/      @cardosop @cardosop
+
+# Marketplace & billing
+hub/apps/marketplace/    @cardosop @cardosop
+hub/apps/billing/        @cardosop @cardosop
+
+# Governance & compliance
+hub/apps/governance/     @cardosop @cardosop
+hub/apps/compliance/     @cardosop @cardosop
+hub/apps/audit/          @cardosop @cardosop
+hub/apps/gdpr/           @cardosop @cardosop
+hub/apps/dsar/           @cardosop @cardosop
+hub/apps/dpia/           @cardosop @cardosop
+hub/apps/breach/         @cardosop @cardosop
+hub/apps/ropa/           @cardosop @cardosop
+hub/apps/consent/        @cardosop @cardosop
+hub/apps/processor_agreements/  @cardosop @cardosop
+
+# Semantic layer
+hub/apps/semantic/       @cardosop @cardosop
+
+# Search
+hub/apps/search/         @cardosop @cardosop
+
+# Webhooks & integrations
+hub/apps/webhooks/       @cardosop @cardosop
+hub/apps/integrations/   @cardosop @cardosop
+
+# Warehouse connectivity
+hub/apps/warehouses/     @cardosop @cardosop
+hub/apps/databricks_admin/  @cardosop @cardosop
+
+# Auth & users
+hub/apps/auth/           @cardosop @cardosop
+hub/apps/users/          @cardosop @cardosop
+hub/apps/tenants/        @cardosop @cardosop
+
+# Jobs, orchestration & async workers
+hub/apps/jobs/           @cardosop @cardosop
+hub/apps/orchestration/  @cardosop @cardosop
+hub/apps/rate_limiting/  @cardosop @cardosop
+
+# Data quality
+hub/apps/dq/             @cardosop @cardosop
+
+# ML
+hub/apps/ml/             @cardosop @cardosop
+
+# Transformation & scheduled ingestion/export
+hub/apps/transformation/        @cardosop @cardosop
+hub/apps/scheduled_ingestion/   @cardosop @cardosop
+hub/apps/scheduled_export/      @cardosop @cardosop
+
+# Virtualization & mesh
+hub/apps/virtualization/ @cardosop @cardosop
+hub/apps/mesh/           @cardosop @cardosop
+
+# BaaS
+hub/apps/baas/           @cardosop @cardosop
+
+# Observability & health
+hub/apps/observability/  @cardosop @cardosop
+hub/apps/health/         @cardosop @cardosop
+
+# Notifications
+hub/apps/notifications/  @cardosop @cardosop
+
+# API infrastructure
+hub/apps/api/            @cardosop @cardosop
+
+# Core resilience, events, distributed lock
+hub/apps/core/           @cardosop @cardosop
+
+# ── CLI ──────────────────────────────────────────────────────────────
+cli/                     @cardosop @cardosop
+
+# ── SDKs ─────────────────────────────────────────────────────────────
+# W18 (Phase T.6): sdk/python/ is the real Python SDK tree (the old
+# sdk/py/ rule matched nothing — no codeowner, no required reviewer).
+# sdk/typescript/ was the generated TS tree — physically DELETED by
+# oss-release-remediation W12.1 (D3); sdk/js/ is the published TS SDK.
+sdk/python/              @cardosop @cardosop
+sdk/js/                  @cardosop @cardosop
+
+# ── Frontend ─────────────────────────────────────────────────────────
+frontend/src/            @cardosop @cardosop
+frontend/e2e/            @cardosop @cardosop
+
+# ── Infrastructure ───────────────────────────────────────────────────
+infrastructure/          @cardosop @cardosop
+helm/                    @cardosop @cardosop
+
+# ── CI/CD ────────────────────────────────────────────────────────────
+.github/workflows/       @cardosop @cardosop
+.github/CODEOWNERS       @cardosop @cardosop
+
+# ── Documentation ────────────────────────────────────────────────────
+docs/                    @cardosop @cardosop
+*.md                     @cardosop @cardosop
+
+# ── Config & tooling ─────────────────────────────────────────────────
+requirements*.txt        @cardosop @cardosop
+Dockerfile*              @cardosop @cardosop
+docker-compose*.yml      @cardosop @cardosop
+Makefile                 @cardosop @cardosop
+pyproject.toml           @cardosop @cardosop
+
+# ── Monitoring ───────────────────────────────────────────────────────
+monitoring/              @cardosop @cardosop
+
+# ── Scripts ──────────────────────────────────────────────────────────
+scripts/                 @cardosop @cardosop
+
+# ── Security ─────────────────────────────────────────────────────────
+SECURITY.md              @cardosop @cardosop
+INCIDENT_RESPONSE.md     @cardosop @cardosop
+
+# ── Shared contract surfaces (Phase 3.4, 2026-08-21) ─────────────────
+# A change to ANY of these breaks the paid layer or the public tree —
+# review is mandatory, never optional. Last-order-wins: these rules
+# override the broad scripts/ rule above for the pinned files.
+hub/apps/core/commercial_hooks.py                     @cardosop @cardosop
+tests/unit/test_commercial_hooks_api_contract.py      @cardosop @cardosop
+hub/apps/api/capabilities.py                          @cardosop @cardosop
+hub/apps/api/tests/test_capabilities.py               @cardosop @cardosop
+hub/apps/contracts/services/contract_service.py       @cardosop @cardosop
+frontend/src/app/routes/paidRouteGating.ts            @cardosop @cardosop
+frontend/src/app/routes/paidRouteDrift.test.tsx       @cardosop @cardosop
+scripts/check_core_boundary.py                        @cardosop @cardosop
+scripts/core_boundary_allowlist.txt                   @cardosop @cardosop
+scripts/core_guard_exceptions.txt                     @cardosop @cardosop

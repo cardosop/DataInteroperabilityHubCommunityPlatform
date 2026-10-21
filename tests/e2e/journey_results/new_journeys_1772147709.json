@@ -1,0 +1,121 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.3092501163482666
+  },
+  "journeys": [
+    {
+      "journey_id": "CPO-007-843f3735",
+      "journey_name": "Set Up GDPR Right to be Forgotten",
+      "persona": "Compliance Officer",
+      "status": "completed",
+      "start_time": 1772147709.545804,
+      "end_time": 1772147709.8550541,
+      "duration": 0.3092501163482666,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Configure Deletion Workflow",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772147709.8300157,
+          "end_time": 1772147709.8300211,
+          "duration": 5.4836273193359375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Note: GDPR Workflow API Not Yet Implemented",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772147709.8300462,
+          "end_time": 1772147709.8300486,
+          "duration": 2.384185791015625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Deletion Service Configuration Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772147709.8359509,
+          "end_time": 1772147709.8359559,
+          "duration": 5.0067901611328125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Verification Configuration Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772147709.8408117,
+          "end_time": 1772147709.8408148,
+          "duration": 3.0994415283203125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Workflow Testing Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772147709.8453693,
+          "end_time": 1772147709.845373,
+          "duration": 3.5762786865234375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Workflow Deployment Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772147709.8500836,
+          "end_time": 1772147709.8500867,
+          "duration": 3.0994415283203125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Deletion Request Monitoring Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772147709.855049,
+          "end_time": 1772147709.855053,
+          "duration": 4.0531158447265625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-26T23:15:09.855125"
+}

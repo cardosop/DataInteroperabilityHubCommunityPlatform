@@ -1,0 +1,69 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.011048078536987305
+  },
+  "journeys": [
+    {
+      "journey_id": "DEV-008-8e697e09",
+      "journey_name": "Use Plugin System",
+      "persona": "External Developer",
+      "status": "completed",
+      "start_time": 1772021306.8407762,
+      "end_time": 1772021306.8518243,
+      "duration": 0.011048078536987305,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Browse Plugins",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772021306.8472402,
+          "end_time": 1772021306.847245,
+          "duration": 4.76837158203125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Install Plugin",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772021306.8518138,
+          "end_time": 1772021306.8518186,
+          "duration": 4.76837158203125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Note: No Plugins to Execute",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772021306.8518217,
+          "end_time": 1772021306.8518236,
+          "duration": 1.9073486328125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-25T12:08:26.851902"
+}

@@ -1,0 +1,178 @@
+"""
+Unit tests for Access Certification
+
+Tests for periodic access reviews and certification workflows.
+"""
+
+import uuid
+from datetime import timedelta
+
+import pytest
+from django.test import TestCase
+from django.utils import timezone
+
+from hub.apps.governance.access_certification import AccessCertification, AccessCertificationService
+from hub.apps.tenants.models import Tenant
+from hub.apps.users.models import User, UserStatus
+
+pytestmark = pytest.mark.django_db(transaction=True)
+
+
+class AccessCertificationServiceTest(TestCase):
+    """Test AccessCertificationService"""
+
+    def setUp(self):
+        """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
+        )
+
+        self.user = User.objects.create_user(
+            email=f"user-{uid}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
+        )
+
+        self.reviewer = User.objects.create_user(
+            email=f"reviewer-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
+        )
+
+    def test_create_certification(self):
+        """Test certification creation"""
+        certification = AccessCertificationService.create_certification(
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+            certification_type="USER_LEVEL",
+            expires_in_days=90,
+        )
+
+        self.assertIsNotNone(certification)
+        self.assertEqual(certification.status, "PENDING")
+        self.assertIsNotNone(certification.expires_at)
+
+    def test_review_certification(self):
+        """Test certification review"""
+        certification = AccessCertificationService.create_certification(
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+            certification_type="USER_LEVEL",
+        )
+
+        updated = AccessCertificationService.review_certification(
+            certification_id=str(certification.id),
+            reviewer_id=str(self.reviewer.id),
+            status="APPROVED",
+            review_notes="User access approved",
+        )
+
+        self.assertEqual(updated.status, "APPROVED")
+        self.assertIsNotNone(updated.certified_at)
+        self.assertEqual(updated.review_notes, "User access approved")
+
+    def test_get_expiring_certifications(self):
+        """Test expiring certifications retrieval"""
+        # Create certification expiring soon
+        certification = AccessCertificationService.create_certification(
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+            certification_type="USER_LEVEL",
+            expires_in_days=20,
+        )
+
+        # Approve it
+        AccessCertificationService.review_certification(
+            certification_id=str(certification.id),
+            reviewer_id=str(self.reviewer.id),
+            status="APPROVED",
+        )
+
+        expiring = AccessCertificationService.get_expiring_certifications(
+            tenant_id=str(self.tenant.id), days_ahead=30
+        )
+
+        self.assertGreater(len(expiring), 0)
+        self.assertEqual(expiring[0].id, certification.id)
+
+    def test_w1111_expiring_view_rejects_non_integer_days_ahead(self):
+        """W11.11 DAST finding: ``GET /expiring/?days_ahead=10;`` 500'd
+        with ``ValueError: invalid literal for int()`` — the view cast
+        the raw query param without validation.  Must be a typed 400,
+        never a 500 (RED against the pre-fix view)."""
+        from rest_framework.test import APIClient
+
+        client = APIClient()
+        client.force_authenticate(user=self.user)
+        # Literal paths (the DAST evidence's shape — reverse() does not
+        # resolve the action name under every test-settings mount).
+        response = client.get("/api/v1/governance/certifications/expiring/?days_ahead=10;")
+        self.assertEqual(response.status_code, 400, response.content)
+        # The valid value still works.
+        ok = client.get("/api/v1/governance/certifications/expiring/?days_ahead=10")
+        self.assertEqual(ok.status_code, 200, ok.content)
+
+
+    def test_get_expired_certifications(self):
+        """Test expired certifications retrieval"""
+        # Create expired certification
+        certification = AccessCertification.objects.create(
+            tenant=self.tenant,
+            user=self.user,
+            certification_type="USER_LEVEL",
+            status="APPROVED",
+            expires_at=timezone.now() - timedelta(days=1),
+        )
+
+        expired = AccessCertificationService.get_expired_certifications(
+            tenant_id=str(self.tenant.id)
+        )
+
+        self.assertGreater(len(expired), 0)
+        # Status should be updated to EXPIRED
+        certification.refresh_from_db()
+        self.assertEqual(certification.status, "EXPIRED")
+
+    def test_initiate_periodic_review(self):
+        """Test periodic review initiation"""
+        certification = AccessCertificationService.initiate_periodic_review(
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+            reviewer_id=str(self.reviewer.id),
+        )
+
+        self.assertIsNotNone(certification)
+        self.assertEqual(certification.status, "IN_PROGRESS")
+        self.assertEqual(certification.reviewer.id, self.reviewer.id)
+
+    def test_get_certification_summary(self):
+        """Test certification summary"""
+        # Create some certifications
+        for _i in range(3):
+            AccessCertificationService.create_certification(
+                tenant_id=str(self.tenant.id),
+                user_id=str(self.user.id),
+                certification_type="USER_LEVEL",
+            )
+
+        summary = AccessCertificationService.get_certification_summary(
+            tenant_id=str(self.tenant.id)
+        )
+
+        self.assertIn("total", summary)
+        self.assertIn("pending", summary)
+        self.assertIn("approved", summary)
+        self.assertIn("expired", summary)
+        self.assertIn("rejected", summary)
+        self.assertIn("in_progress", summary)
+        self.assertEqual(summary["total"], 3)
+        self.assertEqual(summary["pending"], 3)
+        self.assertEqual(summary["approved"], 0)
+        self.assertEqual(summary["expired"], 0)
+        self.assertEqual(summary["rejected"], 0)

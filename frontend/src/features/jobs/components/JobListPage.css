@@ -1,0 +1,103 @@
+.job-list-page {
+  padding: var(--spacing-lg);
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.job-list-header h1 {
+  margin: 0 0 var(--spacing-lg) 0;
+  font-size: var(--font-size-xxl);
+  font-weight: var(--font-weight-bold);
+}
+
+.job-list-table {
+  background: var(--color-background-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-md);
+  overflow: hidden;
+}
+
+.job-list-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.job-list-table thead {
+  background: var(--color-background-secondary);
+}
+
+.job-list-table th {
+  padding: var(--spacing-md);
+  text-align: left;
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-sm);
+  text-transform: uppercase;
+}
+
+.job-list-table tbody tr {
+  border-top: 1px solid var(--color-border);
+  cursor: pointer;
+}
+
+.job-list-table tbody tr:hover {
+  background: var(--color-background-secondary);
+}
+
+.job-list-table td {
+  padding: var(--spacing-md);
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  text-transform: uppercase;
+}
+
+.status-pending {
+  background: var(--color-warning-light);
+  color: var(--color-warning-dark);
+}
+
+.status-running {
+  background: var(--color-info-light);
+  color: var(--color-info-dark);
+}
+
+.status-completed {
+  background: var(--color-success-light);
+  color: var(--color-success-dark);
+}
+
+.status-failed {
+  background: var(--color-error-light);
+  color: var(--color-error-dark);
+}
+
+.status-cancelled {
+  background: var(--color-background-tertiary);
+  color: var(--color-text-secondary);
+}
+
+.job-list-pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: var(--spacing-md);
+  margin-top: var(--spacing-lg);
+}
+
+.job-list-pagination button {
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--color-background-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-md);
+  cursor: pointer;
+}
+
+.job-list-pagination button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

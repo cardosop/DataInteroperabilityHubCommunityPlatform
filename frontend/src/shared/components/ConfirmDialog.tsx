@@ -1,0 +1,65 @@
+/**
+ * ConfirmDialog Component
+ * Accessible replacement for window.confirm
+ * Reuses Modal for overlay, focus trap, and Escape handling.
+ */
+
+import { Button } from './Button';
+import { Modal } from './Modal';
+import './ConfirmDialog.css';
+
+export type ConfirmDialogVariant = 'danger' | 'warning' | 'info';
+
+export interface ConfirmDialogProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  title: string;
+  message: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  variant?: ConfirmDialogVariant;
+  children?: React.ReactNode;
+  confirmDisabled?: boolean;
+}
+
+export function ConfirmDialog({
+  isOpen,
+  onClose,
+  onConfirm,
+  title,
+  message,
+  confirmLabel = 'Confirm',
+  cancelLabel = 'Cancel',
+  variant = 'warning',
+  children,
+  confirmDisabled = false,
+}: ConfirmDialogProps) {
+  return (
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={title}
+      aria-describedby="confirm-dialog-message"
+    >
+      <div className={`confirm-dialog-body confirm-dialog-${variant}`}>
+        <p id="confirm-dialog-message" className="confirm-dialog-message">
+          {message}
+        </p>
+        {children}
+        <div className="confirm-dialog-actions">
+          <Button variant="secondary" onClick={onClose}>
+            {cancelLabel}
+          </Button>
+          <Button
+            variant={variant === 'danger' ? 'danger' : 'primary'}
+            onClick={onConfirm}
+            disabled={confirmDisabled}
+          >
+            {confirmLabel}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}

@@ -1,0 +1,39 @@
+# 285.14.6.9 — Throttle exemption audit.
+# ViewSets listed here are exempt from the throttle_classes requirement.
+# Each entry must carry a reason, review_date, and sunset_date.
+
+exemptions:
+  - view: "health.HealthCheckView"
+    reason: "Health check endpoint — must be unthrottled for load balancer / k8s liveness probes."
+    review_date: "2026-12-01"
+    sunset_date: "2027-06-01"
+
+  - view: "api.OpenAPISchemaView"
+    reason: "OpenAPI schema — static JSON, no DB queries, cacheable at CDN."
+    review_date: "2026-12-01"
+    sunset_date: "2027-06-01"
+
+  - view: "api.SwaggerUIView"
+    reason: "Swagger UI — static HTML/JS, no backend load."
+    review_date: "2026-12-01"
+    sunset_date: "2027-06-01"
+
+  - view: "api.ReDocView"
+    reason: "ReDoc UI — static HTML/JS, no backend load."
+    review_date: "2026-12-01"
+    sunset_date: "2027-06-01"
+
+  - view: "public.PublicLayout"
+    reason: "Public legal pages — static content, no DB, cached at CDN."
+    review_date: "2026-12-01"
+    sunset_date: "2027-06-01"
+
+  - view: "developer.DeveloperPortalViewSet"
+    reason: "285.14.6.3 — DRAFT feature, gated behind developer_enabled flag. Throttle added in 285.14.6.3 but reviewed for exemption."
+    review_date: "2026-12-01"
+    sunset_date: "2027-03-01"
+
+  - view: "ai.*"
+    reason: "285.14.6.2 — AI sunsetting 2026-09-01. Sunset header present. No new code."
+    review_date: "2026-06-01"
+    sunset_date: "2026-09-01"

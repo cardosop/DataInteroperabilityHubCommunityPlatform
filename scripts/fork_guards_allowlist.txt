@@ -1,0 +1,8 @@
+# scripts/fork_guards_allowlist.txt — GATE-56 (W7.3) fork-safety allowlist.
+# Format: <workflow>:<job>:<secret>:<reason>  (exact triples; dead anchors
+# FAIL — a listed triple must still match its file/job/secret or the gate
+# exits 1).
+# A triple belongs here only when the secret use degrades GRACEFULLY
+# without the value (the step self-skips or the suite skips the
+# secret-dependent tests) — never for a hard dependency.
+ci.yml:test:STRIPE_SECRET_KEY:optional secret — the unit-test step documents it as "Optional: set repo secret STRIPE_SECRET_KEY to run billing Stripe-dependent tests (no mocks)"; an unset key env-gates those tests to skip, so fork/dependabot PRs run the suite degraded, not broken.

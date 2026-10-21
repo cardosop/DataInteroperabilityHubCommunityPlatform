@@ -1,0 +1,71 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 24.09286069869995
+  },
+  "journeys": [
+    {
+      "journey_id": "DC-008-b1df3877",
+      "journey_name": "Rate and Review Asset",
+      "persona": "Data Consumer",
+      "status": "completed",
+      "start_time": 1769024448.6536012,
+      "end_time": 1769024472.7464619,
+      "duration": 24.09286069869995,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Navigate to Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769024448.6536074,
+          "end_time": 1769024472.7305813,
+          "duration": 24.076973915100098,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Rate Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769024472.7305899,
+          "end_time": 1769024472.7416568,
+          "duration": 0.011066913604736328,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Write Review",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769024472.741664,
+          "end_time": 1769024472.7464588,
+          "duration": 0.0047948360443115234,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "8080e99c-3625-4ff1-a016-04ce389249de"
+      }
+    }
+  ],
+  "exported_at": "2026-01-21T19:41:12.746528"
+}

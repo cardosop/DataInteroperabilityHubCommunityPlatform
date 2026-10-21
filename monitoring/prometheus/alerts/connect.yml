@@ -1,0 +1,107 @@
+# Phase 271.6.1 — Stripe Connect observability alerts.
+#
+# Alert definitions:
+#   ConnectWebhookFailureRate  — webhooks arriving but failing to process
+#   ConnectOnboardingStuck     — ConnectAccounts stuck in KYB > 48 h
+#   ConnectWebhookTenantUnresolved — webhooks with no matching tenant
+#   ConnectKYBStaleQueue       — KYB review queue count exceeds threshold
+#
+# Runbook references: RB-MKT-001, RB-MKT-003
+
+groups:
+  - name: stripe_connect
+    rules:
+      # ------------------------------------------------------------------
+      # ConnectWebhookFailureRate
+      # Fires when >5% of Stripe Connect webhook deliveries fail over a
+      # 15-minute window. The denominator is all Connect webhook events;
+      # the numerator is events where processing_error IS NOT NULL.
+      # Handled by: RB-MKT-003 (payout failure investigation)
+      # ------------------------------------------------------------------
+      - alert: ConnectWebhookFailureRate
+        expr: |
+          (
+            rate(stripe_connect_webhook_events_total{status="error"}[15m])
+            /
+            (rate(stripe_connect_webhook_events_total[15m]) > 0)
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          tier: marketplace
+          component: stripe_connect
+        annotations:
+          summary: "Stripe Connect webhook failure rate >5%"
+          description: >
+            {{ $value | humanizePercentage }} of Stripe Connect webhook
+            deliveries are failing in the last 15 minutes. Check the
+            ``stripe_webhook_events`` table for ``processing_error``
+            details. Runbook: RB-MKT-003.
+
+      # ------------------------------------------------------------------
+      # ConnectOnboardingStuck
+      # Fires when ConnectAccounts have been stuck in the KYB pipeline
+      # for >48 hours. Mirrors the KYB review queue heuristic (Phase
+      # 271.5): details_submitted=True AND charges_enabled=False.
+      # Handled by: RB-MKT-001 (stripe connect onboarding failure)
+      # ------------------------------------------------------------------
+      - alert: ConnectOnboardingStuck
+        expr: |
+          connect_onboarding_stuck_accounts_total > 0
+        for: 10m
+        labels:
+          severity: warning
+          tier: marketplace
+          component: stripe_connect
+        annotations:
+          summary: >
+            {{ $value }} Connect account(s) stuck in KYB
+            pipeline >48 hours
+          description: >
+            One or more Connect accounts have details_submitted=True but
+            charges_enabled=False for >48 hours. Review the KYB queue at
+            /admin/connect/. Runbook: RB-MKT-001.
+
+      # ------------------------------------------------------------------
+      # ConnectWebhookTenantUnresolved
+      # Fires when >1 webhook event per minute cannot be resolved to a
+      # Hub tenant. Indicates stale metadata or missing ConnectAccount
+      # rows. Handled by: RB-MKT-003.
+      # ------------------------------------------------------------------
+      - alert: ConnectWebhookTenantUnresolved
+        expr: |
+          rate(connect_webhook_tenant_unresolved_total[10m]) > 0.016
+        for: 10m
+        labels:
+          severity: warning
+          tier: marketplace
+          component: stripe_connect
+        annotations:
+          summary: "Connect webhook tenant resolution failures"
+          description: >
+            Stripe Connect webhooks are arriving but cannot be matched to
+            a Hub tenant. Check event data metadata for tenant_id.
+            Runbook: RB-MKT-003.
+
+      # ------------------------------------------------------------------
+      # ConnectKYBStaleQueue
+      # Fires when the KYB review queue has >20 stuck accounts for
+      # >30 minutes. Indicates a systemic KYB issue (e.g. Stripe-side
+      # policy change or a platform integration bug). Handled by:
+      # RB-MKT-001.
+      # ------------------------------------------------------------------
+      - alert: ConnectKYBStaleQueue
+        expr: |
+          connect_kyb_review_queue_count > 20
+        for: 30m
+        labels:
+          severity: critical
+          tier: marketplace
+          component: stripe_connect
+        annotations:
+          summary: "KYB review queue has {{ $value }} stuck accounts"
+          description: >
+            The KYB review queue has grown beyond the 20-account
+            threshold. Systemic issue suspected — investigate Stripe
+            Dashboard for policy changes or connect webhook health.
+            Runbook: RB-MKT-001.

@@ -1,0 +1,102 @@
+"""
+Phase 200 — MVP_MODE: middleware blocks non-MVP /api/v1 prefixes; OpenAPI omits them.
+
+URLconf keeps all routes mounted so Django settings reloads (e.g.
+``@override_settings``) do not leave a stale, trimmed URLconf in sys.modules.
+"""
+
+from __future__ import annotations
+
+import pytest
+from django.test import Client, override_settings
+from rest_framework import status
+
+pytestmark = pytest.mark.mvp
+
+
+@pytest.fixture
+def api_client() -> Client:
+    return Client()
+
+
+@pytest.mark.django_db
+class TestMvpModeMiddlewareAndOpenAPI:
+    """Gated 404s via middleware; OpenAPI paths stripped when MVP_MODE is on."""
+
+    @override_settings(MVP_MODE=True)
+    def test_gated_paths_return_404(self, api_client: Client) -> None:
+        for path in (
+            "/api/v1/mesh/domains/",
+            "/api/v1/virtualization/datasets/",
+            "/api/v1/integrations/marketplace/connectors/",
+            "/api/v1/baas/api-keys/",
+            "/api/v1/ml/models/",
+            "/api/v1/ai/natural-language-search/",
+            "/api/v1/transformation/pipelines/",
+            "/api/v1/social/communities/",
+            "/api/v1/scheduled-ingestions/",
+            "/api/v1/scheduled-exports/",
+            "/api/v1/databricks/workspaces/",
+        ):
+            r = api_client.get(path)
+            assert r.status_code == status.HTTP_404_NOT_FOUND, path
+
+    @override_settings(MVP_MODE=True)
+    def test_mvp_core_paths_not_404(self, api_client: Client) -> None:
+        paths = [
+            "/api/v1/contracts/",
+            "/api/v1/assets/",
+            "/api/v1/marketplace/",
+            "/api/v1/webhooks/",
+        ]
+        # Phase 313 — the paid prefixes are not mounted in core-only mode.
+        import os
+
+        from hub.apps.manifest import _PAID_MODULES
+
+        if os.environ.get("HUB_CORE_ONLY") == "1":
+            paid_prefixes = {f"/api/v1/{module.split('.')[-1]}/" for module in _PAID_MODULES}
+            paths = [p for p in paths if p not in paid_prefixes]
+        for path in paths:
+            r = api_client.get(path)
+            assert r.status_code not in (
+                status.HTTP_404_NOT_FOUND,
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                status.HTTP_502_BAD_GATEWAY,
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+            ), f"{path} returned {r.status_code} (expected routable non-error)"
+
+    @override_settings(MVP_MODE=True)
+    def test_openapi_json_omits_gated_prefixes(self, api_client: Client) -> None:
+        r = api_client.get("/api/v1/openapi.json")
+        assert r.status_code == status.HTTP_200_OK
+        data = r.json()
+        paths = data.get("paths") or {}
+        keys = " ".join(paths.keys())
+        assert "mesh" not in keys.lower()
+        assert "/api/v1/ai/" not in keys
+        assert "social" not in keys.lower()
+        assert "scheduled-ingestion" not in keys.lower()
+        assert "scheduled-export" not in keys.lower()
+        assert "databricks" not in keys.lower()
+
+    @override_settings(MVP_MODE=False)
+    def test_mesh_reachable_when_mvp_off(self, api_client: Client) -> None:
+        r = api_client.get("/api/v1/mesh/domains/")
+        assert r.status_code not in (
+            status.HTTP_404_NOT_FOUND,
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+        ), f"mesh/domains returned {r.status_code} with MVP_MODE=False"
+
+
+class TestMvpModeHelpers:
+    """Pure helpers (no DB)."""
+
+    def test_openapi_path_detection(self) -> None:
+        from hub.apps.api.mvp_mode import openapi_path_is_mvp_gated
+
+        assert openapi_path_is_mvp_gated("/api/v1/mesh/domains/")
+        assert openapi_path_is_mvp_gated("/mesh/domains/")
+        assert openapi_path_is_mvp_gated("mesh/domains/")
+        assert not openapi_path_is_mvp_gated("/api/v1/contracts/")
+        assert not openapi_path_is_mvp_gated("/contracts/")

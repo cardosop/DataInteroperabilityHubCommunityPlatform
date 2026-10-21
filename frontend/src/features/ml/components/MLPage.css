@@ -1,0 +1,231 @@
+.ml-page {
+  padding: var(--spacing-lg);
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.ml-header {
+  margin-bottom: var(--spacing-lg);
+}
+
+.ml-header h1 {
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-semibold);
+  margin: 0 0 var(--spacing-sm) 0;
+}
+
+.subtitle {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-base);
+  margin: 0;
+}
+
+.ml-tabs {
+  display: flex;
+  gap: var(--spacing-sm);
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: var(--spacing-lg);
+}
+
+.ml-tab {
+  padding: var(--spacing-md) var(--spacing-lg);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+  transition: all 0.2s ease;
+}
+
+.ml-tab:hover {
+  color: var(--color-text-primary);
+  background: var(--color-background-secondary);
+}
+
+.ml-tab.active {
+  color: var(--color-primary);
+  border-bottom-color: var(--color-primary);
+  font-weight: var(--font-weight-semibold);
+}
+
+.ml-content {
+  min-height: 400px;
+}
+
+.section-header {
+  margin-bottom: var(--spacing-lg);
+}
+
+.section-header h2 {
+  margin: 0;
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-semibold);
+}
+
+.filters {
+  display: flex;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+  flex-wrap: wrap;
+}
+
+.filter-select {
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-md);
+  font-size: var(--font-size-base);
+}
+
+.models-list,
+.training-jobs-list,
+.inference-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  gap: var(--spacing-lg);
+}
+
+.model-card,
+.job-card,
+.deployment-card {
+  padding: var(--spacing-lg);
+  background: var(--color-background-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-md);
+  transition: all 0.2s ease;
+}
+
+.model-card {
+  cursor: pointer;
+}
+
+.model-card:hover {
+  border-color: var(--color-primary);
+  box-shadow: var(--shadow-md);
+}
+
+.model-header,
+.job-header,
+.deployment-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: var(--spacing-md);
+}
+
+.model-header h3,
+.job-header h3,
+.deployment-header h3 {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+}
+
+.status-badge {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--border-radius-md);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+}
+
+/* Badge text shades: 800/900-level tokens keep ≥4.5:1 contrast against the
+   *-light chip backgrounds in light mode (the 500-level tokens measure
+   ~1.5–3.3:1 and fail WCAG 2 AA when model rows render). */
+.status-badge.status-training,
+.status-badge.status-deploying {
+  background: var(--color-warning-light);
+  color: var(--color-warning-800);
+}
+
+.status-badge.status-trained,
+.status-badge.status-deployed {
+  background: var(--color-success-light);
+  color: var(--color-success-900);
+}
+
+.status-badge.status-failed,
+.status-badge.status-undeployed {
+  background: var(--color-error-light);
+  color: var(--color-error-900);
+}
+
+.status-badge.status-archived {
+  background: var(--color-background-primary);
+  color: var(--color-text-secondary);
+}
+
+.status-badge.status-pending {
+  background: var(--color-info-light);
+  color: var(--color-info);
+}
+
+.status-badge.status-running {
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+}
+
+.status-badge.status-completed {
+  background: var(--color-success-light);
+  color: var(--color-success-900);
+}
+
+.status-badge.status-cancelled {
+  background: var(--color-background-primary);
+  color: var(--color-text-secondary);
+}
+
+.model-meta,
+.job-meta,
+.deployment-meta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.model-id {
+  margin-top: var(--spacing-sm);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  font-family: monospace;
+}
+
+.job-error {
+  margin-top: var(--spacing-md);
+  padding: var(--spacing-sm);
+  background: var(--color-error-light);
+  color: var(--color-error-900);
+  border-radius: var(--border-radius-md);
+  font-size: var(--font-size-sm);
+}
+
+.deployment-meta a {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.deployment-meta a:hover {
+  text-decoration: underline;
+}
+
+/* Dark theme — the *-light chip backgrounds remap to dark tints, so the
+   800/900-level light-mode text shades above would be unreadable; restore
+   the light status tokens (remapped per [data-theme='dark'] in index.css). */
+[data-theme='dark'] .status-badge.status-training,
+[data-theme='dark'] .status-badge.status-deploying {
+  color: var(--color-warning);
+}
+
+[data-theme='dark'] .status-badge.status-trained,
+[data-theme='dark'] .status-badge.status-deployed,
+[data-theme='dark'] .status-badge.status-completed {
+  color: var(--color-success);
+}
+
+[data-theme='dark'] .status-badge.status-failed,
+[data-theme='dark'] .status-badge.status-undeployed,
+[data-theme='dark'] .job-error {
+  color: var(--color-error);
+}

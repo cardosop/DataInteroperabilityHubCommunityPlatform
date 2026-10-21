@@ -1,0 +1,71 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.1939842700958252
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-010-10db515a",
+      "journey_name": "Publish Asset with Usage-Based Pricing",
+      "persona": "Data Product Owner",
+      "status": "completed",
+      "start_time": 1769424978.4972236,
+      "end_time": 1769424978.691208,
+      "duration": 0.1939842700958252,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Select Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769424978.4972305,
+          "end_time": 1769424978.6797066,
+          "duration": 0.18247604370117188,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Configure Usage-Based Pricing",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769424978.6833546,
+          "end_time": 1769424978.6877084,
+          "duration": 0.004353761672973633,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "HttpResponseNotFound"
+          }
+        },
+        {
+          "step_name": "Create Listing",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769424978.6877158,
+          "end_time": 1769424978.6912038,
+          "duration": 0.0034880638122558594,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "6701a9ed-58cd-41d4-8029-020dc8695b43"
+      }
+    }
+  ],
+  "exported_at": "2026-01-26T10:56:18.691293"
+}

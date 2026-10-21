@@ -1,0 +1,69 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.019791126251220703
+  },
+  "journeys": [
+    {
+      "journey_id": "MPA-008-eae4ab8a",
+      "journey_name": "Configure Advanced Observability",
+      "persona": "Platform Admin",
+      "status": "completed",
+      "start_time": 1771325097.9610634,
+      "end_time": 1771325097.9808545,
+      "duration": 0.019791126251220703,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Note: Metrics Configuration Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771325097.9673443,
+          "end_time": 1771325097.9673507,
+          "duration": 6.4373016357421875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Alerts Configuration Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771325097.974153,
+          "end_time": 1771325097.9741602,
+          "duration": 7.152557373046875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Note: Dashboards Configuration Not Available",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771325097.980848,
+          "end_time": 1771325097.9808533,
+          "duration": 5.245208740234375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-17T10:44:57.980917"
+}

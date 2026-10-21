@@ -1,0 +1,109 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "ODPS-003-f0d2b11d",
+      "journey_name": "ODPS Export/Download Journey",
+      "persona": "Data Product Owner",
+      "status": "failed",
+      "start_time": 1768667625.2660291,
+      "end_time": 1768667632.1073203,
+      "duration": 6.841291189193726,
+      "completion_rate": 83.33333333333334,
+      "success_rate": 83.33333333333334,
+      "error_message": "string indices must be integers, not 'str'",
+      "error_type": "TypeError",
+      "steps": [
+        {
+          "step_name": "Create Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768667625.2660382,
+          "end_time": 1768667625.2796068,
+          "duration": 0.013568639755249023,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Create ODPS Contract",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768667625.2796671,
+          "end_time": 1768667632.0667481,
+          "duration": 6.787081003189087,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Export ODPS as JSON",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768667632.0667584,
+          "end_time": 1768667632.0804238,
+          "duration": 0.013665437698364258,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Export ODPS as YAML",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768667632.0804446,
+          "end_time": 1768667632.0938828,
+          "duration": 0.013438224792480469,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Download ODPS File (JSON)",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768667632.0938962,
+          "end_time": 1768667632.1072946,
+          "duration": 0.013398408889770508,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "HttpResponse"
+          }
+        },
+        {
+          "step_name": "Verify Export Content",
+          "status": "StepStatus.FAILED",
+          "start_time": 1768667632.1073053,
+          "end_time": 1768667632.1073172,
+          "duration": 1.1920928955078125e-05,
+          "error_message": "string indices must be integers, not 'str'",
+          "error_type": "TypeError",
+          "retry_count": 0,
+          "metadata": {
+            "args": "('{\\n  \"schema\": \"https://opendataproducts.org/schema/v4.1\",\\n  \"version\": \"4.1\",\\n  \"product\": {\\n    \"details\": {\\n      \"en\": {\\n        \"productID\": \"test-product-310c40cc\",\\n        \"name\": \"Test Product test-product-310c40cc\",\\n        \"description\": \"Test product for ODPS journey testing\",\\n        \"productVersion\": \"1.0.0\"\\n      }\\n    },\\n    \"marketplace\": {\\n      \"pricingPlans\": [\\n        {\\n          \"name\": \"Basic Plan\",\\n          \"price\": 9.99,\\n          \"planID\": \"basic\",\\n          \"currency\": \"USD\",\\n          \"billingPeriod\": \"monthly\"\\n        }\\n      ],\\n      \"accessMethods\": {\\n        \"api\": {\\n          \"type\": \"REST_API\",\\n          \"endpoint\": \"https://api.example.com/data\",\\n          \"protocol\": \"HTTPS\"\\n        }\\n      },\\n      \"paymentGateways\": {\\n        \"stripe\": {\\n          \"type\": \"STRIPE\",\\n          \"enabled\": true\\n        }\\n      }\\n    }\\n  }\\n}',)",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-01-17T16:33:52.107417"
+}

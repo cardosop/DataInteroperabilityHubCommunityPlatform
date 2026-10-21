@@ -1,0 +1,22 @@
+{
+  "schema": "https://opendataproducts.org/schema/v4.1",
+  "version": "4.1",
+  "product": {
+    "details": {
+      "fr": {
+        "productID": "multilingual-product-fr-v4.1",
+        "name": "Produit de données multilingue - Français",
+        "description": "Un exemple de produit de données ODPS 4.1 avec des détails uniquement en français. Ceci démontre la documentation de produit en une seule langue pour les marchés francophones."
+      }
+    },
+    "contract": {
+      "contractURL": "https://example.com/contracts/multilingual-product-fr"
+    },
+    "dataQuality": {
+      "qualityScore": 92,
+      "completeness": 0.95,
+      "accuracy": 0.94
+    }
+  }
+}
+

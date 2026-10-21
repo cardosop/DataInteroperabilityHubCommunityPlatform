@@ -1,0 +1,93 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "python",
+  "include-v-in-tag": true,
+  "packages": {
+    ".": {
+      "changelog-path": "CHANGELOG.md",
+      "release-type": "python",
+      "bump-minor-pre-major": true,
+      "bump-patch-for-minor-pre-major": true,
+      "version-file": "VERSION",
+      "extra-files": [
+        {
+          "type": "generic",
+          "path": "hub/__init__.py",
+          "pattern": "__version__ = \"[^\"]*\""
+        },
+        {
+          "type": "generic",
+          "path": "cli/datahub_cli/__init__.py",
+          "pattern": "__version__ = \"[^\"]*\""
+        },
+        {
+          "type": "generic",
+          "path": "sdk/python/datahub_interoperability/__init__.py",
+          "pattern": "__version__ = \"[^\"]*\""
+        },
+        {
+          "type": "json",
+          "path": "sdk/js/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "frontend/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "yaml",
+          "path": "helm/Chart.yaml",
+          "jsonpath": "$.appVersion"
+        }
+      ]
+    }
+  },
+  "changelog-sections": [
+    {
+      "type": "feat",
+      "section": "Features",
+      "hidden": false
+    },
+    {
+      "type": "fix",
+      "section": "Bug Fixes",
+      "hidden": false
+    },
+    {
+      "type": "perf",
+      "section": "Performance Improvements",
+      "hidden": false
+    },
+    {
+      "type": "refactor",
+      "section": "Code Refactoring",
+      "hidden": false
+    },
+    {
+      "type": "docs",
+      "section": "Documentation",
+      "hidden": false
+    },
+    {
+      "type": "test",
+      "section": "Tests",
+      "hidden": false
+    },
+    {
+      "type": "ci",
+      "section": "CI/CD",
+      "hidden": false
+    },
+    {
+      "type": "build",
+      "section": "Build System",
+      "hidden": false
+    },
+    {
+      "type": "chore",
+      "section": "Chores",
+      "hidden": false
+    }
+  ]
+}

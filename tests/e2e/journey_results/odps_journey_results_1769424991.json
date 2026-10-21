@@ -1,0 +1,43 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "ODPS-001-ROLLBACK-d206b72d",
+      "journey_name": "Product-First Flow - Rollback on Failure",
+      "persona": "Data Product Owner",
+      "status": "failed",
+      "start_time": 1769424991.9589195,
+      "end_time": 1769424991.983152,
+      "duration": 0.02423238754272461,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": "202 not found in [400, 500]",
+      "error_type": "AssertionError",
+      "steps": [
+        {
+          "step_name": "Attempt Product Creation with Invalid ODPS",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769424991.9589267,
+          "end_time": 1769424991.9831398,
+          "duration": 0.024213075637817383,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-01-26T10:56:31.985928"
+}

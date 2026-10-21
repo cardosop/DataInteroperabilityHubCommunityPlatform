@@ -1,0 +1,244 @@
+[tool.ruff]
+# MIRROR of .ruff.toml — .ruff.toml is AUTHORITATIVE (ruff's discovery
+# order prefers it), so this section is dead unless they match.
+# Change BOTH or neither (enforced by GATE-34 /
+# scripts/check_config_single_source.py).
+line-length = 100
+target-version = "py312"
+exclude = [
+    ".git",
+    ".venv",
+    "venv",
+    "__pycache__",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    "build",
+    "dist",
+    "migrations",
+    "node_modules",
+    "backups",
+    "cli/build",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "BLE", # flake8-blind-except (Phase T.1 — blind `except Exception` must not lint clean)
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+    "ARG", # flake8-unused-arguments
+    "SIM", # flake8-simplify
+    "TCH", # flake8-type-checking
+    "PIE", # flake8-pie
+    "PL",  # Pylint
+    "PT",  # flake8-pytest-style (Phase T.1 — pytest anti-patterns must not lint clean)
+    "TRY", # tryceratops
+    "RUF", # Ruff-specific rules
+]
+ignore = [
+    "E501",  # line too long (handled by ruff format)
+    "B008",  # do not perform function calls in argument defaults
+    "PLR0913", # too many arguments
+    "PLR2004", # magic value used in comparison
+    "TRY003", # avoid specifying long messages outside the exception class
+    "TRY002", # define own exceptions — same style philosophy as TRY003 (2026-09-29 cilint cleanup): this codebase raises builtins with message context; per-site custom exception classes are refactor-for-metric churn
+    "PLC0415", # lazy imports inside functions (Django pattern to avoid circular imports)
+    "E402",  # module-level imports after django.setup() (Django initialization pattern)
+    "PLR0912", # too many branches — W3.1 threshold calibration (2026-08-22): smooth heavy tail 13–32+, complexity heuristics are wrong for this codebase's service-layer methods; refactor-for-metric churn is high-risk
+    "PLR0915", # too many statements — W3.1 threshold calibration (same rationale as PLR0912)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["hub"]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]  # unused imports in __init__.py
+# Test trees (2026-09-28 cilint cleanup policy): PT009/PT027/PT012/PT013/PT021
+# fire on the unittest API inside Django TestCase subclasses where self.assert*
+# IS the framework idiom; ARG001/ARG002/ARG005 fire on pytest-injected fixture
+# args and override signatures. These are framework noise, not debt.
+"**/tests/**/*.py" = [
+    "PLR2004", "S101",  # allow magic numbers and asserts in tests
+    "PT009", "PT027", "PT012", "PT013", "PT021",
+    "ARG001", "ARG002", "ARG005",
+]
+# TransactionTestCase-based validator scripts living outside a tests/ tree.
+"scripts/validate_odps_final_checklist.py" = ["PT009", "PT027"]
+"scripts/verify_existing_functionality.py" = ["PT009", "PT027"]
+"scripts/test_django6_breaking_changes.py" = ["PT009", "PT027"]
+"hub/apps/**/migrations/*.py" = ["ALL"]  # ignore migrations
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+check_untyped_defs = true
+disallow_untyped_decorators = false
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+show_error_codes = true
+
+# Phase Q.1.1 mirror — keep in step with mypy.ini (change BOTH or neither).
+exclude = "^(hub/apps/contracts/schemas/odps|tests/fixtures/odps)/v[0-9]+\\.[0-9xX]+/|^docs/docs/|^frontend/|^sdk/|^[\\w.-]*venv[\\w.-]*/|^cli/build/|^services/|^infrastructure/staging/config-artifacts/"
+
+[[tool.mypy.overrides]]
+module = [
+    "django.*",
+    "rest_framework.*",
+    "drf_spectacular.*",
+    "django_rq.*",
+    "django_structlog.*",
+    "django_prometheus.*",
+    "strawberry.*",
+    "boto3.*",
+    "botocore.*",
+    "redis.*",
+    "rq.*",
+    "requests.*",
+    "psycopg2.*",
+    "faker.*",
+    "factory.*",
+    "freezegun.*",
+    "locust.*",
+    "pytest.*",
+    "pytest_django.*",
+    "coverage.*",
+    # Phase 312.9 mirror — runtime path conventions mypy cannot see
+    # (cli/ at sys.path[0] for the CLI test tree, sdk/ + services/
+    # excluded from the scan, standalone scripts/ modules, stub-less
+    # third-party packages). Keep in step with mypy.ini (GATE-34).
+    "datahub_cli.*",
+    "datahub_interoperability.*",
+    "connectors.*",
+    "services.*",
+    "tests.use_cases.*",
+    "tests._persona_provisioning",
+    "tests.pytest_mvp_skip",
+    "tests.fixtures.*",
+    "tests._env_skip",
+    "tests._django_bootstrap",
+    "tests._pytest_helpers",
+    "tests.performance.*",
+    "_persona_provisioning",
+    "check_access_request_order_kwarg",
+    "check_api_gateway_rules",
+    "check_assert_true_true",
+    "check_audit_bug_ledger",
+    "check_bandit_debt_ratchet",
+    "check_ci_arming",
+    "check_code_examples",
+    "check_config_single_source",
+    "check_core_boundary",
+    "check_core_e2e_selection",
+    "check_core_test_scope",
+    "check_docs_references",
+    "check_env_provisioning",
+    "check_go_nogo",
+    "check_lint_debt_ratchet",
+    "check_mvp_doc_boundary",
+    "check_mypy_debt_ratchet",
+    "check_openspec_plan_ids",
+    "check_paid_ready_registrations",
+    "check_postman_collections",
+    "check_skip_counter",
+    "check_skip_expiry",
+    "check_zero_assertion_tests",
+    "validate_openspec_change",
+    "verify_gate_falsifiability",
+    "test_check_core_boundary_guards",
+    "lint_tenant_context",
+    "extract_persona_journey_mapping",
+    "report_uc_journey_test_coverage",
+    "boundary_scope",
+    "vocabulary_mappings",
+    "deployment_sync",
+    "odps_query_builder",
+    "mapper",
+    "normalize",
+    "e2e_metrics",
+    "e2e_metrics_diff",
+    "lineage_e2e_cycle_report",
+    "generate_documentation_impact_report",
+    "audit_documentation_endpoints",
+    "dq_profile",
+    "hub_client",
+    "pyodbc",
+    "prefect.*",
+    "pact.*",
+    "opentelemetry.*",
+    "sqlalchemy",
+    "tomli",
+    "pyotp",
+    "pkg_resources",
+    "pika.*",
+    "kafka.*",
+    "nox",
+    "html2text",
+    "duckdb",
+    "azure.*",
+    "asyncpg",
+    "openapi_spec_validator.*",
+]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "hub.apps.*.migrations.*"
+ignore_errors = true
+
+
+# ---------------------------------------------------------------------------
+# Phase 228.F2.13 — mutmut configuration for the lineage validator.
+#
+# Mutmut runs are slow (~15 min on a 100-LOC module) and the validator
+# is the highest-value mutation target in F2: a pure-function module
+# whose mutants are deterministically detected by the property-based
+# test suite (test_lineage_validator.py).  We pin the targets and
+# the test runner so a CI nightly job (.github/workflows/mutmut-
+# lineage-validator.yml) can drive mutation testing without touching
+# the rest of the codebase.
+#
+# Run locally:
+#
+#     pip install mutmut
+#     mutmut run --paths-to-mutate=hub/apps/contracts/lineage_validator.py
+#     mutmut results
+#
+# Why pin the runner: ``mutmut`` defaults to discovering pytest
+# without django-setup.  Our validator imports nothing from Django,
+# but ``test_lineage_validator.py`` lives under ``hub/apps/`` whose
+# conftest does Django setup — slow on every mutant.  We re-target
+# tests-only at the module level so each mutant runs the 18-test
+# suite in isolation.
+# ---------------------------------------------------------------------------
+
+[tool.mutmut]
+# mutmut 2.x schema. Q.5.3 (2026-08-22) evaluated mutmut 3.x and REVERTED:
+# 3.x renames every key (source_paths / pytest_add_cli_args_test_selection,
+# no runner), runs pytest with cwd = the mutated file's directory, and its
+# stats collector fails against this repo's Django-boot pytest setup. The
+# workflows therefore pin ``mutmut<3`` — do not bump without re-running
+# the Q.5.3 evaluation first.
+paths_to_mutate = "hub/apps/contracts/lineage_validator.py"
+tests_dir = "hub/apps/contracts/tests"
+runner = "python -m pytest hub/apps/contracts/tests/test_lineage_validator.py -x -q --no-header"
+backup = false
+# Skip lines that aren't logic-bearing (docstrings, type-hint imports)
+# so mutmut doesn't waste cycles on no-op mutants.
+also_copy = []
+# Per-mutant timeout — the validator's worst-case run (the
+# hypothesis property test on a max-size DAG) finishes in <30s
+# even on a slow runner.
+runner_timeout = 60
+
+

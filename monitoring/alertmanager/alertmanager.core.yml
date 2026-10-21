@@ -1,0 +1,41 @@
+# Alertmanager configuration — CORE (OSS) variant (Phase P.8).
+#
+# The base docker-compose.yml mounts ./monitoring/alertmanager/
+# alertmanager.yml, which does NOT ship in the public tree; the core
+# overlay replaces that mount with this file (same mechanism as
+# traefik.core.yml). Production routing is intentionally ABSENT here:
+#
+# - The marketplace route (component: marketplace_integration) and the
+#   ODPS / asset-creation-auto-rollback routes match labels that only
+#   paid-layer or deploy-pipeline metrics carry. In the OSS tree no alert
+#   can match them, and their receivers reference env placeholders that no
+#   OSS pipeline substitutes — shipping them would be dead config at best
+#   and a delivery failure at worst.
+# - The single default-receiver declares NO delivery channel: nothing can
+#   mis-deliver when a rule has no data or an alert has no matching route
+#   (no-data-safe by construction).
+#
+# scripts/tests/test_monitoring_core_safety.py pins the placeholder
+# absence, the route→receiver references, and the no-delivery guarantee.
+
+global:
+  resolve_timeout: 5m
+
+# Templates for notifications
+templates:
+  - '/etc/alertmanager/templates/*.tmpl'
+
+# Route tree
+route:
+  receiver: 'default-receiver'
+  group_by: ['alertname', 'severity', 'service']
+  group_wait: 10s
+  group_interval: 10s
+  repeat_interval: 12h
+
+receivers:
+  - name: 'default-receiver'
+    # No-op receiver — the OSS core stack does not deliver notifications;
+    # operators can add webhook/email configs here for their own stacks.
+
+inhibit_rules: []

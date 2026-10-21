@@ -1,0 +1,31 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.02593231201171875
+  },
+  "journeys": [
+    {
+      "journey_id": "ODPS-001-ERRORS-84bedf96",
+      "journey_name": "Product-First Flow - Error Scenarios",
+      "persona": "Data Product Owner",
+      "status": "completed",
+      "start_time": 1772028075.7080576,
+      "end_time": 1772028075.73399,
+      "duration": 0.02593231201171875,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [],
+      "metadata": {
+        "error_scenarios_tested": 3
+      }
+    }
+  ],
+  "exported_at": "2026-02-25T14:01:15.734045"
+}

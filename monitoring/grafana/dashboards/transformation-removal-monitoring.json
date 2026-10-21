@@ -1,0 +1,229 @@
+{
+  "title": "Transformation Removal Monitoring",
+  "tags": [
+    "transformation",
+    "removal",
+    "monitoring"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 27,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Import Errors",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "increase(python_exceptions_total{exception_type=\"ModuleNotFoundError\",exception_message=~\".*transformation.*\"}[5m])",
+          "legendFormat": "Import Errors"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": 0,
+                "color": "green"
+              },
+              {
+                "value": 1,
+                "color": "yellow"
+              },
+              {
+                "value": 5,
+                "color": "red"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "404 Responses for Transformation Endpoints",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "rate(http_requests_total{path=~\"/api/v1/transformation/.*\",status=\"404\"}[5m])",
+          "legendFormat": "404 Rate"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "yaxes": [
+        {
+          "format": "reqps",
+          "label": "Requests/sec"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Database Query Errors",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "increase(database_query_errors_total{error_message=~\".*transformation.*|.*preview_results.*|.*wrangling.*\"}[5m])",
+          "legendFormat": "DB Errors"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": 0,
+                "color": "green"
+              },
+              {
+                "value": 1,
+                "color": "red"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "External Consumer Detection",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "rate(http_requests_total{path=~\"/api/v1/transformation/.*\",status!=\"404\"}[5m])",
+          "legendFormat": "Non-404 Requests"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": 0,
+                "color": "green"
+              },
+              {
+                "value": 0.01,
+                "color": "red"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 5,
+      "title": "Transformation Cache Keys",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "redis_keys_total{pattern=\"transformation:*\"}",
+          "legendFormat": "Cache Keys"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": 0,
+                "color": "green"
+              },
+              {
+                "value": 1,
+                "color": "yellow"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 6,
+      "title": "Migration Status",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "increase(django_migration_errors_total{migration_name=~\".*transformation.*|.*remove_transformation.*\"}[5m])",
+          "legendFormat": "Migration Errors"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": 0,
+                "color": "green"
+              },
+              {
+                "value": 1,
+                "color": "red"
+              }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

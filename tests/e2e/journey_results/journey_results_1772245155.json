@@ -1,0 +1,57 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DC-003-fc5c35a8",
+      "journey_name": "Download Purchased Data",
+      "persona": "Data Consumer / Buyer",
+      "status": "failed",
+      "start_time": 1772245154.9543746,
+      "end_time": 1772245155.0779648,
+      "duration": 0.12359023094177246,
+      "completion_rate": 50.0,
+      "success_rate": 50.0,
+      "error_message": "An error occurred in the current transaction. You can't execute queries until the end of the 'atomic' block.",
+      "error_type": "TransactionManagementError",
+      "steps": [
+        {
+          "step_name": "Provider Creates Asset with File",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772245154.9543831,
+          "end_time": 1772245155.0774615,
+          "duration": 0.1230783462524414,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "tuple"
+          }
+        },
+        {
+          "step_name": "Provider Creates Listing",
+          "status": "StepStatus.FAILED",
+          "start_time": 1772245155.0774705,
+          "end_time": 1772245155.0779614,
+          "duration": 0.0004909038543701172,
+          "error_message": "An error occurred in the current transaction. You can't execute queries until the end of the 'atomic' block.",
+          "error_type": "TransactionManagementError",
+          "retry_count": 0,
+          "metadata": {
+            "args": "('b3431d67-c334-454d-8718-426cd7a7eccb',)",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-28T02:19:15.078050"
+}

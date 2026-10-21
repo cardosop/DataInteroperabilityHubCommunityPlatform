@@ -1,0 +1,32 @@
+# =============================================================================
+# security.txt — RFC 9116
+#
+# Served at https://meshant.com/.well-known/security.txt
+# and https://stagingmeshant-internal.example.com/.well-known/security.txt
+#
+# Last updated: 2026-05-15
+# =============================================================================
+
+# ── How to report a security vulnerability ──────────────────────────────────
+# Prefer encrypted communication via the PGP key at the URL below.
+# Do NOT open public GitHub issues for security-sensitive findings.
+Contact: mailto:security@meshant.com
+Encryption: https://meshant.com/.well-known/security-pgp-key.asc
+
+# ── Security policy ────────────────────────────────────────────────────────
+Policy: https://meshant.com/legal/security-policy
+
+# ── Public acknowledgements / Hall of Fame ──────────────────────────────────
+Acknowledgments: https://meshant.com/security/hall-of-fame
+
+# ── Preferred languages ────────────────────────────────────────────────────
+Preferred-Languages: en
+
+# ── Canonical URL ──────────────────────────────────────────────────────────
+Canonical: https://meshant.com/.well-known/security.txt
+
+# ── Hiring ──────────────────────────────────────────────────────────────────
+Hiring: https://meshant.com/careers
+
+# ── Expiry (must be < 1 year per RFC 9116 §2.5.4) ──────────────────────────
+Expires: 2027-05-14T00:00:00Z

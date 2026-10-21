@@ -1,0 +1,63 @@
+# 277.B.116 — DORA lead-time alerts.
+#
+# Fires when lead time exceeds thresholds so the team can investigate
+# bottlenecks in the deploy pipeline before they degrade delivery speed.
+
+groups:
+  - name: dora_lead_time_alerts
+    rules:
+      - alert: DoraLeadTimeHighWarning
+        expr: dora_lead_time_seconds{environment="staging"} > 28800
+        for: 10m
+        labels:
+          severity: warning
+          priority: P3
+          team: platform-eng
+        annotations:
+          summary: >
+            Lead time for {{ $labels.environment }} is
+            {{ $value | humanizeDuration }} — exceeds 8-hour threshold.
+          description: >
+            Deploy from branch {{ $labels.branch }} to {{ $labels.environment }}
+            took {{ $value | humanizeDuration }} from first commit to deploy start.
+            Investigate whether the E2E suite, manual review, or CI queue is
+            responsible.
+          dashboard_url: "https://meshant-internal.example.com/d/engineering-health"
+          runbook_url: "https://meshant-internal.example.com/runbooks/deploy-hotfix"
+
+      - alert: DoraLeadTimeCritical
+        expr: dora_lead_time_seconds{environment="production"} > 86400
+        for: 5m
+        labels:
+          severity: critical
+          priority: P1
+          team: platform-eng
+        annotations:
+          summary: >
+            Lead time for {{ $labels.environment }} is
+            {{ $value | humanizeDuration }} — exceeds 24-hour critical threshold.
+          description: >
+            Production deploy from branch {{ $labels.branch }} took
+            {{ $value | humanizeDuration }} from first commit to deploy start.
+            This exceeds the 24-hour SLA. Investigate immediately:
+            - Is the E2E suite stalled?
+            - Is a manual approval step blocking?
+            - Is there an infrastructure provisioning delay?
+          dashboard_url: "https://meshant-internal.example.com/d/engineering-health"
+          runbook_url: "https://meshant-internal.example.com/runbooks/deploy-hotfix"
+
+      - alert: DoraNoRecentDeploy
+        expr: absent_over_time(dora_lead_time_seconds[48h])
+        for: 10m
+        labels:
+          severity: warning
+          priority: P2
+          team: platform-eng
+        annotations:
+          summary: >
+            No deploy recorded in the last 48 hours.
+          description: >
+            The dora_lead_time_seconds metric has not been pushed in 48 hours,
+            which means either no deploy has run or the metric push step failed.
+            Check the deploy pipeline status.
+          dashboard_url: "https://meshant-internal.example.com/d/engineering-health"

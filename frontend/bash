@@ -1,0 +1,14 @@
+Detected API at port 8001 (docker-compose.test)
+Frontend already running at http://localhost:5184
+Checking backend API availability at http://localhost:8001/api/v1...
+✅ Backend API health endpoint is available
+✅ Backend API is available and responding
+
+Running 4 tests using 3 workers
+
+[1A[2K[1/4] [setup-auth] › e2e/setup/auth-storage.spec.ts:49:3 › Auth storage setup › save authenticated session for route specs
+[1A[2K[setup-auth] › e2e/setup/auth-storage.spec.ts:49:3 › Auth storage setup › save authenticated session for route specs
+✅ Test user exists and can login
+
+[1A[2K✅ E2E subscription ensured
+

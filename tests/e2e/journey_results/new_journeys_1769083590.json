@@ -1,0 +1,71 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 23.868841648101807
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-010-6aa7a95f",
+      "journey_name": "Publish Asset with Usage-Based Pricing",
+      "persona": "Data Product Owner",
+      "status": "completed",
+      "start_time": 1769083566.9643185,
+      "end_time": 1769083590.8331602,
+      "duration": 23.868841648101807,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Select Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769083566.9643254,
+          "end_time": 1769083590.8121276,
+          "duration": 23.84780216217041,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Configure Usage-Based Pricing",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769083590.8164608,
+          "end_time": 1769083590.8280966,
+          "duration": 0.011635780334472656,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "HttpResponseNotFound"
+          }
+        },
+        {
+          "step_name": "Create Listing",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769083590.8281052,
+          "end_time": 1769083590.8331566,
+          "duration": 0.005051374435424805,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "a3ab8bf6-5f7f-426e-90f0-9ef68979bf20"
+      }
+    }
+  ],
+  "exported_at": "2026-01-22T12:06:30.833228"
+}

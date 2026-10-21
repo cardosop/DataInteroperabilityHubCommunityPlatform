@@ -1,0 +1,280 @@
+"""
+Spec Detection and Metadata Tracking
+
+Detects contract specification type (ODPS and ODCS) and tracks original spec metadata.
+"""
+
+from typing import Any
+
+from .models import OriginalSpecType
+from .odps_version_detection import detect_odps_version as detect_odps_version_from_data
+
+
+def detect_odps_version(contract_data: dict[str, Any]) -> str | None:
+    """
+    Detect ODPS version from contract data.
+
+    Uses the ODPS version detection module to extract version from:
+    1. Schema URL (primary)
+    2. Version field (fallback)
+
+    Args:
+        contract_data: Contract data dictionary
+
+    Returns:
+        ODPS version string (e.g., "4.1", "4.0", "3.x", "2.x", "1.x") or None if not ODPS
+    """
+    if not isinstance(contract_data, dict):
+        return None
+
+    # Use the ODPS version detection function
+    version = detect_odps_version_from_data(contract_data)
+
+    # Return None if version is "unknown" (not an ODPS contract)
+    if version == "unknown":
+        return None
+
+    return version
+
+
+def is_odps_contract(contract_data: dict[str, Any]) -> bool:
+    """
+    Check if contract data represents an ODPS contract.
+
+    Detection logic (priority order):
+    1. Bitol ODPS: kind: DataProduct + Bitol schema URL prefix
+    2. Pre-Bitol ODPS schema URLs (opendataproducts.org, schemas.opendataproducts.io)
+    3. Product field with details structure
+
+    Args:
+        contract_data: Contract data dictionary
+
+    Returns:
+        True if contract appears to be ODPS, False otherwise
+    """
+    if not isinstance(contract_data, dict):
+        return False
+
+    # 1. Bitol ODPS detection (highest priority — explicit discriminator)
+    #    kind: DataProduct + Bitol schema URL or Bitol apiVersion
+    from .odps_version_detection import _detect_bitol_odps_version
+
+    if _detect_bitol_odps_version(contract_data):
+        return True
+
+    # Check for schema field with ODPS indicators
+    schema_url = contract_data.get("schema")
+    if schema_url and isinstance(schema_url, str):
+        schema_lower = schema_url.lower()
+        # Check for pre-Bitol ODPS schema URL patterns
+        if "opendataproducts.org/schema" in schema_lower:
+            return True
+        if "schemas.opendataproducts.io/spec" in schema_lower:
+            return True
+        if "open-data-product" in schema_lower:
+            return True
+
+    # Check for product field (ODPS structure indicator)
+    # ODPS contracts have a 'product' field with details
+    if "product" in contract_data:
+        product = contract_data.get("product")
+        if isinstance(product, dict) and "details" in product:
+            # Check if it has ODPS-like structure
+            return True
+
+    # If contract has ODCS indicators (apiVersion and kind), it's definitely ODCS, not ODPS
+    # This prevents misclassification when ODCS contracts have version fields that
+    # could be interpreted as ODPS versions
+    if "apiVersion" in contract_data and "kind" in contract_data:
+        # Check it's not a Bitol DataProduct (already handled above)
+        if contract_data.get("kind") != "DataProduct":
+            return False
+        # kind=DataProduct without Bitol URL — still ODCS-like, not ODPS
+        return False
+
+    # ODCS-like structure without ODPS schema/product: has "schema" with "fields" (not schema URL)
+    # or "info" with "owners" - do not use version alone to classify as ODPS
+    if (
+        "schema" in contract_data
+        and isinstance(contract_data.get("schema"), dict)
+        and "fields" in contract_data["schema"]
+    ):
+        return False  # ODCS schema shape
+    if (
+        "info" in contract_data
+        and isinstance(contract_data.get("info"), dict)
+        and "owners" in contract_data["info"]
+    ):
+        return False  # ODCS info shape
+
+    # Try version detection only when we already have product (ODPS shape)
+    # Prevents ODCS contracts with "version": "1.0.0" from being misclassified as ODPS
+    if "product" in contract_data:
+        odps_version = detect_odps_version(contract_data)
+        if odps_version and odps_version != "unknown":
+            return True
+
+    return False
+
+
+def detect_spec_type(contract_data: dict[str, Any]) -> tuple[str, str]:
+    """
+    Detect contract specification type (ODPS or ODCS).
+
+    Detection logic (in order):
+    1. ODPS: Check for ODPS indicators (schema URL, product field)
+    2. ODCS: Has 'apiVersion' and 'kind' fields
+
+    ODPS detection is checked first because:
+    - ODPS contracts are more specific (marketplace-focused)
+    - ODPS has clear schema URL indicators
+    - Prevents misclassification of ODPS contracts as ODCS
+
+    Args:
+        contract_data: Contract data dictionary
+
+    Returns:
+        Tuple of (spec_type, spec_version)
+    """
+    if not isinstance(contract_data, dict):
+        return OriginalSpecType.ODCS, "3.0.2"
+
+    # Route ODPS detection before ODCS detection
+    # Check for ODPS first (more specific indicators)
+    if is_odps_contract(contract_data):
+        odps_version = detect_odps_version(contract_data)
+        if odps_version and odps_version != "unknown":
+            # Bitol ODPS versions are stored with "bitol-" prefix
+            # (e.g. "bitol-1.0.0") — keep as-is for DB storage.
+            # Both Bitol and pre-Bitol store original_spec_type="ODPS"
+            # and differentiate via original_spec_version prefix.
+            if odps_version.startswith("bitol-"):
+                return OriginalSpecType.ODPS, odps_version
+
+            # Normalize pre-Bitol version for storage
+            # For .x versions, use the latest known version in that series
+            if odps_version == "3.x":
+                spec_version = "3.9"  # Latest 3.x version
+            elif odps_version == "2.x":
+                spec_version = "2.9"  # Latest 2.x version
+            elif odps_version == "1.x":
+                spec_version = "1.9"  # Latest 1.x version
+            else:
+                spec_version = odps_version  # Exact (4.1, 4.0)
+
+            return OriginalSpecType.ODPS, spec_version
+        else:
+            # ODPS detected but version unknown - default to latest
+            return OriginalSpecType.ODPS, "4.1"
+
+    # Check for ODCS - has 'apiVersion' and 'kind' fields
+    if "apiVersion" in contract_data and "kind" in contract_data:
+        # Use detect_odcs_version to properly extract version (handles -preview suffix)
+        from .odcs_version_detection import detect_odcs_version
+
+        spec_version = detect_odcs_version(contract_data)
+
+        # Default to 3.0.2 if version detection failed
+        if not spec_version or spec_version == "unknown":
+            spec_version = "3.0.2"
+
+        return OriginalSpecType.ODCS, spec_version
+
+    # Default to ODCS if detection fails
+    return OriginalSpecType.ODCS, "3.0.2"
+
+
+def extract_original_spec_metadata(contract_data: dict[str, Any]) -> dict[str, Any]:
+    """
+    Extract original specification metadata from contract.
+
+    Args:
+        contract_data: Contract data dictionary
+
+    Returns:
+        Dictionary with original_spec metadata:
+        - type: spec type (ODCS)
+        - version: spec version
+        - conforms_to: conformance information (dct:conformsTo)
+    """
+    spec_type, spec_version = detect_spec_type(contract_data)
+
+    metadata = {
+        "type": spec_type,
+        "version": spec_version,
+    }
+
+    # Extract conformance information (dct:conformsTo)
+    conforms_to = extract_conformance_info(contract_data, spec_type)
+    if conforms_to:
+        metadata["conforms_to"] = conforms_to
+
+    return metadata
+
+
+def extract_conformance_info(
+    contract_data: dict[str, Any], spec_type: str
+) -> dict[str, Any] | None:
+    """
+    Extract spec conformance tracking information (dct:conformsTo).
+
+    Args:
+        contract_data: Contract data dictionary
+        spec_type: Detected spec type
+
+    Returns:
+        Conformance information dictionary or None
+    """
+    if not isinstance(contract_data, dict):
+        return None
+
+    # Check for dct:conformsTo field (Dublin Core Terms)
+    conforms_to = contract_data.get("dct:conformsTo") or contract_data.get("conformsTo")
+
+    if conforms_to:
+        return {
+            "uri": conforms_to if isinstance(conforms_to, str) else conforms_to.get("uri"),
+            "spec_type": spec_type,
+            "spec_version": detect_spec_type(contract_data)[1],
+        }
+
+    # For ODCS, check apiVersion as conformance indicator
+    if spec_type == OriginalSpecType.ODCS and "apiVersion" in contract_data:
+        api_version = contract_data.get("apiVersion")
+        return {
+            "uri": f"https://bitol-io.github.io/open-data-contract-standard/{api_version.split('/')[-1]}",
+            "spec_type": spec_type,
+            "spec_version": detect_spec_type(contract_data)[1],
+        }
+
+    return None
+
+
+def store_original_spec_metadata(
+    hub_contract: dict[str, Any], contract_data: dict[str, Any]
+) -> dict[str, Any]:
+    """
+    Store original specification metadata in HubContract.
+
+    Adds 'original_spec' section to HubContract with:
+    - type: Original spec type (ODCS)
+    - version: Original spec version
+    - conforms_to: Conformance information
+
+    Args:
+        hub_contract: HubContract dictionary
+        contract_data: Original contract data
+
+    Returns:
+        HubContract with original_spec metadata added
+    """
+    if not isinstance(hub_contract, dict):
+        hub_contract = {}
+
+    # Extract original spec metadata
+    original_metadata = extract_original_spec_metadata(contract_data)
+
+    # Add original_spec section to HubContract
+    hub_contract["original_spec"] = original_metadata
+
+    return hub_contract

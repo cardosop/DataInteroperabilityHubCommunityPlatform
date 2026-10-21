@@ -1,0 +1,7 @@
+Warehouse Connection Test Failed
+
+The connection test for {{ connection_name }} ({{ warehouse_type }}) has failed.
+
+Error: {{ error }}
+
+View Connection: {{ dashboard_url }}

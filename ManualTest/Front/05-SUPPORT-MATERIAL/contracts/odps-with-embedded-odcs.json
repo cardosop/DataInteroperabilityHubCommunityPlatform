@@ -1,0 +1,46 @@
+{
+  "schema": "https://opendataproducts.org/schema/v4.1",
+  "version": "4.1",
+  "product": {
+    "details": {
+      "en": {
+        "productID": "manual-test-product-first",
+        "name": "Manual Test Product (Product-First Flow)",
+        "description": "ODPS product with embedded ODCS contract for product-first flow testing."
+      }
+    },
+    "contract": {
+      "spec": {
+        "apiVersion": "odcs.io/v3.0.2",
+        "kind": "DataContract",
+        "id": "manual-test-embedded-odcs",
+        "name": "Embedded ODCS Contract",
+        "version": "1.0.0",
+        "schema": {
+          "fields": [
+            {"name": "id", "type": "string", "nullable": false},
+            {"name": "name", "type": "string", "nullable": true},
+            {"name": "amount", "type": "number", "nullable": true}
+          ]
+        },
+        "info": {
+          "owners": [{"name": "Data Product Owner", "email": "e2e_test@example.com"}],
+          "tags": ["manual-test", "product-first"]
+        }
+      }
+    },
+    "dataQuality": {
+      "qualityScore": 95,
+      "completeness": 0.98
+    },
+    "marketplace": {
+      "pricingPlans": [
+        {"planID": "basic", "name": "Basic Plan", "price": 9.99, "currency": "USD", "billingPeriod": "monthly"}
+      ],
+      "accessMethods": {
+        "api": {"endpoint": "https://api.example.com/v1/products/manual-test"},
+        "download": {"url": "https://download.example.com/manual-test.zip"}
+      }
+    }
+  }
+}

@@ -1,0 +1,207 @@
+{
+  "title": "ODPS Cache Performance",
+  "tags": [
+    "odps",
+    "cache",
+    "performance",
+    "task-6.2.5"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 16,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Cache Hit Rate",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(odps_ref_cache_hits_total[5m])) by (tenant_id) / (sum(rate(odps_ref_cache_hits_total[5m])) by (tenant_id) + sum(rate(odps_ref_cache_misses_total[5m])) by (tenant_id))",
+          "legendFormat": "{{tenant_id}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "percentunit",
+          "label": "Hit Rate",
+          "min": 0,
+          "max": 1
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "description": "Cache hit rate for external $ref resolutions by tenant"
+    },
+    {
+      "id": 2,
+      "title": "Cache Hits and Misses",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(odps_ref_cache_hits_total[5m])) by (tenant_id)",
+          "legendFormat": "{{tenant_id}} Hits",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(odps_ref_cache_misses_total[5m])) by (tenant_id)",
+          "legendFormat": "{{tenant_id}} Misses",
+          "refId": "B"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "reqps",
+          "label": "Operations/sec"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "description": "Cache hits and misses rate by tenant"
+    },
+    {
+      "id": 3,
+      "title": "Total Cache Operations",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(odps_ref_cache_hits_total[5m]) + rate(odps_ref_cache_misses_total[5m])) by (tenant_id)",
+          "legendFormat": "{{tenant_id}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "reqps",
+          "label": "Total Operations/sec"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "description": "Total cache operations (hits + misses) by tenant"
+    },
+    {
+      "id": 4,
+      "title": "Cache Hit Rate Trend",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(odps_ref_cache_hits_total[5m])) / (sum(rate(odps_ref_cache_hits_total[5m])) + sum(rate(odps_ref_cache_misses_total[5m])))",
+          "legendFormat": "Overall Hit Rate",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "percentunit",
+          "label": "Hit Rate",
+          "min": 0,
+          "max": 1
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "description": "Overall cache hit rate trend over time"
+    },
+    {
+      "id": 5,
+      "title": "Cache Performance Heatmap",
+      "type": "heatmap",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(odps_ref_cache_hits_total[5m])) by (tenant_id) / (sum(rate(odps_ref_cache_hits_total[5m])) by (tenant_id) + sum(rate(odps_ref_cache_misses_total[5m])) by (tenant_id))",
+          "format": "heatmap",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "short",
+          "label": "Tenant"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "description": "Heatmap showing cache hit rate by tenant"
+    },
+    {
+      "id": 6,
+      "title": "Cache Efficiency Gauge",
+      "type": "gauge",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(odps_ref_cache_hits_total[5m])) / (sum(rate(odps_ref_cache_hits_total[5m])) + sum(rate(odps_ref_cache_misses_total[5m])))",
+          "legendFormat": "Cache Hit Rate",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": 0,
+                "color": "red"
+              },
+              {
+                "value": 0.5,
+                "color": "yellow"
+              },
+              {
+                "value": 0.8,
+                "color": "green"
+              }
+            ]
+          },
+          "unit": "percentunit"
+        }
+      },
+      "description": "Overall cache efficiency gauge (target: >80%)"
+    }
+  ]
+}

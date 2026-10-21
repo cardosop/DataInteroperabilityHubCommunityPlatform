@@ -1,0 +1,228 @@
+{
+  "title": "ODPS Performance Targets",
+  "tags": [
+    "odps",
+    "performance",
+    "targets",
+    "sla",
+    "task-6.2.5"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 16,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "$ref Resolution Duration: Actual vs Target (Internal)",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(odps_ref_resolution_duration_seconds_bucket{ref_type=\"internal\"}[5m])) by (tenant_id, le))",
+          "legendFormat": "{{tenant_id}} Actual P95",
+          "refId": "A"
+        },
+        {
+          "expr": "0.010",
+          "legendFormat": "Target P95 (10ms)",
+          "refId": "B"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "s",
+          "label": "Duration (seconds)"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "description": "Internal $ref resolution P95 duration vs target (<10ms)"
+    },
+    {
+      "id": 2,
+      "title": "$ref Resolution Duration: Actual vs Target (Local)",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(odps_ref_resolution_duration_seconds_bucket{ref_type=\"local\"}[5m])) by (tenant_id, le))",
+          "legendFormat": "{{tenant_id}} Actual P95",
+          "refId": "A"
+        },
+        {
+          "expr": "0.050",
+          "legendFormat": "Target P95 (50ms)",
+          "refId": "B"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "s",
+          "label": "Duration (seconds)"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "description": "Local $ref resolution P95 duration vs target (<50ms)"
+    },
+    {
+      "id": 3,
+      "title": "$ref Resolution Duration: Actual vs Target (External)",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(odps_ref_resolution_duration_seconds_bucket{ref_type=\"external\"}[5m])) by (tenant_id, le))",
+          "legendFormat": "{{tenant_id}} Actual P95",
+          "refId": "A"
+        },
+        {
+          "expr": "5.0",
+          "legendFormat": "Target P95 (5s)",
+          "refId": "B"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "s",
+          "label": "Duration (seconds)"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "description": "External $ref resolution P95 duration vs target (<5s)"
+    },
+    {
+      "id": 4,
+      "title": "Performance Target Compliance",
+      "type": "gauge",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "targets": [
+        {
+          "expr": "(histogram_quantile(0.95, sum(rate(odps_ref_resolution_duration_seconds_bucket{ref_type=\"internal\"}[5m])) by (le)) < 0.010) * 0.33 + (histogram_quantile(0.95, sum(rate(odps_ref_resolution_duration_seconds_bucket{ref_type=\"local\"}[5m])) by (le)) < 0.050) * 0.33 + (histogram_quantile(0.95, sum(rate(odps_ref_resolution_duration_seconds_bucket{ref_type=\"external\"}[5m])) by (le)) < 5.0) * 0.34",
+          "legendFormat": "Compliance Score",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": 0,
+                "color": "red"
+              },
+              {
+                "value": 0.5,
+                "color": "yellow"
+              },
+              {
+                "value": 0.9,
+                "color": "green"
+              }
+            ]
+          },
+          "unit": "percentunit"
+        }
+      },
+      "description": "Overall performance target compliance score (weighted average)"
+    },
+    {
+      "id": 5,
+      "title": "Performance Targets Summary Table",
+      "type": "table",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(odps_ref_resolution_duration_seconds_bucket{ref_type=\"internal\"}[5m])) by (ref_type, le))",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(odps_ref_resolution_duration_seconds_bucket{ref_type=\"local\"}[5m])) by (ref_type, le))",
+          "format": "table",
+          "instant": true,
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(odps_ref_resolution_duration_seconds_bucket{ref_type=\"external\"}[5m])) by (ref_type, le))",
+          "format": "table",
+          "instant": true,
+          "refId": "C"
+        }
+      ],
+      "description": "Summary table showing actual P95 durations vs targets for all $ref types"
+    },
+    {
+      "id": 6,
+      "title": "Performance Target Violations",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(odps_ref_resolution_duration_seconds_bucket{ref_type=\"internal\"}[5m])) by (tenant_id, le)) > 0.010",
+          "legendFormat": "{{tenant_id}} Internal Violation",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(odps_ref_resolution_duration_seconds_bucket{ref_type=\"local\"}[5m])) by (tenant_id, le)) > 0.050",
+          "legendFormat": "{{tenant_id}} Local Violation",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(odps_ref_resolution_duration_seconds_bucket{ref_type=\"external\"}[5m])) by (tenant_id, le)) > 5.0",
+          "legendFormat": "{{tenant_id}} External Violation",
+          "refId": "C"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "short",
+          "label": "Violations"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "description": "Performance target violations by tenant and $ref type"
+    }
+  ]
+}

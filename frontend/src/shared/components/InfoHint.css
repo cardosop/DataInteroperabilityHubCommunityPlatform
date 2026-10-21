@@ -1,0 +1,25 @@
+.info-hint-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  margin: 0 0 0 0.25rem;
+  background: transparent;
+  border: none;
+  color: var(--color-neutral-500, #9e9e9e);
+  cursor: help;
+  line-height: 0;
+  vertical-align: middle;
+  border-radius: 9999px;
+  transition: color 0.15s ease;
+}
+
+.info-hint-trigger:hover,
+.info-hint-trigger:focus-visible {
+  color: var(--color-primary-600, #1e40af);
+  outline: none;
+}
+
+.info-hint-trigger:focus-visible {
+  box-shadow: 0 0 0 2px var(--color-primary-200, #bfdbfe);
+}

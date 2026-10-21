@@ -1,0 +1,324 @@
+/**
+ * File Service
+ * API client for file operations
+ */
+
+import { apiClient } from '../../../shared/api/client';
+import type { PaginatedResponse } from '../../../shared/types/api';
+import type {
+  File,
+  FileCompleteRequest,
+  FileInitRequest,
+  FileInitResponse,
+  FileScanStatus,
+  FileStorageQuota,
+} from '../../../shared/types/files';
+
+const FILES_BASE_PATH = 'files';
+
+/** Parse retry-after from 429 response (header or message); default 5s */
+function getRetryAfterMs(error: unknown): number {
+  const err = error as { response?: { headers?: { 'retry-after'?: string }; data?: { message?: string } } };
+  const header = err.response?.headers?.['retry-after'];
+  if (header) {
+    const sec = parseInt(header, 10);
+    if (!Number.isNaN(sec)) return Math.min(sec * 1000, 30000);
+  }
+  const msg = err.response?.data?.message ?? '';
+  const match = msg.match(/retry after (\d+) seconds?/i);
+  if (match) return (parseInt(match[1], 10) + 1) * 1000;
+  return 5000;
+}
+
+export const fileService = {
+  /**
+   * Initialize file upload (get presigned URL)
+   * Retries on 429 (rate limit) with delay from Retry-After header or error message
+   */
+  async initUpload(data: FileInitRequest): Promise<FileInitResponse> {
+    const maxRetries = 4;
+    let lastError: unknown;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const response = await apiClient
+          .getClient()
+          .post<FileInitResponse>(`${FILES_BASE_PATH}/init/`, data);
+        return response.data;
+      } catch (error) {
+        lastError = error;
+        const status = (error as { response?: { status?: number } })?.response?.status;
+        if (status === 429 && attempt < maxRetries) {
+          const delayMs = getRetryAfterMs(error);
+          await new Promise((r) => setTimeout(r, delayMs));
+          continue;
+        }
+        throw error;
+      }
+    }
+    throw lastError;
+  },
+
+  /**
+   * Upload file to S3 using presigned URL
+   */
+  async uploadToS3(
+    uploadUrl: string,
+    file: Blob,
+    onProgress?: (progress: number) => void
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      const startTime = Date.now();
+
+      xhr.upload.addEventListener('progress', (event) => {
+        if (event.lengthComputable && onProgress) {
+          const progress = (event.loaded / event.total) * 100;
+          onProgress(progress);
+        }
+      });
+
+      // Capture object-storage error bodies (S3/MinIO return XML with <Code>
+      // and <Message>) so failures surface a real diagnostic instead of a
+      // generic "Upload failed" string.
+      const summarizeBody = (): string => {
+        const body = (xhr.responseText || '').trim();
+        if (!body) return '';
+        const code = body.match(/<Code>([^<]+)<\/Code>/i)?.[1];
+        const msg = body.match(/<Message>([^<]+)<\/Message>/i)?.[1];
+        if (code || msg) return ` (${[code, msg].filter(Boolean).join(': ')})`;
+        return ` (${body.slice(0, 200)})`;
+      };
+
+      xhr.addEventListener('load', () => {
+        const duration = Date.now() - startTime;
+        if (xhr.status >= 200 && xhr.status < 300) {
+          console.log(`File upload completed in ${duration}ms`);
+          resolve();
+        } else {
+          const detail = summarizeBody();
+          console.error(`Upload failed with status ${xhr.status}${detail}`);
+          reject(new Error(`Upload failed with status ${xhr.status}${detail}`));
+        }
+      });
+
+      xhr.addEventListener('error', (e) => {
+        const duration = Date.now() - startTime;
+        // Network-layer failure: no HTTP status, but capture whatever the
+        // browser exposed (CORS preflight rejection, DNS failure, TLS error).
+        const detail = summarizeBody();
+        console.error(`Upload network error after ${duration}ms:`, e);
+        reject(
+          new Error(
+            `Upload failed: network error (no HTTP response from object store)${detail}`
+          )
+        );
+      });
+
+      xhr.addEventListener('abort', () => {
+        reject(new Error('Upload aborted'));
+      });
+
+      xhr.addEventListener('timeout', () => {
+        reject(new Error('Upload timeout'));
+      });
+
+      // Set timeout to 2 minutes for large files
+      xhr.timeout = 120000;
+
+      xhr.open('PUT', uploadUrl);
+      xhr.setRequestHeader(
+        'Content-Type',
+        (file as Blob & { type?: string }).type || 'application/octet-stream'
+      );
+      xhr.send(file);
+    });
+  },
+
+  /**
+   * Calculate SHA-256 hash of a file
+   */
+  async calculateFileHash(file: Blob): Promise<string> {
+    const arrayBuffer = await file.arrayBuffer();
+    const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+    return hashHex;
+  },
+
+  /**
+   * Complete file upload
+   * Retries on 429 (rate limit) with delay from Retry-After
+   */
+  async completeUpload(data: FileCompleteRequest): Promise<File> {
+    const maxRetries = 4;
+    let lastError: unknown;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const response = await apiClient
+          .getClient()
+          .post<File>(`${FILES_BASE_PATH}/${data.file_id}/complete/`, {
+            content_sha256: data.content_sha256,
+            parts: data.parts,
+          });
+        return response.data;
+      } catch (error) {
+        lastError = error;
+        const status = (error as { response?: { status?: number } })?.response?.status;
+        if (status === 429 && attempt < maxRetries) {
+          const delayMs = getRetryAfterMs(error);
+          await new Promise((r) => setTimeout(r, delayMs));
+          continue;
+        }
+        throw error;
+      }
+    }
+    throw lastError;
+  },
+
+  /**
+   * Upload file with progress tracking
+   * This is a convenience method that combines init, upload, and complete
+   */
+  async uploadFile(
+    file: Blob,
+    options: {
+      name?: string;
+      onProgress?: (progress: number) => void;
+    } = {}
+  ): Promise<File> {
+    const fileName = options.name || (file instanceof globalThis.File ? file.name : 'upload');
+    const fileSize = file.size;
+    const contentType = (file as Blob & { type?: string }).type || 'application/octet-stream';
+
+    // Step 1: Initialize upload
+    const initResponse = await this.initUpload({
+      name: fileName,
+      content_type: contentType,
+      size: fileSize,
+      upload_method: 'browser',
+    });
+
+    // Step 2: Calculate SHA-256 hash (before upload to avoid reading file twice)
+    const contentSha256 = await this.calculateFileHash(file);
+    console.log(`[FileService] Calculated SHA-256: ${contentSha256.substring(0, 16)}...`);
+
+    // Step 3: Upload to S3
+    await this.uploadToS3(initResponse.upload_url, file, options.onProgress);
+
+    // Step 4: Complete upload with hash
+    const completedFile = await this.completeUpload({
+      file_id: initResponse.file_id,
+      content_sha256: contentSha256,
+    });
+
+    return completedFile;
+  },
+
+  /**
+   * List files
+   * Supports search (name), ordering (name, created_at, updated_at) per LIST_API_PICKER_AUDIT.
+   */
+  async list(
+    filters: {
+      page?: number;
+      page_size?: number;
+      asset_id?: string;
+      dataset_id?: string;
+      search?: string;
+      ordering?: string;
+    } = {}
+  ): Promise<PaginatedResponse<File>> {
+    const params = new URLSearchParams();
+
+    if (filters.page) params.append('page', filters.page.toString());
+    if (filters.page_size) params.append('page_size', filters.page_size.toString());
+    if (filters.asset_id) params.append('asset_id', filters.asset_id);
+    if (filters.dataset_id) params.append('dataset_id', filters.dataset_id);
+    if (filters.search) params.append('search', filters.search);
+    if (filters.ordering) params.append('ordering', filters.ordering);
+
+    const url = params.toString()
+      ? `${FILES_BASE_PATH}/?${params.toString()}`
+      : `${FILES_BASE_PATH}/`;
+    const response = await apiClient
+      .getClient()
+      .get<PaginatedResponse<File> & { next?: string | null; previous?: string | null }>(url);
+    const data = response.data;
+    if (
+      typeof data.has_next !== 'boolean' &&
+      (data.next !== undefined || data.previous !== undefined)
+    ) {
+      return {
+        ...data,
+        has_next: !!data.next,
+        has_previous: !!data.previous,
+        next_page: data.next != null ? data.page + 1 : null,
+        previous_page: data.previous != null ? data.page - 1 : null,
+      } as PaginatedResponse<File>;
+    }
+    return data as PaginatedResponse<File>;
+  },
+
+  /**
+   * Get file by ID
+   */
+  async getById(id: string): Promise<File> {
+    const response = await apiClient.getClient().get<File>(`${FILES_BASE_PATH}/${id}/`);
+    return response.data;
+  },
+
+  /**
+   * Delete file
+   */
+  async delete(id: string): Promise<void> {
+    await apiClient.getClient().delete(`${FILES_BASE_PATH}/${id}/`);
+  },
+
+  /**
+   * Get download payload (presigned URL, filename, optional content SHA-256)
+   * TODO(backend): endpoint not yet implemented — GET /files/{id}/download-payload/
+   */
+  async getDownloadPayload(id: string): Promise<{ download_url: string; filename: string; content_sha256?: string | null }> {
+    const response = await apiClient.getClient().get<{ download_url: string; filename: string; content_sha256?: string | null }>(`${FILES_BASE_PATH}/${id}/download-payload/`);
+    return response.data;
+  },
+
+  /**
+   * Get scan status for a file
+   * TODO(backend): endpoint not yet implemented — GET /files/{id}/scan-status/
+   */
+  async getScanStatus(id: string): Promise<{ scan_status: FileScanStatus; scanned_at: string | null }> {
+    const response = await apiClient.getClient().get<{ scan_status: FileScanStatus; scanned_at: string | null }>(`${FILES_BASE_PATH}/${id}/scan-status/`);
+    return response.data;
+  },
+
+  /**
+   * Rename a file — the backend's dedicated rename action
+   * (``POST /files/{id}/rename/``, Phase 260.4.C): keeps the
+   * storage_path immutable, validates active-filename collisions per
+   * tenant, and emits FILE_RENAMED.
+   */
+  async rename(id: string, name: string): Promise<File> {
+    const response = await apiClient.getClient().post<File>(`${FILES_BASE_PATH}/${id}/rename/`, {
+      name,
+    });
+    return response.data;
+  },
+
+  /**
+   * Get storage quota for the current tenant
+   * TODO(backend): endpoint not yet implemented — GET /files/storage-quota/
+   */
+  async getStorageQuota(): Promise<FileStorageQuota> {
+    const response = await apiClient.getClient().get<FileStorageQuota>(`${FILES_BASE_PATH}/storage-quota/`);
+    return response.data;
+  },
+
+  /**
+   * Report a checksum mismatch (client-computed vs server-expected SHA-256)
+   * TODO(backend): endpoint not yet implemented — POST /files/{id}/report-checksum-mismatch/
+   */
+  async reportChecksumMismatch(id: string, actualSha256: string): Promise<void> {
+    await apiClient.getClient().post(`${FILES_BASE_PATH}/${id}/report-checksum-mismatch/`, { actual_sha256: actualSha256 });
+  },
+};

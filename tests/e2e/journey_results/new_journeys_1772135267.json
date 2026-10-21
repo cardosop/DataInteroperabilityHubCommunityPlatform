@@ -1,0 +1,82 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.017292261123657227
+  },
+  "journeys": [
+    {
+      "journey_id": "DEV-009-42c6ab1b",
+      "journey_name": "Integrate with Developer Portal",
+      "persona": "External Developer",
+      "status": "completed",
+      "start_time": 1772135267.9343407,
+      "end_time": 1772135267.951633,
+      "duration": 0.017292261123657227,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Access Developer Portal",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772135267.9397092,
+          "end_time": 1772135267.939715,
+          "duration": 5.7220458984375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "View API Documentation",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772135267.944303,
+          "end_time": 1772135267.9443064,
+          "duration": 3.337860107421875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Generate API Key",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772135267.9482195,
+          "end_time": 1772135267.9482229,
+          "duration": 3.337860107421875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Monitor API Usage",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772135267.9516282,
+          "end_time": 1772135267.9516315,
+          "duration": 3.337860107421875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-26T19:47:47.951707"
+}

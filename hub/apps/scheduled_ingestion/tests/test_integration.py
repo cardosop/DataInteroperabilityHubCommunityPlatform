@@ -1,0 +1,218 @@
+"""
+Integration tests for Scheduled Ingestion enhancements.
+
+No mocks: uses real InMemoryConnector and InMemoryDQClient injected into
+the processor.
+"""
+
+import uuid
+
+import pytest
+from django.test import TestCase
+from django.utils import timezone
+
+from hub.apps.scheduled_ingestion.incremental_state import IncrementalStateManager
+from hub.apps.scheduled_ingestion.ingestion import ScheduledIngestionProcessor
+from hub.apps.scheduled_ingestion.models import ScheduledIngestion
+from hub.apps.scheduled_ingestion.templates import (
+    IngestionTemplate,
+    IngestionTemplateManager,
+)
+from hub.apps.scheduled_ingestion.tests.connector_fakes import (
+    InMemoryConnector,
+    InMemoryConnectorFactory,
+)
+from hub.apps.scheduled_ingestion.tests.dq_fakes import InMemoryDQClient
+from hub.apps.tenants.models import Tenant
+from hub.apps.users.models import User, UserStatus
+
+pytestmark = pytest.mark.django_db(transaction=True)
+
+
+class IncrementalIngestionIntegrationTest(TestCase):
+    """Integration tests for incremental ingestion"""
+
+    def setUp(self):
+        """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
+        )
+
+        self.user = User.objects.create_user(
+            email=f"user-{uid}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
+        )
+
+        self.scheduled_ingestion = ScheduledIngestion.objects.create(
+            tenant=self.tenant,
+            name="Test Ingestion",
+            source_type="S3",
+            source_config={"bucket": "test-bucket"},
+            schedule_type="DAILY",
+            schedule_config={"time": "00:00"},
+            file_pattern=".*\\.csv",
+            created_by=self.user,
+        )
+
+    def test_incremental_ingestion_workflow(self):
+        """Test complete incremental ingestion workflow with real connector."""
+        # Use last_modified in the future so file2/file3 are not excluded by timestamp filtering
+        # (should_process_file skips files with file_timestamp <= last_processed_timestamp)
+        from datetime import timedelta
+
+        connector = InMemoryConnector(
+            files=["file1.csv", "file2.csv", "file3.csv"],
+            metadata={
+                "last_modified": timezone.now() + timedelta(hours=1),
+                "size": 1000,
+            },
+        )
+        factory = InMemoryConnectorFactory(connector)
+        state_manager = IncrementalStateManager(self.scheduled_ingestion)
+
+        state_manager.mark_file_processed("file1.csv", timezone.now(), "dataset-1")
+
+        assert state_manager.is_file_processed("file1.csv")
+        self.scheduled_ingestion.refresh_from_db()
+        assert self.scheduled_ingestion.last_processed_file == "file1.csv"
+
+        # Create processor after state update so it sees current ingestion_state (no stale cache)
+        processor = ScheduledIngestionProcessor(
+            self.scheduled_ingestion,
+            connector_factory=factory,
+        )
+        filtered_files = processor._filter_files(["file1.csv", "file2.csv", "file3.csv"])
+        assert "file1.csv" not in filtered_files
+        assert "file2.csv" in filtered_files
+        assert "file3.csv" in filtered_files
+
+
+class DQValidationIntegrationTest(TestCase):
+    """Integration tests for DQ validation during ingestion"""
+
+    def setUp(self):
+        """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
+        )
+
+        self.user = User.objects.create_user(
+            email=f"user-{uid}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
+        )
+
+        self.scheduled_ingestion = ScheduledIngestion.objects.create(
+            tenant=self.tenant,
+            name="Test Ingestion",
+            source_type="S3",
+            source_config={
+                "bucket": "test-bucket",
+                "enable_dq_validation": True,
+                "dq_profile_key": "intake_basic_gx",
+                "dq_strict_mode": True,
+                "min_quality_score": 0.8,
+            },
+            schedule_type="DAILY",
+            schedule_config={"time": "00:00"},
+            file_pattern=".*\\.csv",
+            created_by=self.user,
+        )
+
+    def test_dq_validation_during_ingestion(self):
+        """Test DQ validation integrated with ingestion (real connector + DQ client)."""
+        connector = InMemoryConnector(
+            files=["file1.csv"],
+            metadata={"last_modified": timezone.now(), "size": 1000},
+        )
+        factory = InMemoryConnectorFactory(connector)
+        dq_client = InMemoryDQClient(
+            health_ok=True,
+            run_dq_result={
+                "overall_status": "PASS",
+                "quality_score": 0.95,
+                "checks": [],
+                "execution_time_seconds": 2.5,
+            },
+        )
+        processor = ScheduledIngestionProcessor(
+            self.scheduled_ingestion,
+            connector_factory=factory,
+            dq_client=dq_client,
+        )
+        assert processor._should_run_dq_check()
+
+
+class TemplateIntegrationTest(TestCase):
+    """Integration tests for ingestion templates"""
+
+    def setUp(self):
+        """Set up test fixtures"""
+        uid = uuid.uuid4().hex[:8]
+        self.tenant = Tenant.objects.create(
+            name=f"Test Tenant {uid}",
+            slug=f"test-tenant-{uid}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
+        )
+
+        self.user = User.objects.create_user(
+            email=f"user-{uid}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
+        )
+
+        self.template = IngestionTemplate.objects.create(
+            name="S3 Daily Files",
+            template_type="S3_DAILY_FILES",
+            is_system_template=True,
+            source_type="S3",
+            source_config_template={"bucket_name": "{bucket_name}", "prefix": "{prefix}"},
+            schedule_type="DAILY",
+            schedule_config_template={"time": "{time}"},
+            file_pattern_template="{file_pattern}",
+            ingestion_config_template={
+                "enable_dq_validation": True,
+                "dq_profile_key": "intake_basic_gx",
+            },
+        )
+
+    def test_template_to_ingestion_workflow(self):
+        """Test complete workflow from template to scheduled ingestion"""
+        template_variables = {
+            "bucket_name": "my-bucket",
+            "prefix": "data/",
+            "time": "00:00",
+            "file_pattern": ".*\\.csv",
+        }
+
+        scheduled_ingestion = IngestionTemplateManager.create_from_template(
+            template=self.template,
+            name="My Ingestion",
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+            template_variables=template_variables,
+        )
+
+        # Verify scheduled ingestion was created
+        assert scheduled_ingestion.tenant == self.tenant
+
+        # Verify configuration was resolved
+        assert scheduled_ingestion.get_source_config()["bucket_name"] == "my-bucket"
+        assert scheduled_ingestion.get_source_config()["prefix"] == "data/"
+
+        # Verify DQ configuration from template
+        assert scheduled_ingestion.ingestion_state["enable_dq_validation"]
+        assert scheduled_ingestion.ingestion_state["dq_profile_key"] == "intake_basic_gx"

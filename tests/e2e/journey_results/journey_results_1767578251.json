@@ -1,0 +1,44 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DE-005-fe28288b",
+      "journey_name": "CI/CD Integration",
+      "persona": "Data Engineer / Contract Author",
+      "status": "failed",
+      "start_time": 1767578251.5392196,
+      "end_time": 1767578251.5527463,
+      "duration": 0.013526678085327148,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": "Failed to create contract: 400 - {'error': 'Contract normalization failed', 'code': 'VALIDATION_ERROR', 'details': {'code': 'NORMALIZATION_FAILED', 'errors': [\"Contract must have a 'name' field\", 'info -> name: Value error, info.name must be provided']}}",
+      "error_type": "Exception",
+      "steps": [
+        {
+          "step_name": "Create Contract",
+          "status": "StepStatus.FAILED",
+          "start_time": 1767578251.5392249,
+          "end_time": 1767578251.552741,
+          "duration": 0.01351618766784668,
+          "error_message": "Failed to create contract: 400 - {'error': 'Contract normalization failed', 'code': 'VALIDATION_ERROR', 'details': {'code': 'NORMALIZATION_FAILED', 'errors': [\"Contract must have a 'name' field\", 'info -> name: Value error, info.name must be provided']}}",
+          "error_type": "Exception",
+          "retry_count": 0,
+          "metadata": {
+            "args": "()",
+            "kwargs": "{'asset_id': None, 'original_raw': '{\"id\": \"test\", \"hub_contract_version\": \"1.0.0\", \"info\": {\"title\": \"Test\"}, \"schema\": {\"fields\": [{\"name\": \"id\", \"type\": \"string\"}]}}'}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-01-05T01:57:31.552826"
+}

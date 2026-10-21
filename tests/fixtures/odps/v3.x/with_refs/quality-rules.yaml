@@ -1,0 +1,9 @@
+# Quality Rules Definition
+# This file is referenced by local $ref in ODPS files
+
+qualityRules:
+  - ruleID: completeness-check
+    description: Ensures all required fields are present
+    threshold: 0.95
+    severity: error
+

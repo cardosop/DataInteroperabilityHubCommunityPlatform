@@ -1,0 +1,54 @@
+# 280.C.3.6 — PR label automation based on changed files
+
+# Language labels
+python:
+  - changed-files:
+    - any-glob-to-any-file: ['**.py', 'requirements*.txt', 'pyproject.toml', 'pytest.ini']
+
+javascript:
+  - changed-files:
+    - any-glob-to-any-file: ['frontend/src/**', 'frontend/package*.json', 'sdk/js/**']
+
+typescript:
+  - changed-files:
+    - any-glob-to-any-file: ['frontend/src/**/*.ts', 'frontend/src/**/*.tsx', 'sdk/js/src/**']
+
+# Domain labels
+frontend:
+  - changed-files:
+    - any-glob-to-any-file: ['frontend/**']
+
+cli:
+  - changed-files:
+    - any-glob-to-any-file: ['cli/**']
+
+sdk:
+  - changed-files:
+    - any-glob-to-any-file: ['sdk/**']
+
+backend:
+  - changed-files:
+    - any-glob-to-any-file: ['hub/**', 'core/**', 'services/**']
+
+infrastructure:
+  - changed-files:
+    - any-glob-to-any-file: ['infrastructure/**', 'helm/**', 'k8s/**', 'docker-compose*.yml', 'Dockerfile*']
+
+docs:
+  - changed-files:
+    - any-glob-to-any-file: ['docs/**', '**/*.md', 'CHANGELOG.md']
+
+ci:
+  - changed-files:
+    - any-glob-to-any-file: ['.github/**']
+
+security:
+  - changed-files:
+    - any-glob-to-any-file: ['**/security/**', '**/auth/**', '**/*security*', '**/*auth*']
+
+# Size labels (applied by pascalgn/size-label-action in CI)
+# size/XS: <10 lines changed
+# size/S: 10-29 lines
+# size/M: 30-99 lines
+# size/L: 100-499 lines
+# size/XL: 500+ lines

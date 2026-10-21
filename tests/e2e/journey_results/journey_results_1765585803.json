@@ -1,0 +1,84 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.002496480941772461
+  },
+  "journeys": [
+    {
+      "journey_id": "TA-003-cddbf9a3",
+      "journey_name": "Monitor Tenant Usage",
+      "persona": "Tenant Admin",
+      "status": "completed",
+      "start_time": 1765585803.9896464,
+      "end_time": 1765585803.992143,
+      "duration": 0.002496480941772461,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Retrieve Usage Metrics",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765585803.9896533,
+          "end_time": 1765585803.9921284,
+          "duration": 0.0024750232696533203,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Analyze Usage Trends",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765585803.9921322,
+          "end_time": 1765585803.9921355,
+          "duration": 3.337860107421875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Check Resource Limits",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765585803.9921372,
+          "end_time": 1765585803.992139,
+          "duration": 1.9073486328125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Generate Usage Report",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765585803.9921405,
+          "end_time": 1765585803.9921417,
+          "duration": 1.1920928955078125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        }
+      ],
+      "metadata": {
+        "report_id": null
+      }
+    }
+  ],
+  "exported_at": "2025-12-13T00:30:03.992212"
+}

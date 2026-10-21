@@ -1,0 +1,456 @@
+"""
+Cache Warming Utilities
+
+Utilities for warming cache with frequently accessed resources.
+"""
+
+from typing import Any
+
+import structlog
+
+logger = structlog.get_logger(__name__)
+
+# Import caching modules
+try:
+    from hub.apps.assets.caching import (
+        cache_asset_list,
+        hash_filters,
+    )
+
+    ASSETS_AVAILABLE = True
+except ImportError:
+    ASSETS_AVAILABLE = False
+    logger.warning("Asset caching module not available")
+
+try:
+    from hub.apps.contracts.caching import (
+        cache_query_result,
+    )
+    from hub.apps.contracts.models import Contract
+
+    CONTRACTS_AVAILABLE = True
+except ImportError:
+    CONTRACTS_AVAILABLE = False
+    logger.warning("Contract caching module not available")
+
+try:
+    from hub.apps.marketplace.caching import (
+        cache_marketplace_list,
+    )
+    from hub.apps.marketplace.caching import (
+        hash_filters as marketplace_hash_filters,
+    )
+    from hub.apps.marketplace.models import Listing
+
+    MARKETPLACE_AVAILABLE = True
+except (ImportError, RuntimeError):
+    # Core-only mode: the marketplace app is not installed. ImportError
+    # covers an absent module; RuntimeError covers a models module whose
+    # app is missing from INSTALLED_APPS (Django raises at model-class
+    # definition). Both mean "marketplace caching unavailable" here.
+    MARKETPLACE_AVAILABLE = False
+    logger.warning("Marketplace caching module not available")
+
+
+def warm_asset_list_cache(
+    tenant_id: str, common_filters: list[dict[str, Any]] | None = None
+) -> int:
+    """
+    Warm asset list cache for a tenant.
+
+    Args:
+        tenant_id: Tenant UUID string
+        common_filters: List of common filter combinations to warm (default: empty filters)
+
+    Returns:
+        Number of cache entries warmed
+    """
+    if not ASSETS_AVAILABLE:
+        logger.warning("Asset caching not available, skipping asset list cache warming")
+        return 0
+
+    warmed_count = 0
+
+    # Default filters to warm (most common queries)
+    if common_filters is None:
+        common_filters = [
+            {},  # No filters (all assets)
+            {"status": "ACTIVE"},  # Active assets
+            {"status": "DRAFT"},  # Draft assets
+        ]
+
+    try:
+        from django.test import RequestFactory
+
+        from hub.apps.assets.models import Asset
+        from hub.apps.assets.serializers import AssetSerializer
+
+        # Create a mock request for serialization
+        factory = RequestFactory()
+        mock_request = factory.get("/api/v1/assets/")
+
+        for filters in common_filters:
+            try:
+                # Build queryset with filters
+                queryset = Asset.objects.filter(tenant_id=tenant_id)
+
+                # Apply filters
+                if "status" in filters:
+                    queryset = queryset.filter(status=filters["status"])
+                if "domain" in filters:
+                    queryset = queryset.filter(domain=filters["domain"])
+
+                # Get results (limit to first page for warming)
+                assets = queryset[:50]  # Warm first page
+
+                # Serialize results
+                serializer = AssetSerializer(assets, many=True, context={"request": mock_request})
+                results = serializer.data
+                total_count = queryset.count()
+
+                # Generate filters hash
+                filters_hash = hash_filters(filters)
+
+                # Cache the results
+                cache_asset_list(tenant_id, filters_hash, results, total_count)
+                warmed_count += 1
+
+                logger.debug(
+                    "asset_list_cache_warmed",
+                    tenant_id=tenant_id,
+                    filters=filters,
+                    filters_hash=filters_hash,
+                    result_count=len(results),
+                    total_count=total_count,
+                )
+            except Exception as e:
+                logger.warning(
+                    "asset_list_cache_warming_error",
+                    tenant_id=tenant_id,
+                    filters=filters,
+                    error=str(e),
+                    message="Failed to warm asset list cache for filters",
+                )
+
+    except Exception as e:
+        logger.exception(
+            "asset_list_cache_warming_failed",
+            tenant_id=tenant_id,
+            error=str(e),
+            message="Failed to warm asset list cache",
+        )
+
+    return warmed_count
+
+
+def warm_contract_list_cache(
+    tenant_id: str, common_filters: list[dict[str, Any]] | None = None
+) -> int:
+    """
+    Warm contract list cache for a tenant.
+
+    Args:
+        tenant_id: Tenant UUID string
+        common_filters: List of common filter combinations to warm (default: empty filters)
+
+    Returns:
+        Number of cache entries warmed
+    """
+    if not CONTRACTS_AVAILABLE:
+        logger.warning("Contract caching not available, skipping contract list cache warming")
+        return 0
+
+    warmed_count = 0
+
+    # Default filters to warm (most common queries)
+    if common_filters is None:
+        common_filters = [
+            {},  # No filters (all contracts)
+            {"status": "ACTIVE"},  # Active contracts
+            {"status": "VALID"},  # Valid contracts
+        ]
+
+    try:
+        from django.test import RequestFactory
+
+        from hub.apps.contracts.serializers import ContractSerializer
+
+        # Create a mock request for serialization
+        factory = RequestFactory()
+        mock_request = factory.get("/api/v1/contracts/")
+
+        for filters in common_filters:
+            try:
+                # Build queryset with filters
+                queryset = Contract.objects.filter(tenant_id=tenant_id)
+
+                # Apply filters
+                if "status" in filters:
+                    queryset = queryset.filter(status=filters["status"])
+                if "validation_status" in filters:
+                    queryset = queryset.filter(validation_status=filters["validation_status"])
+
+                # Get results (limit to first page for warming)
+                contracts = queryset[:50]  # Warm first page
+
+                # Serialize results
+                serializer = ContractSerializer(
+                    contracts, many=True, context={"request": mock_request}
+                )
+                results = serializer.data
+                total_count = queryset.count()
+
+                # Cache the results
+                cache_query_result(filters, tenant_id, results, total_count)
+                warmed_count += 1
+
+                logger.debug(
+                    "contract_list_cache_warmed",
+                    tenant_id=tenant_id,
+                    filters=filters,
+                    result_count=len(results),
+                    total_count=total_count,
+                )
+            except Exception as e:
+                logger.warning(
+                    "contract_list_cache_warming_error",
+                    tenant_id=tenant_id,
+                    filters=filters,
+                    error=str(e),
+                    message="Failed to warm contract list cache for filters",
+                )
+
+    except Exception as e:
+        logger.exception(
+            "contract_list_cache_warming_failed",
+            tenant_id=tenant_id,
+            error=str(e),
+            message="Failed to warm contract list cache",
+        )
+
+    return warmed_count
+
+
+def warm_marketplace_listings_cache(common_filters: list[dict[str, Any]] | None = None) -> int:
+    """
+    Warm marketplace listings cache.
+
+    Args:
+        common_filters: List of common filter combinations to warm (default: empty filters)
+
+    Returns:
+        Number of cache entries warmed
+    """
+    if not MARKETPLACE_AVAILABLE:
+        logger.warning("Marketplace caching not available, skipping marketplace cache warming")
+        return 0
+
+    warmed_count = 0
+
+    # Default filters to warm (most common queries)
+    if common_filters is None:
+        common_filters = [
+            {},  # No filters (all published listings)
+            {"category": "data"},  # Data listings
+            {"pricing_model": "FREE"},  # Free listings
+        ]
+
+    try:
+        from django.test import RequestFactory
+
+        from hub.apps.marketplace.models import ListingStatus
+        from hub.apps.marketplace.serializers import ListingSerializer
+
+        # Create a mock request for serialization
+        factory = RequestFactory()
+        mock_request = factory.get("/api/v1/marketplace/listings/")
+
+        for filters in common_filters:
+            try:
+                # Build queryset with filters (only published listings)
+                queryset = Listing.objects.filter(status=ListingStatus.PUBLISHED)
+
+                # Apply filters
+                if "category" in filters:
+                    queryset = queryset.filter(asset__domain=filters["category"])
+                if "pricing_model" in filters:
+                    queryset = queryset.filter(pricing_model=filters["pricing_model"])
+
+                # Match the view's payload shape: tenant/asset for the
+                # trust-signal fields + the same subquery annotations so
+                # the warmed cache is byte-consistent with a cold fill.
+                from hub.apps.marketplace.views import (
+                    _annotate_trust_signal_fields,
+                )
+
+                queryset = _annotate_trust_signal_fields(queryset.select_related("tenant", "asset"))
+
+                # Get results (limit to first page for warming)
+                listings = queryset[:50]  # Warm first page
+
+                # Serialize results
+                serializer = ListingSerializer(
+                    listings, many=True, context={"request": mock_request}
+                )
+                results = serializer.data
+                total_count = queryset.count()
+
+                # Generate filters hash
+                filters_hash = marketplace_hash_filters(filters)
+
+                # Cache the results
+                cache_marketplace_list(filters_hash, results, total_count)
+                warmed_count += 1
+
+                logger.debug(
+                    "marketplace_listings_cache_warmed",
+                    filters=filters,
+                    filters_hash=filters_hash,
+                    result_count=len(results),
+                    total_count=total_count,
+                )
+            except Exception as e:
+                logger.warning(
+                    "marketplace_listings_cache_warming_error",
+                    filters=filters,
+                    error=str(e),
+                    message="Failed to warm marketplace listings cache for filters",
+                )
+
+    except Exception as e:
+        logger.exception(
+            "marketplace_listings_cache_warming_failed",
+            error=str(e),
+            message="Failed to warm marketplace listings cache",
+        )
+
+    return warmed_count
+
+
+def warm_tenant_cache(tenant_id: str) -> dict[str, int]:
+    """
+    Warm all caches for a tenant.
+
+    Args:
+        tenant_id: Tenant UUID string
+
+    Returns:
+        Dictionary with counts of warmed cache entries per resource type
+    """
+    results = {
+        "assets": 0,
+        "contracts": 0,
+        "marketplace": 0,
+    }
+
+    logger.info(
+        "cache_warming_started", tenant_id=tenant_id, message="Starting cache warming for tenant"
+    )
+
+    # Warm asset list cache
+    try:
+        results["assets"] = warm_asset_list_cache(tenant_id)
+    except Exception as e:
+        logger.exception(
+            "cache_warming_asset_error",
+            tenant_id=tenant_id,
+            error=str(e),
+            message="Failed to warm asset cache",
+        )
+
+    # Warm contract list cache
+    try:
+        results["contracts"] = warm_contract_list_cache(tenant_id)
+    except Exception as e:
+        logger.exception(
+            "cache_warming_contract_error",
+            tenant_id=tenant_id,
+            error=str(e),
+            message="Failed to warm contract cache",
+        )
+
+    # Warm marketplace listings (not tenant-specific)
+    try:
+        results["marketplace"] = warm_marketplace_listings_cache()
+    except Exception as e:
+        logger.exception(
+            "cache_warming_marketplace_error",
+            tenant_id=tenant_id,
+            error=str(e),
+            message="Failed to warm marketplace cache",
+        )
+
+    logger.info(
+        "cache_warming_completed",
+        tenant_id=tenant_id,
+        assets_warmed=results.get("assets", 0),
+        contracts_warmed=results.get("contracts", 0),
+        marketplace_warmed=results.get("marketplace", 0),
+        message="Cache warming completed for tenant",
+    )
+
+    return results
+
+
+def warm_all_tenants_cache(*, max_tenants: int | None = None) -> dict[str, Any]:
+    """
+    Warm caches for all tenants.
+
+    Args:
+        max_tenants: Optional cap on the number of tenants to warm
+                     (useful for testing or very large deployments).
+
+    Returns:
+        Dictionary with summary of cache warming results
+    """
+    from hub.apps.tenants.models import Tenant
+
+    logger.info(
+        "cache_warming_all_tenants_started", message="Starting cache warming for all tenants"
+    )
+
+    tenants = Tenant.objects.all()
+    total_tenants = tenants.count()
+    if max_tenants is not None and max_tenants > 0:
+        tenants = tenants[:max_tenants]
+        logger.info(
+            "cache_warming_tenant_cap",
+            total=total_tenants,
+            capped=max_tenants,
+            message="Capping tenant warming",
+        )
+    successful = 0
+    failed = 0
+    results_by_tenant = {}
+
+    for tenant in tenants:
+        tenant_id = str(tenant.id)
+        try:
+            results = warm_tenant_cache(tenant_id)
+            results_by_tenant[tenant_id] = results
+            successful += 1
+        except Exception as e:
+            logger.exception(
+                "cache_warming_tenant_failed",
+                tenant_id=tenant_id,
+                error=str(e),
+                message="Failed to warm cache for tenant",
+            )
+            failed += 1
+
+    summary = {
+        "total_tenants": total_tenants,
+        "successful": successful,
+        "failed": failed,
+        "results_by_tenant": results_by_tenant,
+    }
+
+    logger.info(
+        "cache_warming_all_tenants_completed",
+        total_tenants=total_tenants,
+        successful=successful,
+        failed=failed,
+        message="Cache warming completed for all tenants",
+    )
+
+    return summary

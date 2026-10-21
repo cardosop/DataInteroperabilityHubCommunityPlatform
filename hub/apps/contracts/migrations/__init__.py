@@ -1,0 +1,4 @@
+"""
+Contracts app migrations
+"""
+

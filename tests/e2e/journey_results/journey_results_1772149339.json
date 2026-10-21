@@ -1,0 +1,98 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.018207550048828125
+  },
+  "journeys": [
+    {
+      "journey_id": "CPO-003-053e697b",
+      "journey_name": "Configure Retention Policies",
+      "persona": "Compliance & Privacy Officer",
+      "status": "completed",
+      "start_time": 1772149339.897038,
+      "end_time": 1772149339.9152455,
+      "duration": 0.018207550048828125,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Create Asset for Retention Policy",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772149339.8970463,
+          "end_time": 1772149339.9110277,
+          "duration": 0.013981342315673828,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Create Retention Policy",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772149339.9110334,
+          "end_time": 1772149339.9135745,
+          "duration": 0.002541065216064453,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "UUID"
+          }
+        },
+        {
+          "step_name": "Configure Time-Based Rules",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772149339.9135776,
+          "end_time": 1772149339.9152334,
+          "duration": 0.0016558170318603516,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "UUID"
+          }
+        },
+        {
+          "step_name": "Configure Event-Based Rules",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772149339.9152362,
+          "end_time": 1772149339.915239,
+          "duration": 2.86102294921875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "UUID"
+          }
+        },
+        {
+          "step_name": "Apply Policy to Assets",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772149339.9152408,
+          "end_time": 1772149339.9152427,
+          "duration": 1.9073486328125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "UUID"
+          }
+        }
+      ],
+      "metadata": {
+        "policy_id": "6abf169e-75e4-433a-907f-71954797854e",
+        "asset_id": "c75cc4de-e111-4c59-860b-c8496135605e"
+      }
+    }
+  ],
+  "exported_at": "2026-02-26T23:42:19.915317"
+}

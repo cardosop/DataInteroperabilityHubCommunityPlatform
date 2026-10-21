@@ -1,0 +1,148 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "ODPS-001-21736638",
+      "journey_name": "Product-First Flow Journey",
+      "persona": "Data Product Owner",
+      "status": "failed",
+      "start_time": 1768623099.3842754,
+      "end_time": 1768623195.3946233,
+      "duration": 96.01034784317017,
+      "completion_rate": 88.88888888888889,
+      "success_rate": 88.88888888888889,
+      "error_message": "'NORMALIZED_WITH_WARNINGS' != NormalizationStatus.NORMALIZED_OK",
+      "error_type": "AssertionError",
+      "steps": [
+        {
+          "step_name": "Create Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768623099.384288,
+          "end_time": 1768623099.6758559,
+          "duration": 0.2915678024291992,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Create ODPS Document",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768623099.6758761,
+          "end_time": 1768623099.675951,
+          "duration": 7.486343383789062e-05,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Create ODPS Product (Product-First Flow)",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768623099.6759543,
+          "end_time": 1768623174.2344325,
+          "duration": 74.55847811698914,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Verify ODPS Contract Created",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768623174.234448,
+          "end_time": 1768623174.236656,
+          "duration": 0.0022079944610595703,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Contract"
+          }
+        },
+        {
+          "step_name": "Verify ODCS Contract Created",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768623174.2366676,
+          "end_time": 1768623174.2372656,
+          "duration": 0.0005979537963867188,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Contract"
+          }
+        },
+        {
+          "step_name": "Verify Bidirectional Linking",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768623174.237271,
+          "end_time": 1768623174.2384384,
+          "duration": 0.00116729736328125,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Wait for Workflow Completion",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768623174.2384427,
+          "end_time": 1768623174.239303,
+          "duration": 0.0008604526519775391,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "WorkflowInstance"
+          }
+        },
+        {
+          "step_name": "Activate Contracts",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768623174.2393072,
+          "end_time": 1768623195.3931112,
+          "duration": 21.153804063796997,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Verify Success Criteria",
+          "status": "StepStatus.FAILED",
+          "start_time": 1768623195.39312,
+          "end_time": 1768623195.3946185,
+          "duration": 0.0014984607696533203,
+          "error_message": "'NORMALIZED_WITH_WARNINGS' != NormalizationStatus.NORMALIZED_OK",
+          "error_type": "AssertionError",
+          "retry_count": 0,
+          "metadata": {
+            "args": "('e3f80ab5-411b-48d7-aa91-52ff83bf280a', 'e19693c6-8421-458d-841e-0219c280fd2a')",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-01-17T04:13:15.394798"
+}

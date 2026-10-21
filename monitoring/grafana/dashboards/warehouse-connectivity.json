@@ -1,0 +1,170 @@
+{
+  "title": "Phase 275.E \u2014 Warehouse Connectivity",
+  "uid": "warehouse-connectivity",
+  "tags": [
+    "warehouse",
+    "phase-275"
+  ],
+  "schemaVersion": 39,
+  "refresh": "30s",
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "timezone": "utc",
+  "version": 1,
+  "panels": [
+    {
+      "id": 1,
+      "title": "Query volume",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-default"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(warehouse_query_total[5m])) by (warehouse, tenant, status)",
+          "legendFormat": "{{warehouse}}/{{tenant}}/{{status}}"
+        }
+      ],
+      "description": "Phase 240.1.B panel 1 \u2014 DQ runs per minute split by status (PASS / FAIL / WARN / UNKNOWN). The DQRunFailureRateHigh alert (>5% over 15m) trips when the FAIL series sustains an unhealthy share. Use the templating ``$engine`` to drill into a specific adapter."
+    },
+    {
+      "id": 2,
+      "title": "Query duration p95",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-default"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(warehouse_query_duration_seconds_bucket[5m])) by (le, warehouse, tenant))",
+          "legendFormat": "{{warehouse}}/{{tenant}}"
+        }
+      ],
+      "description": "Phase 240.1.B panel 1 \u2014 DQ runs per minute split by status (PASS / FAIL / WARN / UNKNOWN). The DQRunFailureRateHigh alert (>5% over 15m) trips when the FAIL series sustains an unhealthy share. Use the templating ``$engine`` to drill into a specific adapter."
+    },
+    {
+      "id": 3,
+      "title": "Circuit open",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-default"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "warehouse_circuit_open{channel=~\".+\"}",
+          "legendFormat": "{{warehouse}}/{{channel}}"
+        }
+      ],
+      "description": "Phase 240.1.B panel 1 \u2014 DQ runs per minute split by status (PASS / FAIL / WARN / UNKNOWN). The DQRunFailureRateHigh alert (>5% over 15m) trips when the FAIL series sustains an unhealthy share. Use the templating ``$engine`` to drill into a specific adapter."
+    },
+    {
+      "id": 4,
+      "title": "Cost units",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-default"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(warehouse_cost_units_total[1h])) by (warehouse, tenant, unit)",
+          "legendFormat": "{{warehouse}}/{{unit}}"
+        }
+      ],
+      "description": "Phase 240.1.B panel 1 \u2014 DQ runs per minute split by status (PASS / FAIL / WARN / UNKNOWN). The DQRunFailureRateHigh alert (>5% over 15m) trips when the FAIL series sustains an unhealthy share. Use the templating ``$engine`` to drill into a specific adapter."
+    },
+    {
+      "id": 5,
+      "title": "Credential age (days)",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-default"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "warehouse_credential_age_days",
+          "legendFormat": "{{warehouse}}"
+        }
+      ],
+      "description": "Phase 240.1.B panel 1 \u2014 DQ runs per minute split by status (PASS / FAIL / WARN / UNKNOWN). The DQRunFailureRateHigh alert (>5% over 15m) trips when the FAIL series sustains an unhealthy share. Use the templating ``$engine`` to drill into a specific adapter."
+    },
+    {
+      "id": 6,
+      "title": "Export runs",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-default"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(warehouse_export_runs_total[15m])) by (warehouse, status)",
+          "legendFormat": "{{warehouse}}/{{status}}"
+        }
+      ],
+      "description": "Phase 240.1.B panel 1 \u2014 DQ runs per minute split by status (PASS / FAIL / WARN / UNKNOWN). The DQRunFailureRateHigh alert (>5% over 15m) trips when the FAIL series sustains an unhealthy share. Use the templating ``$engine`` to drill into a specific adapter."
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "warehouse",
+        "label": "Warehouse",
+        "type": "query",
+        "query": "label_values(warehouse_query_total, warehouse)",
+        "includeAll": true,
+        "multi": true
+      },
+      {
+        "name": "tenant",
+        "label": "Tenant",
+        "type": "query",
+        "query": "label_values(warehouse_query_total, tenant)",
+        "includeAll": true,
+        "multi": true
+      }
+    ]
+  }
+}

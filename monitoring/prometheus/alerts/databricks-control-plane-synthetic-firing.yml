@@ -1,0 +1,404 @@
+# Shared DoD gate (openspec add-databricks-control-plane — "Ops &
+# observability") — synthetic firing tests for the six databricks
+# control-plane alert rule files (the Phase 228 convention).
+#
+# Run with:
+#   promtool test rules monitoring/prometheus/alerts/databricks-control-plane-synthetic-firing.yml
+#
+# CI wiring: prometheus-alerts-test.yml runs `promtool test rules` over
+# every `*-synthetic-firing.yml` under monitoring/prometheus/alerts/
+# (and EXCLUDES the same glob from `promtool check rules`).
+#
+# Every estate alert has a firing test at the label values the on-call
+# engineer would see in a real incident, plus a negative (no-fire) case
+# for each representative threshold family: staleness anchors,
+# backlog gauges, failure-rate ratios, and the budget boundary.
+#
+# hub/apps/databricks_admin/tests/test_control_plane_observability.py
+# pins the bidirectional coverage: every alert defined in the six rule
+# files has a case here, and every case here targets a real alert.
+
+rule_files:
+  - databricks-uc-sync.yml
+  - databricks-uc-approvals.yml
+  - databricks-warehouses.yml
+  - databricks-jobs.yml
+  - databricks-cost-budget.yml
+  - databricks-dlt.yml
+
+evaluation_interval: 1m
+
+tests:
+  # -------------------------------------------------------------
+  # DatabricksUCMetadataSyncFailed — 15 failed runs over 15m, the
+  # `for: 15m` window satisfied at 16m, evaluated at 20m.
+  # -------------------------------------------------------------
+  - name: uc-sync-failed-runs
+    interval: 1m
+    input_series:
+      - series: 'databricks_uc_sync_runs_total{outcome="failure",tenant_id="t-cp-1"}'
+        values: '0+1x20'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: DatabricksUCMetadataSyncFailed
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              outcome: failure
+              tenant_id: t-cp-1
+            exp_annotations:
+              summary: "Databricks UC metadata sync failures detected"
+              description: "Tenant t-cp-1 has 15 failed UC metadata sync runs in the last 15m. Check the RQ job + workspace M2M credential linkage."
+
+  # -------------------------------------------------------------
+  # DatabricksUCMetadataSyncHighFailureRate — every sync run fails
+  # (100% > 25%), `for: 30m` satisfied at 31m, evaluated at 40m.
+  # -------------------------------------------------------------
+  - name: uc-sync-failure-rate-anomaly
+    interval: 1m
+    input_series:
+      - series: 'databricks_uc_sync_runs_total{outcome="failure",tenant_id="t-cp-1"}'
+        values: '0+1x40'
+      - series: 'databricks_uc_sync_runs_total{outcome="success",tenant_id="t-cp-1"}'
+        values: '0x40'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: DatabricksUCMetadataSyncHighFailureRate
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "High Databricks UC metadata sync failure rate"
+              description: "100% of UC metadata sync runs are failing (threshold: 25%)."
+
+  # -------------------------------------------------------------
+  # DatabricksUCMetadataSyncStale — the last-success anchor is 36h
+  # behind, `for: 1h` satisfied at 61m, evaluated at 70m.
+  # -------------------------------------------------------------
+  - name: uc-sync-mirror-stale
+    interval: 1m
+    input_series:
+      - series: 'databricks_uc_sync_last_success_timestamp{tenant_id="t-cp-1",workspace="ws-1"}'
+        values: '-129600+0x70'
+    alert_rule_test:
+      - eval_time: 70m
+        alertname: DatabricksUCMetadataSyncStale
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              tenant_id: t-cp-1
+              workspace: ws-1
+            exp_annotations:
+              summary: "Databricks UC mirror is stale"
+              description: "Workspace ws-1 (tenant t-cp-1) has not synced its UC mirror in 133.8ks (threshold: 36h). Check the databricks-uc-metadata-sync CronJob and the workspace's M2M credential."
+
+  # -------------------------------------------------------------
+  # DatabricksUCMetadataSyncStale — negative: a FRESH anchor (age
+  # grows with the test clock, far below the 36h threshold).
+  # -------------------------------------------------------------
+  - name: uc-sync-mirror-fresh-no-fire
+    interval: 1m
+    input_series:
+      - series: 'databricks_uc_sync_last_success_timestamp{tenant_id="t-cp-1",workspace="ws-1"}'
+        values: '0x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: DatabricksUCMetadataSyncStale
+        exp_alerts: []
+
+  # -------------------------------------------------------------
+  # DatabricksUCApprovalBacklog — 21 pending requests (> 20),
+  # `for: 1h` satisfied at 61m, evaluated at 70m.
+  # -------------------------------------------------------------
+  - name: uc-approval-backlog
+    interval: 1m
+    input_series:
+      - series: 'databricks_uc_change_pending_approvals{tenant_id="t-cp-1"}'
+        values: '21x70'
+    alert_rule_test:
+      - eval_time: 70m
+        alertname: DatabricksUCApprovalBacklog
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "Databricks UC change-request approval backlog"
+              description: "21 UC change requests are awaiting approval (threshold: 20). Check the U4 approver inbox and the approval workflow steps."
+
+  # -------------------------------------------------------------
+  # DatabricksUCApprovalBacklog — negative: a steady 5-request queue
+  # stays below the threshold.
+  # -------------------------------------------------------------
+  - name: uc-approval-backlog-below-threshold-no-fire
+    interval: 1m
+    input_series:
+      - series: 'databricks_uc_change_pending_approvals{tenant_id="t-cp-1"}'
+        values: '5x20'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: DatabricksUCApprovalBacklog
+        exp_alerts: []
+
+  # -------------------------------------------------------------
+  # DatabricksUCApprovalStale — the oldest pending request is 260000s
+  # (3d) old, `for: 1h` satisfied at 61m, evaluated at 70m.
+  # -------------------------------------------------------------
+  - name: uc-approval-stale
+    interval: 1m
+    input_series:
+      - series: 'databricks_uc_change_oldest_pending_seconds{tenant_id="t-cp-1"}'
+        values: '260000x70'
+    alert_rule_test:
+      - eval_time: 70m
+        alertname: DatabricksUCApprovalStale
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              tenant_id: t-cp-1
+            exp_annotations:
+              summary: "Databricks UC approval is stale"
+              description: "Tenant t-cp-1's oldest pending UC change request is 260ks old (threshold: 72h). Notify the approvers or review the workflow step."
+
+  # -------------------------------------------------------------
+  # DatabricksWarehouseMirrorStale — the warehouse mirror anchor is
+  # 87000s behind, `for: 1h` satisfied at 61m, evaluated at 70m.
+  # -------------------------------------------------------------
+  - name: warehouse-mirror-stale
+    interval: 1m
+    input_series:
+      - series: 'databricks_warehouse_mirror_last_success_timestamp{tenant_id="t-cp-1",workspace_id="ws-1"}'
+        values: '-87000+0x70'
+    alert_rule_test:
+      - eval_time: 70m
+        alertname: DatabricksWarehouseMirrorStale
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              tenant_id: t-cp-1
+              workspace_id: ws-1
+            exp_annotations:
+              summary: "Databricks warehouse mirror is stale"
+              description: "Workspace ws-1 (tenant t-cp-1) has not refreshed its warehouse mirror in 91.2ks (threshold: 24h). Check the workspace connectivity and the warehouse lifecycle surfaces."
+
+  # -------------------------------------------------------------
+  # DatabricksWarehouseStartingTooLong — a warehouse anchored at
+  # epoch 0 has been STARTING for the whole test; at 20m the
+  # `for: 5m` window (satisfied at 16m) has passed.
+  # -------------------------------------------------------------
+  - name: warehouse-starting-too-long
+    interval: 1m
+    input_series:
+      - series: 'databricks_warehouse_starting_since_timestamp{warehouse_id="wh-1",tenant_id="t-cp-1",workspace_id="ws-1"}'
+        values: '1x20'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: DatabricksWarehouseStartingTooLong
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              warehouse_id: wh-1
+              tenant_id: t-cp-1
+              workspace_id: ws-1
+            exp_annotations:
+              summary: "Databricks warehouse is STARTING too long"
+              description: "Warehouse wh-1 (tenant t-cp-1, workspace ws-1) has been STARTING for 1.199ks (threshold: 10m). Check the compute API's warehouse health."
+
+  # -------------------------------------------------------------
+  # DatabricksWarehousePoolExhausted — 15 exhaustion refusals over
+  # 15m, `for: 15m` satisfied at 16m, evaluated at 20m.
+  # -------------------------------------------------------------
+  - name: warehouse-pool-exhausted
+    interval: 1m
+    input_series:
+      - series: 'databricks_warehouse_pool_exhausted_total{tenant_id="t-cp-1"}'
+        values: '0+1x20'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: DatabricksWarehousePoolExhausted
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              tenant_id: t-cp-1
+            exp_annotations:
+              summary: "Databricks warehouse connection pool exhausted"
+              description: "Tenant t-cp-1 had 15 pool-exhaustion refusals in the last 15m. Check the tenant's concurrent query load and the per-tenant pool bound."
+
+  # -------------------------------------------------------------
+  # DatabricksJobRunFailed — 15 terminal FAILED runs over 15m,
+  # `for: 15m` satisfied at 16m, evaluated at 20m.
+  # -------------------------------------------------------------
+  - name: job-run-failed
+    interval: 1m
+    input_series:
+      - series: 'databricks_job_runs_total{outcome="FAILED",tenant_id="t-cp-1",workspace_id="ws-1"}'
+        values: '0+1x20'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: DatabricksJobRunFailed
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              outcome: FAILED
+              tenant_id: t-cp-1
+              workspace_id: ws-1
+            exp_annotations:
+              summary: "Databricks job run failed"
+              description: "Workspace ws-1 (tenant t-cp-1) had 15 failed job runs in the last 15m. Check the run's error state in the jobs mirror."
+
+  # -------------------------------------------------------------
+  # DatabricksJobRunningTooLong — a run anchored at epoch 0 is still
+  # non-terminal; at 40m the `for: 5m` window (satisfied at 36m) has
+  # passed.
+  # -------------------------------------------------------------
+  - name: job-run-running-too-long
+    interval: 1m
+    input_series:
+      - series: 'databricks_job_run_started_since_timestamp{run_id="run-1",tenant_id="t-cp-1",workspace_id="ws-1"}'
+        values: '1x40'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: DatabricksJobRunningTooLong
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              run_id: run-1
+              tenant_id: t-cp-1
+              workspace_id: ws-1
+            exp_annotations:
+              summary: "Databricks job run is taking too long"
+              description: "Run run-1 (tenant t-cp-1, workspace ws-1) has been running for 2.399ks (threshold: 30m). Check the run's state via runs/get."
+
+  # -------------------------------------------------------------
+  # DatabricksJobRunRateAnomaly — every terminal run FAILED (100% >
+  # 25%), `for: 30m` satisfied at 31m, evaluated at 40m.
+  # -------------------------------------------------------------
+  - name: job-run-rate-anomaly
+    interval: 1m
+    input_series:
+      - series: 'databricks_job_runs_total{outcome="FAILED",tenant_id="t-cp-1",workspace_id="ws-1"}'
+        values: '0+1x40'
+      - series: 'databricks_job_runs_total{outcome="COMPLETED",tenant_id="t-cp-1",workspace_id="ws-1"}'
+        values: '0x40'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: DatabricksJobRunRateAnomaly
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "Databricks job run failure rate anomaly"
+              description: "Workspace  (tenant ) failed 100% of its runs in the last 30m (threshold: 25%). Check the workspace's compute health and the jobs mirror."
+
+  # -------------------------------------------------------------
+  # DatabricksJobRunRateAnomaly — negative: a healthy mix (all
+  # COMPLETED) keeps the failure share at 0%.
+  # -------------------------------------------------------------
+  - name: job-run-rate-anomaly-healthy-no-fire
+    interval: 1m
+    input_series:
+      - series: 'databricks_job_runs_total{outcome="FAILED",tenant_id="t-cp-1",workspace_id="ws-1"}'
+        values: '0x40'
+      - series: 'databricks_job_runs_total{outcome="COMPLETED",tenant_id="t-cp-1",workspace_id="ws-1"}'
+        values: '0+1x40'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: DatabricksJobRunRateAnomaly
+        exp_alerts: []
+
+  # -------------------------------------------------------------
+  # DatabricksCostBudgetAtOrOver — the rolling-hour ratio reaches 1.0
+  # (100% of budget), `for: 5m` satisfied at 6m, evaluated at 15m.
+  # -------------------------------------------------------------
+  - name: cost-budget-at-or-over
+    interval: 1m
+    input_series:
+      - series: 'databricks_cost_budget_consumed_ratio{tenant_id="t-cp-1",scope="sql-warehouse"}'
+        values: '1x15'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: DatabricksCostBudgetAtOrOver
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              tenant_id: t-cp-1
+              scope: sql-warehouse
+            exp_annotations:
+              summary: "Tenant t-cp-1 scope sql-warehouse consumed 100% of its Databricks cost budget in the rolling hour."
+
+  # -------------------------------------------------------------
+  # DatabricksCostBudgetAtOrOver — negative: 50% consumption stays
+  # under the boundary.
+  # -------------------------------------------------------------
+  - name: cost-budget-under-no-fire
+    interval: 1m
+    input_series:
+      - series: 'databricks_cost_budget_consumed_ratio{tenant_id="t-cp-1",scope="sql-warehouse"}'
+        values: '0.5x15'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: DatabricksCostBudgetAtOrOver
+        exp_alerts: []
+
+  # -------------------------------------------------------------
+  # DatabricksCostBudgetCrossingFired — the once-per-crossing webhook
+  # counter increments (no `for:` — fires on the first evaluation
+  # that sees a crossing in the 10m window).
+  # -------------------------------------------------------------
+  - name: cost-budget-crossing-fired
+    interval: 1m
+    input_series:
+      - series: 'databricks_cost_budget_crossings_total{tenant_id="t-cp-1",scope="sql-warehouse"}'
+        values: '0+1x15'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: DatabricksCostBudgetCrossingFired
+        exp_alerts:
+          - exp_labels:
+              severity: info
+              tenant_id: t-cp-1
+              scope: sql-warehouse
+            exp_annotations:
+              summary: "Tenant t-cp-1 scope sql-warehouse crossed its Databricks cost budget — the databricks.budget.exceeded webhook fired (10 crossing(s) in 10m)."
+
+  # -------------------------------------------------------------
+  # DatabricksDltUpdateFailed — 15 terminal FAILED updates over 15m,
+  # `for: 15m` satisfied at 16m, evaluated at 20m.
+  # -------------------------------------------------------------
+  - name: dlt-update-failed
+    interval: 1m
+    input_series:
+      - series: 'databricks_dlt_updates_total{outcome="FAILED",tenant_id="t-cp-1",workspace_id="ws-1"}'
+        values: '0+1x20'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: DatabricksDltUpdateFailed
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              outcome: FAILED
+              tenant_id: t-cp-1
+              workspace_id: ws-1
+            exp_annotations:
+              summary: "Databricks DLT update failed"
+              description: "Workspace ws-1 (tenant t-cp-1) had 15 failed DLT updates in the last 15m. Check the update's error state in the DLT mirror and the databricks.dlt.update.failed webhook deliveries."
+
+  # -------------------------------------------------------------
+  # DatabricksDltUpdateRateAnomaly — every terminal update FAILED
+  # (100% > 25%), `for: 30m` satisfied at 31m, evaluated at 40m.
+  # -------------------------------------------------------------
+  - name: dlt-update-rate-anomaly
+    interval: 1m
+    input_series:
+      - series: 'databricks_dlt_updates_total{outcome="FAILED",tenant_id="t-cp-1",workspace_id="ws-1"}'
+        values: '0+1x40'
+      - series: 'databricks_dlt_updates_total{outcome="COMPLETED",tenant_id="t-cp-1",workspace_id="ws-1"}'
+        values: '0x40'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: DatabricksDltUpdateRateAnomaly
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "Databricks DLT update failure rate anomaly"
+              description: "Workspace  (tenant ) failed 100% of its DLT updates in the last 30m (threshold: 25%). Check the workspace's compute health and the DLT mirror."

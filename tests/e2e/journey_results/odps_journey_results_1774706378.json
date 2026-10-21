@@ -1,0 +1,31 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.015281200408935547
+  },
+  "journeys": [
+    {
+      "journey_id": "ODPS-005-ERRORS-49f4f8a7",
+      "journey_name": "ODPS Product Strategy - Error Scenarios",
+      "persona": "Data Product Owner",
+      "status": "completed",
+      "start_time": 1774706378.709258,
+      "end_time": 1774706378.7245393,
+      "duration": 0.015281200408935547,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [],
+      "metadata": {
+        "error_scenarios_tested": 2
+      }
+    }
+  ],
+  "exported_at": "2026-03-28T13:59:38.724577"
+}

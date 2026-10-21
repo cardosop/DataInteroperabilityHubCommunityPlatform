@@ -1,0 +1,13 @@
+groups:
+  - name: auth_tenancy_alerts
+    interval: 30s
+    rules:
+      - alert: CrossTenantDenialsBurst
+        expr: increase(cross_tenant_denied_total[5m]) > 25
+        for: 5m
+        labels:
+          severity: warning
+          component: auth_tenancy
+        annotations:
+          summary: "Cross-tenant denials burst detected"
+          description: "Cross-tenant denial count exceeded 25 over 5 minutes."

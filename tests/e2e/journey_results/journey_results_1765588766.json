@@ -1,0 +1,56 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DC-005-b9996be0",
+      "journey_name": "Review Asset Quality",
+      "persona": "Data Consumer / Buyer",
+      "status": "failed",
+      "start_time": 1765588765.3091462,
+      "end_time": 1765588766.4079452,
+      "duration": 1.0987989902496338,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": "'Persona4DataConsumerJourneys' object has no attribute '_review_quality_scores'",
+      "error_type": "AttributeError",
+      "steps": [
+        {
+          "step_name": "Create Asset with DQ Metrics",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765588765.3091516,
+          "end_time": 1765588766.4075785,
+          "duration": 1.0984268188476562,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Get DQ Metrics",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765588766.4075866,
+          "end_time": 1765588766.4079409,
+          "duration": 0.0003542900085449219,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2025-12-13T01:19:26.408037"
+}

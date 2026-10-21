@@ -1,0 +1,28 @@
+{
+  "schema": "https://opendataproducts.org/schema/v4.1",
+  "version": "4.1",
+  "product": {
+    "details": {
+      "en": {
+        "productID": "malicious-path-traversal-multi",
+        "name": "Multiple Path Traversal Attempts",
+        "description": "This file contains multiple path traversal attempts in various fields."
+      }
+    },
+    "contract": {
+      "contractURL": "file:///../../etc/passwd"
+    },
+    "marketplace": {
+      "accessMethods": {
+        "api": {
+          "endpoint": "../../../etc/shadow"
+        },
+        "download": {
+          "url": "file:///../../../../windows/system32/config/sam"
+        }
+      }
+    }
+  },
+  "_security_note": "This file is intentionally malicious for security testing. It contains multiple path traversal attempts in different URL fields."
+}
+

@@ -1,0 +1,104 @@
+# Phase 280.A.2.3 — RQ (Redis Queue) depth + failure rate alerts.
+#
+# Monitors the three RQ queues: job_critical, job_default, job_low.
+# Alert thresholds based on queue depth (backpressure) and failure rate
+# (poison-pill detection).
+groups:
+  - name: rq_queue_alerts
+    interval: 30s
+    rules:
+      # ── Queue depth: critical queue > 100 jobs for 10m ──────────────
+      - alert: RQQueueDepthCritical
+        expr: rq_queue_depth{queue="job_critical"} > 100
+        for: 10m
+        labels:
+          severity: critical
+          component: rq_queue
+        annotations:
+          summary: "RQ critical queue depth is {{ $value }} — jobs backing up"
+          description: >
+            The job_critical queue has {{ $value }} jobs waiting.  This
+            indicates the worker pool cannot keep up with critical job
+            demand.  Check worker health at the job-worker-health dashboard.
+            Consider scaling worker replicas or investigating slow jobs.
+
+      # ── Queue depth: default queue > 500 jobs for 15m ───────────────
+      - alert: RQQueueDepthWarningDefault
+        expr: rq_queue_depth{queue="job_default"} > 500
+        for: 15m
+        labels:
+          severity: warning
+          component: rq_queue
+        annotations:
+          summary: "RQ default queue depth is {{ $value }} — investigate"
+          description: >
+            The job_default queue has {{ $value }} jobs waiting.  This is
+            above normal operating range.  Check if a batch job is saturating
+            the queue, or if workers are down.
+
+      # ── Queue depth: low queue > 2000 jobs for 30m ──────────────────
+      - alert: RQQueueDepthWarningLow
+        expr: rq_queue_depth{queue="job_low"} > 2000
+        for: 30m
+        labels:
+          severity: warning
+          component: rq_queue
+        annotations:
+          summary: "RQ low-priority queue depth is {{ $value }}"
+          description: >
+            The job_low queue has {{ $value }} jobs.  Low-priority jobs may
+            be delayed.  This is advisory — critical + default queues take
+            priority.
+
+      # ── Failure rate: > 5% failures for 10m (any queue) ─────────────
+      - alert: RQQueueFailureRateHigh
+        expr: |
+          (
+            rate(rq_job_failures_total[10m])
+            /
+            (rate(rq_job_completions_total[10m]) + rate(rq_job_failures_total[10m]))
+          ) > 0.05
+        for: 10m
+        labels:
+          severity: critical
+          component: rq_queue
+        annotations:
+          summary: "RQ job failure rate is {{ $value | humanizePercentage }}"
+          description: >
+            More than 5% of RQ jobs are failing.  This may indicate a
+            poison pill (a specific job type consistently failing) or an
+            infrastructure issue (DB connection, Redis timeout).  Check
+            the job-worker-health dashboard for per-job-type failure rates.
+
+      # ── Poison pill: same job type failing > 10 times in 5m ─────────
+      - alert: RQQueuePoisonPillDetected
+        expr: sum by (job_type) (rate(rq_job_failures_total[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+          component: rq_queue
+        annotations:
+          summary: "Possible poison pill: {{ $labels.job_type }} failing at {{ $value | humanize }}/s"
+          description: >
+            Job type {{ $labels.job_type }} is failing at a sustained rate
+            of >2 failures/second for 5 minutes.  This pattern is typical of
+            a poison pill — a job that always fails, consuming worker
+            capacity on retries.  Move the job to the DLQ and investigate
+            the root cause.
+
+      # ── Worker starvation: zero completions in 10m with queue depth > 0
+      - alert: RQWorkerStarvation
+        expr: |
+          (rq_queue_depth > 0)
+          and
+          (rate(rq_job_completions_total[10m]) == 0)
+        for: 10m
+        labels:
+          severity: critical
+          component: rq_worker
+        annotations:
+          summary: "RQ workers appear starved — jobs queued but none completing"
+          description: >
+            Jobs are queued (depth={{ $labels.queue }}={{ $value }}) but no
+            completions in 10 minutes.  Workers may be down, stuck on a
+            long-running job, or unable to connect to Redis/DB.

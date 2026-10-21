@@ -1,0 +1,302 @@
+"""
+Standardized Pagination
+
+Provides cursor-based and page-based pagination for all API endpoints.
+"""
+
+import base64
+import json
+from typing import Any
+
+from django.core.exceptions import FieldError, ValidationError
+from django.db.models import QuerySet
+from rest_framework.pagination import CursorPagination, PageNumberPagination
+from rest_framework.response import Response
+
+
+class StandardCursorPagination(CursorPagination):
+    """
+    Standard cursor-based pagination for all API endpoints.
+
+    Uses cursor-based pagination for better performance with large datasets.
+    Recommended for most list endpoints.
+    """
+
+    page_size = 50
+    page_size_query_param = "page_size"
+    max_page_size = 100
+    ordering = "-created_at"
+    cursor_query_param = "cursor"
+
+    def get_paginated_response(self, data):
+        """
+        Return paginated response with standardized format.
+
+        Returns:
+            Response with count, results, next_cursor, previous_cursor
+        """
+        return Response(
+            {
+                "count": (
+                    self.page.paginator.count
+                    if hasattr(self, "page") and hasattr(self.page, "paginator")
+                    else None
+                ),
+                "next_cursor": self.get_next_link(),
+                "previous_cursor": self.get_previous_link(),
+                "page_size": self.page_size,
+                "results": data,
+            }
+        )
+
+    def encode_cursor(self, position):
+        """
+        Encode cursor position.
+
+        Args:
+            position: Cursor position (tuple of values)
+
+        Returns:
+            Encoded cursor string
+        """
+        if not position:
+            return None
+
+        try:
+            # Convert position to JSON and encode
+            cursor_data = json.dumps(position)
+            encoded = base64.b64encode(cursor_data.encode("utf-8")).decode("utf-8")
+            return encoded
+        except (TypeError, ValueError):
+            return None
+
+    def decode_cursor(self, cursor):
+        """
+        Decode cursor position.
+
+        Args:
+            cursor: Encoded cursor string
+
+        Returns:
+            Decoded cursor position (tuple)
+        """
+        if not cursor:
+            return None
+
+        try:
+            decoded = base64.b64decode(cursor.encode("utf-8")).decode("utf-8")
+            position = json.loads(decoded)
+            return tuple(position) if isinstance(position, list) else position
+        except (ValueError, TypeError):
+            return None
+
+
+class StandardPageNumberPagination(PageNumberPagination):
+    """
+    Standard page number-based pagination for API endpoints.
+
+    Uses offset-based pagination. Use when cursor-based pagination is not suitable.
+    """
+
+    page_size = 50
+    page_size_query_param = "page_size"
+    max_page_size = 100
+    page_query_param = "page"
+
+    def get_paginated_response(self, data):
+        """
+        Return paginated response with standardized format.
+
+        Returns:
+            Response with count, page, page_size, total_pages, next, previous, results
+        """
+        return Response(
+            {
+                "count": self.page.paginator.count,
+                "page": self.page.number,
+                "page_size": self.page.paginator.per_page,
+                "total_pages": self.page.paginator.num_pages,
+                "has_next": self.page.has_next(),
+                "has_previous": self.page.has_previous(),
+                "next_page": self.page.next_page_number() if self.page.has_next() else None,
+                "previous_page": self.page.previous_page_number()
+                if self.page.has_previous()
+                else None,
+                "next": self.get_next_link(),
+                "previous": self.get_previous_link(),
+                "results": data,
+            }
+        )
+
+
+def get_pagination_params(request) -> dict[str, Any]:
+    """
+    Extract and validate pagination parameters from request.
+
+    Args:
+        request: DRF request object or Django WSGIRequest
+
+    Returns:
+        Dictionary with pagination parameters
+    """
+    # Handle both DRF Request (has query_params) and Django WSGIRequest (has GET)
+    if hasattr(request, "query_params"):
+        # DRF Request
+        query_params = request.query_params
+    elif hasattr(request, "GET"):
+        # Django WSGIRequest
+        query_params = request.GET
+    else:
+        # Fallback
+        query_params = {}
+
+    # Get page number (for page-based pagination)
+    try:
+        page = int(query_params.get("page", 1))
+        page = max(1, page)
+    except (ValueError, TypeError):
+        page = 1
+
+    # Get page size
+    try:
+        page_size = int(query_params.get("page_size", 50))
+        if page_size < 1:
+            page_size = 50  # invalid value → fall back to default
+        else:
+            page_size = min(page_size, 100)  # cap at max
+    except (ValueError, TypeError):
+        page_size = 50
+
+    # Get cursor (for cursor-based pagination)
+    cursor = query_params.get("cursor")
+
+    return {
+        "page": page,
+        "page_size": page_size,
+        "cursor": cursor,
+    }
+
+
+def validate_pagination_params(
+    page: int | None = None,
+    page_size: int | None = None,
+    cursor: str | None = None,
+) -> tuple[bool, str | None]:
+    """
+    Validate pagination parameters.
+
+    Args:
+        page: Page number (for page-based pagination)
+        page_size: Items per page
+        cursor: Cursor string (for cursor-based pagination)
+
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    # Validate page
+    if page is not None and page < 1:
+        return False, "Page number must be >= 1"
+
+    # Validate page_size
+    if page_size is not None:
+        if page_size < 1:
+            return False, "Page size must be >= 1"
+        if page_size > 100:
+            return False, "Page size must be <= 100"
+
+    # Cannot use both page and cursor
+    if page is not None and cursor is not None:
+        return False, "Cannot use both page and cursor pagination"
+
+    return True, None
+
+
+def _encode_value(value) -> str:
+    """Serialise a field value to a JSON-safe string."""
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value)
+
+
+def paginate_queryset_cursor(
+    queryset: QuerySet,
+    page_size: int = 50,
+    cursor: str | None = None,
+    ordering: str = "-created_at",
+) -> tuple[QuerySet, str | None, str | None]:
+    """
+    Paginate queryset using cursor-based pagination.
+
+    Uses a composite (field, pk) cursor so that rows with identical values
+    for the ordering field are still uniquely addressable, preventing gaps
+    or duplicate results in high-throughput / test environments where many
+    records share the same timestamp.
+
+    Args:
+        queryset: Django queryset
+        page_size: Items per page
+        cursor: Optional cursor string
+        ordering: Primary ordering field (default: '-created_at')
+
+    Returns:
+        Tuple of (paginated_queryset, next_cursor, previous_cursor)
+    """
+    descending = ordering.startswith("-")
+    field = ordering[1:] if descending else ordering
+
+    # Stable composite ordering: primary field + pk tiebreaker
+    pk_ordering = "-pk" if descending else "pk"
+    if not queryset.query.order_by:
+        queryset = queryset.order_by(ordering, pk_ordering)
+
+    # Apply cursor if provided
+    if cursor:
+        try:
+            decoded = base64.b64decode(cursor.encode("utf-8")).decode("utf-8")
+            position = json.loads(decoded)  # [field_value, pk_value]
+            field_val, pk_val = position[0], position[1]
+
+            # Composite filter: (field < val) OR (field = val AND pk < pk_val)
+            # (reversed for ascending)
+            if descending:
+                from django.db.models import Q
+
+                queryset = queryset.filter(
+                    Q(**{f"{field}__lt": field_val})
+                    | Q(**{f"{field}": field_val, "pk__lt": pk_val})
+                )
+            else:
+                from django.db.models import Q
+
+                queryset = queryset.filter(
+                    Q(**{f"{field}__gt": field_val})
+                    | Q(**{f"{field}": field_val, "pk__gt": pk_val})
+                )
+        except (ValueError, IndexError, KeyError, TypeError, FieldError, ValidationError):
+            # Invalid cursor, return empty queryset
+            return queryset.none(), None, None
+
+    # Get page_size items
+    items = list(queryset[: page_size + 1])
+
+    # Check if there's a next page
+    has_next = len(items) > page_size
+    if has_next:
+        items = items[:page_size]
+
+    # Generate next cursor — composite (field_value, pk)
+    next_cursor = None
+    if has_next and items:
+        last_item = items[-1]
+        if hasattr(last_item, field):
+            position = [_encode_value(getattr(last_item, field)), str(last_item.pk)]
+            next_cursor = base64.b64encode(json.dumps(position).encode("utf-8")).decode("utf-8")
+
+    # Previous cursor is the current cursor (if provided)
+    previous_cursor = cursor
+
+    return (
+        queryset.model.objects.filter(pk__in=[item.pk for item in items]),
+        next_cursor,
+        previous_cursor,
+    )

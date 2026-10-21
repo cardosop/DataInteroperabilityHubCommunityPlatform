@@ -1,0 +1,58 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.2665276527404785
+  },
+  "journeys": [
+    {
+      "journey_id": "DS-005-654a984c",
+      "journey_name": "Review Auto-Classification Results",
+      "persona": "Data Scientist",
+      "status": "completed",
+      "start_time": 1771324495.6321547,
+      "end_time": 1771324495.8986824,
+      "duration": 0.2665276527404785,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Select Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771324495.6321578,
+          "end_time": 1771324495.8951693,
+          "duration": 0.26301145553588867,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Review Classifications",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771324495.8986742,
+          "end_time": 1771324495.8986802,
+          "duration": 5.9604644775390625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "826fb92c-78cf-4271-8e06-10cc1c46cdd4"
+      }
+    }
+  ],
+  "exported_at": "2026-02-17T10:34:55.898744"
+}

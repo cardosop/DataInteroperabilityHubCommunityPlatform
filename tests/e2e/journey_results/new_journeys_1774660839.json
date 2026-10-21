@@ -1,0 +1,187 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-007-90987b41",
+      "journey_name": "Use AI Schema Matching for Asset Creation",
+      "persona": "Data Product Owner",
+      "status": "failed",
+      "start_time": 1774660834.8391418,
+      "end_time": 1774660839.1083186,
+      "duration": 4.269176721572876,
+      "completion_rate": 91.66666666666666,
+      "success_rate": 91.66666666666666,
+      "error_message": "Step 'Activate Asset' returned HTTP 400: {'error': 'Cannot activate asset: requirements not met', 'code': 'ASSET_ACTIVATION_BLOCKED', 'details': ['Contract validation_status must be VALID or WARNING_ONLY (current: SKIPPED)', 'dq_status must be PASS or WARN (current: UNKNOWN)', 'compliance_status must be PASS or WARN (current: UNKNOWN)']}",
+      "error_type": "AssertionError",
+      "steps": [
+        {
+          "step_name": "Upload Data File",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774660834.8391702,
+          "end_time": 1774660835.5828698,
+          "duration": 0.7436995506286621,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Complete File Upload",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774660835.5828838,
+          "end_time": 1774660838.5254521,
+          "duration": 2.942568302154541,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        },
+        {
+          "step_name": "Create Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774660838.525474,
+          "end_time": 1774660838.6269064,
+          "duration": 0.10143232345581055,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Create Dataset (Schema Inference)",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774660838.6269176,
+          "end_time": 1774660838.6626096,
+          "duration": 0.03569197654724121,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "AI Schema Matching Analysis",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774660838.662624,
+          "end_time": 1774660838.674353,
+          "duration": 0.011729001998901367,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Review Suggested Field Mappings",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774660838.6743667,
+          "end_time": 1774660838.6743746,
+          "duration": 7.867813110351562e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "bool"
+          }
+        },
+        {
+          "step_name": "Accept/Reject Mappings",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774660838.6743774,
+          "end_time": 1774660838.6743815,
+          "duration": 4.0531158447265625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Generate Contract Draft",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774660838.674393,
+          "end_time": 1774660838.6990917,
+          "duration": 0.024698734283447266,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Review Contract",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774660838.6991036,
+          "end_time": 1774660838.7096903,
+          "duration": 0.010586738586425781,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "bool"
+          }
+        },
+        {
+          "step_name": "Validate Contract",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774660838.7097013,
+          "end_time": 1774660839.0579715,
+          "duration": 0.3482701778411865,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Attach Contract to Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774660839.0579832,
+          "end_time": 1774660839.0931456,
+          "duration": 0.03516244888305664,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Activate Asset",
+          "status": "StepStatus.FAILED",
+          "start_time": 1774660839.0931582,
+          "end_time": 1774660839.1083124,
+          "duration": 0.015154123306274414,
+          "error_message": "Step 'Activate Asset' returned HTTP 400: {'error': 'Cannot activate asset: requirements not met', 'code': 'ASSET_ACTIVATION_BLOCKED', 'details': ['Contract validation_status must be VALID or WARNING_ONLY (current: SKIPPED)', 'dq_status must be PASS or WARN (current: UNKNOWN)', 'compliance_status must be PASS or WARN (current: UNKNOWN)']}",
+          "error_type": "AssertionError",
+          "retry_count": 0,
+          "metadata": {
+            "args": "('7489ad19-0748-4bfe-b466-bb69ab7cf567',)",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-03-28T01:20:39.108495"
+}

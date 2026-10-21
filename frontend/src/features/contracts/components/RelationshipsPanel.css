@@ -1,0 +1,115 @@
+.relationships-panel {
+  margin: var(--spacing-lg) 0;
+  padding: var(--spacing-lg);
+  background: var(--color-background-secondary);
+  border-radius: var(--border-radius-md);
+}
+
+.relationships-panel h2 {
+  margin: 0 0 var(--spacing-md) 0;
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+}
+
+.relationships-empty .empty-message {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-base);
+}
+
+.relationships-empty .empty-hint {
+  font-style: italic;
+  color: var(--color-text-tertiary, var(--color-text-secondary));
+}
+
+/* --- Group header --- */
+.rel-group {
+  margin-bottom: var(--spacing-lg);
+}
+
+.rel-group:last-child {
+  margin-bottom: 0;
+}
+
+.rel-group-title {
+  margin: 0 0 var(--spacing-sm) 0;
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+/* --- Table --- */
+.rel-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+
+.rel-table th {
+  text-align: left;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-secondary);
+  border-bottom: 2px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.rel-table td {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: top;
+}
+
+.rel-table code {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+  background: var(--color-background-primary);
+  padding: 1px 4px;
+  border-radius: var(--border-radius-sm);
+}
+
+/* --- Badges --- */
+.rel-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-xs, 0.75rem);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  background: var(--color-background-primary);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+}
+
+.rel-badge-fk {
+  background: var(--color-primary-light, #e3f2fd);
+  color: var(--color-primary-dark, #1565c0);
+  border-color: var(--color-primary, #1976d2);
+}
+
+.rel-badge-1to1 {
+  background: var(--color-success-light, #e8f5e9);
+  color: var(--color-success-dark, #2e7d32);
+  border-color: var(--color-success, #4caf50);
+}
+
+.rel-badge-1toN {
+  background: var(--color-warning-light, #fff3e0);
+  color: var(--color-warning-dark, #e65100);
+  border-color: var(--color-warning, #ff9800);
+}
+
+/* --- Link button --- */
+.rel-link {
+  background: none;
+  border: none;
+  color: var(--color-primary);
+  cursor: pointer;
+  text-decoration: underline;
+  font-size: inherit;
+  padding: 0;
+}
+
+.rel-link:hover {
+  color: var(--color-primary-dark);
+}

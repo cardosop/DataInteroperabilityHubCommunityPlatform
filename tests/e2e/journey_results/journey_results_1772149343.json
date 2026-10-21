@@ -1,0 +1,84 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 2.193450927734375e-05
+  },
+  "journeys": [
+    {
+      "journey_id": "MPA-003-76e81d97",
+      "journey_name": "Monitor Platform Health",
+      "persona": "Platform Admin / Marketplace Operator",
+      "status": "completed",
+      "start_time": 1772149343.4462512,
+      "end_time": 1772149343.446273,
+      "duration": 2.193450927734375e-05,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Retrieve Health Metrics",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772149343.4462569,
+          "end_time": 1772149343.4462624,
+          "duration": 5.4836273193359375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Check Service Status",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772149343.4462645,
+          "end_time": 1772149343.4462664,
+          "duration": 1.9073486328125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Analyze Performance",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772149343.4462676,
+          "end_time": 1772149343.4462695,
+          "duration": 1.9073486328125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Generate Health Report",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1772149343.4462705,
+          "end_time": 1772149343.446272,
+          "duration": 1.430511474609375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "NoneType"
+          }
+        }
+      ],
+      "metadata": {
+        "report_id": null
+      }
+    }
+  ],
+  "exported_at": "2026-02-26T23:42:23.446349"
+}

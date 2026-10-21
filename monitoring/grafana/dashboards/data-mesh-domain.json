@@ -1,0 +1,265 @@
+{
+  "title": "Data Mesh Domain Dashboard",
+  "tags": [
+    "data-mesh",
+    "domain",
+    "monitoring"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Domain Creation Rate",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(mesh_domain_created_total[5m])) by (tenant_id, status)",
+          "legendFormat": "{{tenant_id}} - {{status}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "ops",
+          "label": "Domains/sec"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "xaxis": {
+        "mode": "time"
+      }
+    },
+    {
+      "id": 2,
+      "title": "Total Domains Created",
+      "type": "stat",
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 12,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "sum(mesh_domain_created_total) by (tenant_id)",
+          "legendFormat": "{{tenant_id}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "unit": "short",
+        "colorMode": "value"
+      }
+    },
+    {
+      "id": 3,
+      "title": "Current Domain Count",
+      "type": "stat",
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 18,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "sum(mesh_domain_count) by (tenant_id, status)",
+          "legendFormat": "{{tenant_id}} - {{status}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "unit": "short",
+        "colorMode": "value"
+      }
+    },
+    {
+      "id": 4,
+      "title": "Domain Creation Duration (P95)",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(mesh_domain_creation_duration_seconds_bucket[5m])) by (tenant_id, status, le))",
+          "legendFormat": "{{tenant_id}} - {{status}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "s",
+          "label": "Duration"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "xaxis": {
+        "mode": "time"
+      }
+    },
+    {
+      "id": 5,
+      "title": "Domain Update Rate",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(mesh_domain_updated_total[5m])) by (tenant_id)",
+          "legendFormat": "{{tenant_id}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "ops",
+          "label": "Updates/sec"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "xaxis": {
+        "mode": "time"
+      }
+    },
+    {
+      "id": 6,
+      "title": "Domain Update Duration (P95)",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(mesh_domain_update_duration_seconds_bucket[5m])) by (tenant_id, le))",
+          "legendFormat": "{{tenant_id}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "s",
+          "label": "Duration"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "xaxis": {
+        "mode": "time"
+      }
+    },
+    {
+      "id": 7,
+      "title": "Domain Deletion Rate",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(mesh_domain_deleted_total[5m])) by (tenant_id, reason)",
+          "legendFormat": "{{tenant_id}} - {{reason}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [
+        {
+          "format": "ops",
+          "label": "Deletions/sec"
+        },
+        {
+          "format": "short"
+        }
+      ],
+      "xaxis": {
+        "mode": "time"
+      }
+    },
+    {
+      "id": 8,
+      "title": "Domain Status Distribution",
+      "type": "piechart",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      },
+      "targets": [
+        {
+          "expr": "sum(mesh_domain_count) by (status)",
+          "legendFormat": "{{status}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "Domain Health Status",
+      "type": "stat",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 24
+      },
+      "targets": [
+        {
+          "expr": "sum(mesh_domain_health_status) by (tenant_id, domain_id, health_status)",
+          "legendFormat": "{{tenant_id}}/{{domain_id}} - {{health_status}}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "unit": "short",
+        "colorMode": "value",
+        "thresholds": {
+          "mode": "absolute",
+          "steps": [
+            {
+              "value": 0,
+              "color": "red"
+            },
+            {
+              "value": 0.5,
+              "color": "yellow"
+            },
+            {
+              "value": 1,
+              "color": "green"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

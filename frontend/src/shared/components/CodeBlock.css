@@ -1,0 +1,51 @@
+/* CodeBlock — syntax-highlighted code viewer */
+
+.code-block {
+  position: relative;
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-md);
+  background: var(--color-neutral-50);
+  overflow: hidden;
+}
+
+.code-block__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-bottom: 1px solid var(--color-border-light);
+  background: var(--color-background-secondary);
+}
+
+.code-block__lang {
+  font-size: var(--font-size-xs);
+  font-family: var(--font-family-mono);
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+}
+
+.code-block__pre {
+  margin: 0;
+  padding: var(--spacing-md);
+  overflow: auto;
+  max-height: inherit;
+}
+
+.code-block__code {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-normal);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  color: var(--color-text-primary);
+}
+
+/* highlight.js token colours mapped to Meshant palette */
+.code-block__code .hljs-string { color: var(--color-success-700); }
+.code-block__code .hljs-number { color: var(--color-accent, #17C6E6); }
+.code-block__code .hljs-literal,
+.code-block__code .hljs-keyword { color: var(--color-secondary, #2F6BFF); }
+.code-block__code .hljs-attr { color: var(--color-primary-dark); }
+.code-block__code .hljs-tag { color: var(--color-error-500); }
+.code-block__code .hljs-name { color: var(--color-error-700); }
+.code-block__code .hljs-comment { color: var(--color-text-tertiary); font-style: italic; }

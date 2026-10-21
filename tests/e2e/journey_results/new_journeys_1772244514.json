@@ -1,0 +1,44 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DC-008-477cdbef",
+      "journey_name": "Rate and Review Asset",
+      "persona": "Data Consumer",
+      "status": "failed",
+      "start_time": 1772244514.1287382,
+      "end_time": 1772244514.615674,
+      "duration": 0.4869358539581299,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": "An error occurred in the current transaction. You can't execute queries until the end of the 'atomic' block.",
+      "error_type": "TransactionManagementError",
+      "steps": [
+        {
+          "step_name": "Navigate to Asset",
+          "status": "StepStatus.FAILED",
+          "start_time": 1772244514.1287498,
+          "end_time": 1772244514.615667,
+          "duration": 0.48691725730895996,
+          "error_message": "An error occurred in the current transaction. You can't execute queries until the end of the 'atomic' block.",
+          "error_type": "TransactionManagementError",
+          "retry_count": 0,
+          "metadata": {
+            "args": "()",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-28T02:08:34.615800"
+}

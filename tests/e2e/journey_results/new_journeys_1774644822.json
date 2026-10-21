@@ -1,0 +1,58 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 1.584383487701416
+  },
+  "journeys": [
+    {
+      "journey_id": "DC-011-b517f19b",
+      "journey_name": "Purchase Asset with Usage-Based Pricing",
+      "persona": "Data Consumer",
+      "status": "completed",
+      "start_time": 1774644820.6857598,
+      "end_time": 1774644822.2701433,
+      "duration": 1.584383487701416,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Select Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774644820.6857686,
+          "end_time": 1774644822.2252548,
+          "duration": 1.5394861698150635,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "View Listing",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1774644822.2252665,
+          "end_time": 1774644822.2701383,
+          "duration": 0.04487180709838867,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "ec5c6519-90a4-4233-b711-ad17f7f6492c"
+      }
+    }
+  ],
+  "exported_at": "2026-03-27T20:53:42.270216"
+}

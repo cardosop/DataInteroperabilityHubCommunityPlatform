@@ -1,0 +1,155 @@
+{
+  "title": "Tenant Health Score \u2014 Customer Success (281.B.7.8)",
+  "uid": "tenant-health-cs",
+  "panels": [
+    {
+      "title": "Health Score Distribution",
+      "type": "bargauge",
+      "targets": [
+        {
+          "expr": "tenant_health_score",
+          "legendFormat": "{{tenant_name}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              {
+                "value": 0,
+                "color": "red"
+              },
+              {
+                "value": 30,
+                "color": "orange"
+              },
+              {
+                "value": 50,
+                "color": "yellow"
+              },
+              {
+                "value": 75,
+                "color": "green"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "At-Risk Tenants (Health <50)",
+      "type": "table",
+      "targets": [
+        {
+          "expr": "tenant_health_score < 50",
+          "format": "table"
+        }
+      ],
+      "columns": [
+        {
+          "label": "Tenant",
+          "expr": "tenant_name"
+        },
+        {
+          "label": "Health Score",
+          "expr": "tenant_health_score"
+        },
+        {
+          "label": "Days Since Login",
+          "expr": "tenant_days_since_last_login"
+        },
+        {
+          "label": "Error Rate",
+          "expr": "tenant_error_rate"
+        },
+        {
+          "label": "Open Tickets",
+          "expr": "tenant_support_tickets"
+        }
+      ]
+    },
+    {
+      "title": "Health Trend (30d)",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "avg by(tenant_name) (tenant_health_score)",
+          "legendFormat": "{{tenant_name}}"
+        }
+      ]
+    },
+    {
+      "title": "Feature Adoption Rate",
+      "type": "gauge",
+      "targets": [
+        {
+          "expr": "avg(tenant_feature_adoption_pct)",
+          "legendFormat": "Global"
+        }
+      ]
+    },
+    {
+      "title": "Critical Alerts (Health <30)",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "count(tenant_health_score < 30)",
+          "legendFormat": "Critical"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              {
+                "value": 0,
+                "color": "green"
+              },
+              {
+                "value": 1,
+                "color": "red"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Weekly Health Report Summary",
+      "type": "text",
+      "options": {
+        "content": "Generated every Monday 08:00 UTC. See `hub/apps/tenants/health_score.py` for the health score model (5-factor composite: login frequency, feature adoption, recency, error rate, support tickets)."
+      }
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "plan",
+        "label": "Plan",
+        "type": "query",
+        "query": "tenant_plan",
+        "multi": true
+      },
+      {
+        "name": "persona",
+        "label": "Persona",
+        "type": "query",
+        "query": "tenant_persona_slug",
+        "multi": true
+      },
+      {
+        "name": "tenure",
+        "label": "Tenure (months)",
+        "type": "query",
+        "query": "tenant_tenure_months",
+        "multi": false
+      }
+    ]
+  },
+  "time": {
+    "from": "now-30d",
+    "to": "now"
+  },
+  "refresh": "1h"
+}

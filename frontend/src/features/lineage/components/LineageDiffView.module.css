@@ -1,0 +1,69 @@
+/* Phase 228 F5 (228.F5.13 + DoD-G3) — diff view styles. */
+
+.error {
+  color: var(--mds-color-error, #c00);
+  padding: var(--spacing-sm, 0.75rem);
+}
+
+.header {
+  padding: var(--spacing-sm, 0.5rem) 0;
+  border-bottom: 1px solid var(--mds-color-border-default, #e0e0e0);
+  margin-bottom: var(--spacing-sm, 0.75rem);
+}
+
+.heading {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.summary {
+  margin: 0.4rem 0 0 0;
+  font-size: var(--font-size-sm, 0.9rem);
+}
+
+/* Bucket — every bucket gets a left-border tint + a background tint;
+   color is paired with an icon glyph + an explicit text label per
+   REQ-LIN-X-002 (color-blind safe). */
+.bucket {
+  margin-bottom: var(--spacing-sm, 0.75rem);
+  padding: var(--spacing-sm, 0.5rem) var(--spacing-sm, 0.75rem);
+  border-left-style: solid;
+  border-left-width: 4px;
+}
+
+.bucketAdded {
+  background-color: #e6f4ea;
+  border-left-color: #34a853;
+}
+
+.bucketRemoved {
+  background-color: #fce8e6;
+  border-left-color: #d93025;
+}
+
+.bucketUnchanged {
+  background-color: #eceff1;
+  border-left-color: #90a4ae;
+}
+
+.bucketHeading {
+  margin: 0 0 var(--spacing-xs, 0.4rem) 0;
+  font-size: 0.95rem;
+}
+
+.glyph {
+  font-family: monospace;
+  margin-right: var(--spacing-xs, 0.4rem);
+  font-weight: 700;
+}
+
+.bucketEmpty {
+  margin: 0;
+  font-size: var(--font-size-sm, 0.85rem);
+}
+
+.bucketList {
+  margin: 0;
+  padding-left: 1.25rem;
+  font-size: var(--font-size-sm, 0.9rem);
+}

@@ -1,0 +1,5 @@
+{
+  "total_gzipped_bytes": 0,
+  "files": {},
+  "_note": "Phase 228.F2.30 bundle-size baseline. Re-baseline post-merge after a known-good build via `UPDATE_BASELINE=1 node scripts/bundle_size_check.mjs`. Delta budget: 30 KB gzipped (see scripts/bundle_size_check.mjs)."
+}

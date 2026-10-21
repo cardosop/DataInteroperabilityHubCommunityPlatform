@@ -1,0 +1,21 @@
+.tooltip-bubble {
+  --tooltip-bg: var(--color-surface-inverse);
+  --tooltip-fg: #ffffff;
+  --tooltip-radius: var(--border-radius-sm, 4px);
+
+  background-color: var(--tooltip-bg);
+  color: var(--tooltip-fg);
+  font-size: var(--font-size-xs, 0.75rem);
+  line-height: 1.4;
+  padding: 0.375rem 0.625rem;
+  border-radius: var(--tooltip-radius);
+  max-width: 280px;
+  box-shadow: var(--shadow-md, 0 4px 12px rgba(0, 0, 0, 0.15));
+  z-index: 1000;
+  pointer-events: none;
+  word-break: break-word;
+}
+
+.tooltip-arrow {
+  fill: var(--tooltip-bg, #1f1f1f);
+}

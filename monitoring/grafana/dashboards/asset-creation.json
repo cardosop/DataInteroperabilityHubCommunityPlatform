@@ -1,0 +1,217 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": "-- Grafana --",
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Phase 250.0.21 — operational dashboard for asset-creation workflow. Panels cover the SLOs in O-2 plus the per-runbook diagnostic surfaces. Companion to monitoring/prometheus/alerts/asset-creation.yml.",
+  "editable": true,
+  "graphTooltip": 1,
+  "id": null,
+  "iteration": 1746230400000,
+  "links": [],
+  "panels": [
+    {
+      "title": "Workflow duration p95 (SLO: < 30s)",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(asset_workflow_duration_seconds_bucket[5m])))",
+          "legendFormat": "p95 duration",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(asset_workflow_duration_seconds_bucket[5m])))",
+          "legendFormat": "p99 duration",
+          "refId": "B"
+        }
+      ],
+      "thresholds": [
+        {"value": 30, "colorMode": "warning", "op": "gt", "fill": true, "line": true}
+      ],
+      "yaxes": [{"format": "s", "label": "duration"}, {"format": "short"}]
+    },
+    {
+      "title": "Workflow gate-outcome rate",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "targets": [
+        {
+          "expr": "sum by (state) (rate(asset_workflow_terminal_total[5m]))",
+          "legendFormat": "{{state}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [{"format": "ops", "label": "transitions/sec"}, {"format": "short"}]
+    },
+    {
+      "title": "Orphan-DRAFT count (target: 0; alert: >100)",
+      "type": "stat",
+      "datasource": "Prometheus",
+      "gridPos": {"h": 6, "w": 6, "x": 0, "y": 8},
+      "targets": [
+        {
+          "expr": "sum(asset_orphan_draft_count)",
+          "legendFormat": "orphan DRAFT",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              {"value": 0, "color": "green"},
+              {"value": 50, "color": "yellow"},
+              {"value": 100, "color": "red"}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Semantic-status distribution",
+      "type": "piechart",
+      "datasource": "Prometheus",
+      "gridPos": {"h": 6, "w": 6, "x": 6, "y": 8},
+      "targets": [
+        {
+          "expr": "sum by (status) (asset_semantic_status_count)",
+          "legendFormat": "{{status}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Federated-import volume (per minute)",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": {"h": 6, "w": 12, "x": 12, "y": 8},
+      "targets": [
+        {
+          "expr": "sum by (result) (rate(asset_federated_import_total[5m])) * 60",
+          "legendFormat": "{{result}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [{"format": "short", "label": "imports/min"}, {"format": "short"}]
+    },
+    {
+      "title": "Fail-closed rejection rate (per tenant — top 10)",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 14},
+      "targets": [
+        {
+          "expr": "topk(10, sum by (tenant_id) (rate(asset_fail_closed_rejected_total[15m])))",
+          "legendFormat": "{{tenant_id}}",
+          "refId": "A"
+        }
+      ],
+      "yaxes": [{"format": "ops", "label": "rejections/sec"}, {"format": "short"}]
+    },
+    {
+      "title": "Compliance circuit-breaker state",
+      "type": "stat",
+      "datasource": "Prometheus",
+      "gridPos": {"h": 4, "w": 8, "x": 0, "y": 22},
+      "targets": [
+        {
+          "expr": "compliance_circuit_breaker_state",
+          "legendFormat": "compliance",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {"from": "0", "to": "0", "text": "CLOSED", "color": "green"},
+            {"from": "1", "to": "1", "text": "HALF_OPEN", "color": "yellow"},
+            {"from": "2", "to": "2", "text": "OPEN", "color": "red"}
+          ]
+        }
+      }
+    },
+    {
+      "title": "DQ circuit-breaker state",
+      "type": "stat",
+      "datasource": "Prometheus",
+      "gridPos": {"h": 4, "w": 8, "x": 8, "y": 22},
+      "targets": [
+        {
+          "expr": "dq_circuit_breaker_state",
+          "legendFormat": "dq",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {"from": "0", "to": "0", "text": "CLOSED", "color": "green"},
+            {"from": "1", "to": "1", "text": "HALF_OPEN", "color": "yellow"},
+            {"from": "2", "to": "2", "text": "OPEN", "color": "red"}
+          ]
+        }
+      }
+    },
+    {
+      "title": "ASSET_VERSION_MISMATCH events (412 conflicts)",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": {"h": 4, "w": 8, "x": 16, "y": 22},
+      "targets": [
+        {
+          "expr": "sum(rate(asset_version_mismatch_total[5m])) * 60",
+          "legendFormat": "412/min",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Workflow version distribution (active vs soak)",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "gridPos": {"h": 6, "w": 24, "x": 0, "y": 26},
+      "targets": [
+        {
+          "expr": "sum by (workflow_version, state) (workflow_runs_in_flight)",
+          "legendFormat": "{{workflow_version}} - {{state}}",
+          "refId": "A"
+        }
+      ]
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 27,
+  "style": "dark",
+  "tags": ["asset-creation", "phase-250"],
+  "templating": {
+    "list": [
+      {
+        "name": "tenant_id",
+        "label": "Tenant",
+        "type": "query",
+        "datasource": "Prometheus",
+        "query": "label_values(asset_workflow_terminal_total, tenant_id)",
+        "includeAll": true,
+        "multi": true
+      }
+    ]
+  },
+  "time": {"from": "now-3h", "to": "now"},
+  "timepicker": {},
+  "timezone": "utc",
+  "title": "Asset Creation — Phase 250 SLO Dashboard",
+  "uid": "asset-creation-phase-250",
+  "version": 1
+}

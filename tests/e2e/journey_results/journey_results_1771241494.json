@@ -1,0 +1,44 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DC-001-c6fa9c1d",
+      "journey_name": "Discover and Purchase Marketplace Asset",
+      "persona": "Data Consumer / Buyer",
+      "status": "failed",
+      "start_time": 1771241494.831702,
+      "end_time": 1771241494.8356915,
+      "duration": 0.003989458084106445,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": "Failed to create asset: 403 - {'error': 'No active subscription', 'code': 'subscription_inactive', 'details': {'tenant_id': '02b75efb-b536-4d29-b9f8-1de5ad9b6798'}}",
+      "error_type": "Exception",
+      "steps": [
+        {
+          "step_name": "Provider Creates Asset",
+          "status": "StepStatus.FAILED",
+          "start_time": 1771241494.831711,
+          "end_time": 1771241494.835686,
+          "duration": 0.00397491455078125,
+          "error_message": "Failed to create asset: 403 - {'error': 'No active subscription', 'code': 'subscription_inactive', 'details': {'tenant_id': '02b75efb-b536-4d29-b9f8-1de5ad9b6798'}}",
+          "error_type": "Exception",
+          "retry_count": 0,
+          "metadata": {
+            "args": "()",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-16T11:31:34.835779"
+}

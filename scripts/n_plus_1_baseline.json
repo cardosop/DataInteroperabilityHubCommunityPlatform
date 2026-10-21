@@ -1,0 +1,24 @@
+{
+  "description": "311.22 (G10) — Known-safe lazy-load patterns exempt from N+1 CI gate",
+  "generated": "2026-05-21",
+  "exceptions": [
+    {
+      "file": "hub/apps/assets/views.py",
+      "line": 423,
+      "pattern": "Asset.objects.select_related('tenant')",
+      "reason": "Single-tenant scoping — 1 query per request, not N+1"
+    },
+    {
+      "file": "hub/apps/billing/views.py",
+      "line": 708,
+      "pattern": "PaymentTransaction.objects.filter",
+      "reason": "Aggregation query — single SUM + COUNT, no per-row lazy load"
+    },
+    {
+      "file": "hub/apps/search/views.py",
+      "line": 156,
+      "pattern": "SearchIndex.objects.prefetch_related",
+      "reason": "prefetch_related already optimizes the N+1 path"
+    }
+  ]
+}

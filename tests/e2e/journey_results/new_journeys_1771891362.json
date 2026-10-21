@@ -1,0 +1,69 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.017406702041625977
+  },
+  "journeys": [
+    {
+      "journey_id": "DC-015-33822c33",
+      "journey_name": "Purchase ODPS Product (Marketplace)",
+      "persona": "Data Consumer",
+      "status": "completed",
+      "start_time": 1771891362.8528688,
+      "end_time": 1771891362.8702755,
+      "duration": 0.017406702041625977,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Discover ODPS Products",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771891362.8528748,
+          "end_time": 1771891362.8593662,
+          "duration": 0.006491422653198242,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "View Entitlements",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771891362.8646126,
+          "end_time": 1771891362.864617,
+          "duration": 4.5299530029296875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "View Orders",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1771891362.8702707,
+          "end_time": 1771891362.8702743,
+          "duration": 3.5762786865234375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "ReturnList"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-24T00:02:42.870334"
+}

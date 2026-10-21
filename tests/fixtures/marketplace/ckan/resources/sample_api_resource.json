@@ -1,0 +1,21 @@
+{
+  "id": "resource-api-1",
+  "package_id": "sample-dataset-1",
+  "name": "Sample API Resource",
+  "description": "A sample API endpoint",
+  "url": "https://api.example.com/data",
+  "format": "API",
+  "size": null,
+  "mimetype": "application/json",
+  "mimetype_inner": null,
+  "hash": null,
+  "created": "2024-01-15T12:00:00Z",
+  "last_modified": "2024-01-15T12:00:00Z",
+  "cache_url": null,
+  "cache_last_updated": null,
+  "position": 2,
+  "resource_type": "api",
+  "url_type": "api",
+  "revision_id": "rev-125"
+}
+

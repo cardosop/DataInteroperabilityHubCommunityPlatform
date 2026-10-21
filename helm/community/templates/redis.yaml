@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "datahub-core.name" . }}-redis
+  labels: {{ include "datahub-core.labels" . | nindent 4 }}
+spec:
+  ports: [{ port: 6379 }]
+  selector: { app: {{ include "datahub-core.name" . }}-redis }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "datahub-core.name" . }}-redis
+  labels: {{ include "datahub-core.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: {{ include "datahub-core.name" . }}-redis }
+  template:
+    metadata:
+      labels: { app: {{ include "datahub-core.name" . }}-redis }
+    spec:
+      containers:
+        - name: redis
+          image: "{{ .Values.redis.image }}"
+          ports: [{ containerPort: 6379 }]

@@ -1,0 +1,44 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DE-006-cf2877b0",
+      "journey_name": "Schema Evolution",
+      "persona": "Data Engineer / Contract Author",
+      "status": "failed",
+      "start_time": 1765589399.9891276,
+      "end_time": 1765589400.3894956,
+      "duration": 0.40036797523498535,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": "No module named 'django_filters'",
+      "error_type": "ModuleNotFoundError",
+      "steps": [
+        {
+          "step_name": "Create Asset with Dataset",
+          "status": "StepStatus.FAILED",
+          "start_time": 1765589399.989136,
+          "end_time": 1765589400.3894887,
+          "duration": 0.40035271644592285,
+          "error_message": "No module named 'django_filters'",
+          "error_type": "ModuleNotFoundError",
+          "retry_count": 0,
+          "metadata": {
+            "args": "()",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2025-12-13T01:30:00.389610"
+}

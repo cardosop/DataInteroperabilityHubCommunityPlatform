@@ -1,0 +1,69 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 0.06703567504882812
+  },
+  "journeys": [
+    {
+      "journey_id": "MPA-007-96aaaf8b",
+      "journey_name": "Monitor Data Mesh Topology",
+      "persona": "Platform Admin",
+      "status": "completed",
+      "start_time": 1769083793.8737938,
+      "end_time": 1769083793.9408295,
+      "duration": 0.06703567504882812,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "View Topology",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769083793.873801,
+          "end_time": 1769083793.9009585,
+          "duration": 0.02715754508972168,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Monitor Domain Health",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769083793.9009678,
+          "end_time": 1769083793.9200835,
+          "duration": 0.019115686416625977,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "View Relationships",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1769083793.9200935,
+          "end_time": 1769083793.9408267,
+          "duration": 0.020733118057250977,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-01-22T12:09:53.940908"
+}

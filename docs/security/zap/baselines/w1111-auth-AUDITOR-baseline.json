@@ -1,0 +1,1805 @@
+{
+	"@programName": "ZAP",
+	"@version": "2.17.0",
+	"@generated": "Sun, 18 Oct 2026 11:08:13",
+	"created": "2026-10-18T11:08:13.342944864Z",
+	"insights":[
+		{
+			"level": "Low",
+			"reason": "Warning",
+			"site": "",
+			"key": "insight.log.warn",
+			"description": "ZAP warnings logged - see the zap.log file for details",
+			"statistic": "268"
+		},
+		{
+			"level": "Info",
+			"reason": "Informational",
+			"site": "http://localhost:18900",
+			"key": "insight.endpoint.ctype.application/json",
+			"description": "Percentage of endpoints with content type application/json",
+			"statistic": "100"
+		},
+		{
+			"level": "Info",
+			"reason": "Informational",
+			"site": "http://localhost:18900",
+			"key": "insight.endpoint.method.GET",
+			"description": "Percentage of endpoints with method GET",
+			"statistic": "100"
+		},
+		{
+			"level": "Info",
+			"reason": "Informational",
+			"site": "http://localhost:18900",
+			"key": "insight.endpoint.total",
+			"description": "Count of total endpoints",
+			"statistic": "1"
+		},
+		{
+			"level": "Info",
+			"reason": "Informational",
+			"site": "http://localhost:8101",
+			"key": "insight.code.2xx",
+			"description": "Percentage of responses with status code 2xx",
+			"statistic": "4"
+		},
+		{
+			"level": "Info",
+			"reason": "Informational",
+			"site": "http://localhost:8101",
+			"key": "insight.code.4xx",
+			"description": "Percentage of responses with status code 4xx",
+			"statistic": "94"
+		},
+		{
+			"level": "Info",
+			"reason": "Informational",
+			"site": "http://localhost:8101",
+			"key": "insight.code.5xx",
+			"description": "Percentage of responses with status code 5xx",
+			"statistic": "1"
+		},
+		{
+			"level": "Info",
+			"reason": "Informational",
+			"site": "http://localhost:8101",
+			"key": "insight.endpoint.ctype.application/json",
+			"description": "Percentage of endpoints with content type application/json",
+			"statistic": "91"
+		},
+		{
+			"level": "Info",
+			"reason": "Informational",
+			"site": "http://localhost:8101",
+			"key": "insight.endpoint.ctype.text/csv",
+			"description": "Percentage of endpoints with content type text/csv",
+			"statistic": "1"
+		},
+		{
+			"level": "Info",
+			"reason": "Informational",
+			"site": "http://localhost:8101",
+			"key": "insight.endpoint.ctype.text/html",
+			"description": "Percentage of endpoints with content type text/html",
+			"statistic": "6"
+		},
+		{
+			"level": "Info",
+			"reason": "Informational",
+			"site": "http://localhost:8101",
+			"key": "insight.endpoint.method.DELETE",
+			"description": "Percentage of endpoints with method DELETE",
+			"statistic": "5"
+		},
+		{
+			"level": "Info",
+			"reason": "Informational",
+			"site": "http://localhost:8101",
+			"key": "insight.endpoint.method.GET",
+			"description": "Percentage of endpoints with method GET",
+			"statistic": "53"
+		},
+		{
+			"level": "Info",
+			"reason": "Informational",
+			"site": "http://localhost:8101",
+			"key": "insight.endpoint.method.PATCH",
+			"description": "Percentage of endpoints with method PATCH",
+			"statistic": "7"
+		},
+		{
+			"level": "Info",
+			"reason": "Informational",
+			"site": "http://localhost:8101",
+			"key": "insight.endpoint.method.POST",
+			"description": "Percentage of endpoints with method POST",
+			"statistic": "28"
+		},
+		{
+			"level": "Info",
+			"reason": "Informational",
+			"site": "http://localhost:8101",
+			"key": "insight.endpoint.method.PUT",
+			"description": "Percentage of endpoints with method PUT",
+			"statistic": "5"
+		},
+		{
+			"level": "Info",
+			"reason": "Informational",
+			"site": "http://localhost:8101",
+			"key": "insight.endpoint.total",
+			"description": "Count of total endpoints",
+			"statistic": "569"
+		},
+		{
+			"level": "Info",
+			"reason": "Informational",
+			"site": "http://localhost:8101",
+			"key": "insight.response.slow",
+			"description": "Percentage of slow responses",
+			"statistic": "28"
+		}
+	],
+	"site":[ 
+		{
+			"@name": "http://localhost:8101",
+			"@host": "localhost",
+			"@port": "8101",
+			"@ssl": "false",
+			"alerts": [ 
+				{
+					"pluginid": "40018",
+					"alertRef": "40018",
+					"alert": "SQL Injection",
+					"name": "SQL Injection",
+					"riskcode": "3",
+					"confidence": "2",
+					"riskdesc": "High (Medium)",
+					"desc": "<p>SQL injection may be possible.</p>",
+					"instances":[ 
+						{
+							"id": "150",
+							"uri": "http://localhost:8101/api/v1/admin/dashboard/summary/?refresh=true%27+AND+%271%27%3D%271%27+--+",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/admin\/dashboard\/summary\/ (refresh)",
+							"method": "GET",
+							"param": "refresh",
+							"attack": "true' OR '1'='1' -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [true' AND '1'='1' -- ] and [true' OR '1'='1' -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was NOT returned for the original parameter.\nThe vulnerability was detected by successfully retrieving more data than originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "153",
+							"uri": "http://localhost:8101/api/v1/analytics/api/performance/?end_date=end_date&start_date=start_date+AND+1%3D1+--+",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/analytics\/api\/performance\/ (end_date,start_date)",
+							"method": "GET",
+							"param": "start_date",
+							"attack": "start_date AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [start_date AND 1=1 -- ] and [start_date AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "145",
+							"uri": "http://localhost:8101/api/v1/analytics/api/usage-trends/?end_date=end_date+AND+1%3D1+--+&granularity=granularity&start_date=start_date",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/analytics\/api\/usage-trends\/ (end_date,granularity,start_date)",
+							"method": "GET",
+							"param": "end_date",
+							"attack": "end_date AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [end_date AND 1=1 -- ] and [end_date AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "144",
+							"uri": "http://localhost:8101/api/v1/analytics/costs/breakdown/?end_date=end_date+AND+1%3D1+--+&period=period&start_date=start_date",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/analytics\/costs\/breakdown\/ (end_date,period,start_date)",
+							"method": "GET",
+							"param": "end_date",
+							"attack": "end_date AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [end_date AND 1=1 -- ] and [end_date AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "152",
+							"uri": "http://localhost:8101/api/v1/analytics/costs/by-asset/?end_date=end_date&start_date=start_date%27+AND+%271%27%3D%271%27+--+",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/analytics\/costs\/by-asset\/ (end_date,start_date)",
+							"method": "GET",
+							"param": "start_date",
+							"attack": "start_date' AND '1'='1' -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [start_date' AND '1'='1' -- ] and [start_date' AND '1'='2' -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "143",
+							"uri": "http://localhost:8101/api/v1/analytics/costs/trends/?months=10+AND+1%3D1+--+&period=period",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/analytics\/costs\/trends\/ (months,period)",
+							"method": "GET",
+							"param": "months",
+							"attack": "10 AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [10 AND 1=1 -- ] and [10 AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "139",
+							"uri": "http://localhost:8101/api/v1/assets/id+AND+1%3D1+--+/dependencies",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/assets\/id AND 1=1 -- \/dependencies",
+							"method": "GET",
+							"param": "\u00ABid\u00BB",
+							"attack": "id AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [id AND 1=1 -- ] and [id AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "137",
+							"uri": "http://localhost:8101/api/v1/assets/id+AND+1%3D1+--+/external-resources",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/assets\/id AND 1=1 -- \/external-resources",
+							"method": "GET",
+							"param": "\u00ABid\u00BB",
+							"attack": "id AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [id AND 1=1 -- ] and [id AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "136",
+							"uri": "http://localhost:8101/api/v1/assets/id+AND+1%3D1+--+/health-score",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/assets\/id AND 1=1 -- \/health-score",
+							"method": "GET",
+							"param": "\u00ABid\u00BB",
+							"attack": "id OR 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [id AND 1=1 -- ] and [id OR 1=1 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was NOT returned for the original parameter.\nThe vulnerability was detected by successfully retrieving more data than originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "147",
+							"uri": "http://localhost:8101/api/v1/assets/workflows/workflow_instance_id%27+AND+%271%27%3D%271%27+--+/status",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/assets\/workflows\/workflow_instance_id' AND '1'='1' -- \/status",
+							"method": "GET",
+							"param": "\u00ABworkflow_instance_id\u00BB",
+							"attack": "workflow_instance_id' OR '1'='1' -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [workflow_instance_id' AND '1'='1' -- ] and [workflow_instance_id' OR '1'='1' -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was NOT returned for the original parameter.\nThe vulnerability was detected by successfully retrieving more data than originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "154",
+							"uri": "http://localhost:8101/api/v1/audit/audit-events/export/?action=action&actor_user_id=actor_user_id&end_date=end_date+AND+1%3D1+--+&format=csv&q=q&resource_id=resource_id&resource_type=resource_type&start_date=start_date",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/audit\/audit-events\/export\/ (action,actor_user_id,end_date,format,q,resource_id,resource_type,start_date)",
+							"method": "GET",
+							"param": "end_date",
+							"attack": "end_date OR 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [end_date AND 1=1 -- ] and [end_date OR 1=1 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was NOT returned for the original parameter.\nThe vulnerability was detected by successfully retrieving more data than originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "134",
+							"uri": "http://localhost:8101/api/v1/audit/event-retention-policies/id+AND+1%3D1+--+",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/audit\/event-retention-policies\/id AND 1=1 -- ",
+							"method": "GET",
+							"param": "\u00ABid\u00BB",
+							"attack": "id AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [id AND 1=1 -- ] and [id AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "133",
+							"uri": "http://localhost:8101/api/v1/billing/invoices/id%27+AND+%271%27%3D%271%27+--+",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/billing\/invoices\/id' AND '1'='1' -- ",
+							"method": "GET",
+							"param": "\u00ABid\u00BB",
+							"attack": "id' OR '1'='1' -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [id' AND '1'='1' -- ] and [id' OR '1'='1' -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was NOT returned for the original parameter.\nThe vulnerability was detected by successfully retrieving more data than originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "123",
+							"uri": "http://localhost:8101/api/v1/compliance/runs/id+AND+1%3D1+--+",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/compliance\/runs\/id AND 1=1 -- ",
+							"method": "GET",
+							"param": "\u00ABid\u00BB",
+							"attack": "id AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [id AND 1=1 -- ] and [id AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "121",
+							"uri": "http://localhost:8101/api/v1/compliance/runs/id+AND+1%3D1+--+/export.json",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/compliance\/runs\/id AND 1=1 -- \/export.json",
+							"method": "GET",
+							"param": "\u00ABid\u00BB",
+							"attack": "id OR 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [id AND 1=1 -- ] and [id OR 1=1 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was NOT returned for the original parameter.\nThe vulnerability was detected by successfully retrieving more data than originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "120",
+							"uri": "http://localhost:8101/api/v1/compliance/runs/id+AND+1%3D1+--+/results",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/compliance\/runs\/id AND 1=1 -- \/results",
+							"method": "GET",
+							"param": "\u00ABid\u00BB",
+							"attack": "id AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [id AND 1=1 -- ] and [id AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "119",
+							"uri": "http://localhost:8101/api/v1/contracts/?compliance_regime=compliance_regime+AND+1%3D1+--+&contact_email=contact_email&contact_name=contact_name&has_odps_link=true&max_latency_ms=1.2&min_availability=1.2&model_name=model_name&odps_version=odps_version&ordering=ordering&owner_email=owner_email&owner_name=owner_name&page=10&page_size=10&quality_profile=quality_profile&server_type=server_type&server_url=server_url&spec_type=spec_type&spec_version=spec_version&tag=tag",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/contracts\/ (compliance_regime,contact_email,contact_name,has_odps_link,max_latency_ms,min_availability,model_name,odps_version,ordering,owner_email,owner_name,page,page_size,quality_profile,server_type,server_url,spec_type,spec_version,tag)",
+							"method": "GET",
+							"param": "compliance_regime",
+							"attack": "compliance_regime OR 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [compliance_regime AND 1=1 -- ] and [compliance_regime OR 1=1 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was NOT returned for the original parameter.\nThe vulnerability was detected by successfully retrieving more data than originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "132",
+							"uri": "http://localhost:8101/api/v1/contracts/?compliance_regime=compliance_regime&contact_email=contact_email+AND+1%3D1+--+&contact_name=contact_name&has_odps_link=true&max_latency_ms=1.2&min_availability=1.2&model_name=model_name&odps_version=odps_version&ordering=ordering&owner_email=owner_email&owner_name=owner_name&page=10&page_size=10&quality_profile=quality_profile&server_type=server_type&server_url=server_url&spec_type=spec_type&spec_version=spec_version&tag=tag",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/contracts\/ (compliance_regime,contact_email,contact_name,has_odps_link,max_latency_ms,min_availability,model_name,odps_version,ordering,owner_email,owner_name,page,page_size,quality_profile,server_type,server_url,spec_type,spec_version,tag)",
+							"method": "GET",
+							"param": "contact_email",
+							"attack": "contact_email AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [contact_email AND 1=1 -- ] and [contact_email AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "110",
+							"uri": "http://localhost:8101/api/v1/contracts/id+AND+1%3D1+--+",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/contracts\/id AND 1=1 -- ",
+							"method": "GET",
+							"param": "\u00ABid\u00BB",
+							"attack": "id OR 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [id AND 1=1 -- ] and [id OR 1=1 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was NOT returned for the original parameter.\nThe vulnerability was detected by successfully retrieving more data than originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "111",
+							"uri": "http://localhost:8101/api/v1/contracts/id+AND+1%3D1+--+/models/model_name/lineage",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/contracts\/id AND 1=1 -- \/models\/model_name\/lineage",
+							"method": "GET",
+							"param": "\u00ABid\u00BB",
+							"attack": "id OR 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [id AND 1=1 -- ] and [id OR 1=1 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was NOT returned for the original parameter.\nThe vulnerability was detected by successfully retrieving more data than originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "112",
+							"uri": "http://localhost:8101/api/v1/contracts/id+AND+1%3D1+--+/payment-gateways",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/contracts\/id AND 1=1 -- \/payment-gateways",
+							"method": "GET",
+							"param": "\u00ABid\u00BB",
+							"attack": "id OR 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [id AND 1=1 -- ] and [id OR 1=1 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was NOT returned for the original parameter.\nThe vulnerability was detected by successfully retrieving more data than originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "140",
+							"uri": "http://localhost:8101/api/v1/contracts/id/download/?format=hubcontract&output_format=json+AND+1%3D1+--+&version=version",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/contracts\/id\/download\/ (format,output_format,version)",
+							"method": "GET",
+							"param": "output_format",
+							"attack": "json AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [json AND 1=1 -- ] and [json AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "148",
+							"uri": "http://localhost:8101/api/v1/contracts/id/download/?format=hubcontract&output_format=json&version=version+AND+1%3D1+--+",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/contracts\/id\/download\/ (format,output_format,version)",
+							"method": "GET",
+							"param": "version",
+							"attack": "version AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [version AND 1=1 -- ] and [version AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "125",
+							"uri": "http://localhost:8101/api/v1/contracts/id/export/?format=hubcontract%27+AND+%271%27%3D%271%27+--+&output_format=json&version=2.2.2",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/contracts\/id\/export\/ (format,output_format,version)",
+							"method": "GET",
+							"param": "format",
+							"attack": "hubcontract' AND '1'='1' -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [hubcontract' AND '1'='1' -- ] and [hubcontract' AND '1'='2' -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "126",
+							"uri": "http://localhost:8101/api/v1/contracts/id/fields/field_name/lineage/?model_name=model_name+AND+1%3D1+--+",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/contracts\/id\/fields\/field_name\/lineage\/ (model_name)",
+							"method": "GET",
+							"param": "model_name",
+							"attack": "model_name OR 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [model_name AND 1=1 -- ] and [model_name OR 1=1 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was NOT returned for the original parameter.\nThe vulnerability was detected by successfully retrieving more data than originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "118",
+							"uri": "http://localhost:8101/api/v1/contracts/id/impact-analysis/?depth=20%2F2&field_name=field_name&format=format&include_fields=true&model_name=model_name",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/contracts\/id\/impact-analysis\/ (depth,field_name,format,include_fields,model_name)",
+							"method": "GET",
+							"param": "depth",
+							"attack": "20/2",
+							"evidence": "",
+							"otherinfo": "The original page results were successfully replicated using the expression [20/2] as the parameter value\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison."
+						},
+						{
+							"id": "131",
+							"uri": "http://localhost:8101/api/v1/contracts/id/impact-analysis/?depth=10&field_name=field_name+AND+1%3D1+--+&format=format&include_fields=true&model_name=model_name",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/contracts\/id\/impact-analysis\/ (depth,field_name,format,include_fields,model_name)",
+							"method": "GET",
+							"param": "field_name",
+							"attack": "field_name AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [field_name AND 1=1 -- ] and [field_name AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "117",
+							"uri": "http://localhost:8101/api/v1/contracts/id/lineage/diff/?from=from+AND+1%3D1+--+&from_version=10&to=to&to_version=10",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/contracts\/id\/lineage\/diff\/ (from,from_version,to,to_version)",
+							"method": "GET",
+							"param": "from",
+							"attack": "from AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [from AND 1=1 -- ] and [from AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "127",
+							"uri": "http://localhost:8101/api/v1/contracts/id/lineage/full/?max_contract_depth=20%2F2&max_field_depth=10&max_model_depth=10",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/contracts\/id\/lineage\/full\/ (max_contract_depth,max_field_depth,max_model_depth)",
+							"method": "GET",
+							"param": "max_contract_depth",
+							"attack": "20/2",
+							"evidence": "",
+							"otherinfo": "The original page results were successfully replicated using the expression [20/2] as the parameter value\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison."
+						},
+						{
+							"id": "122",
+							"uri": "http://localhost:8101/api/v1/contracts/id/lineage/visualization/?as_of=as_of%27+AND+%271%27%3D%271%27+--+&format=format&include_fields=true&max_depth=10&version=10",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/contracts\/id\/lineage\/visualization\/ (as_of,format,include_fields,max_depth,version)",
+							"method": "GET",
+							"param": "as_of",
+							"attack": "as_of' AND '1'='1' -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [as_of' AND '1'='1' -- ] and [as_of' AND '1'='2' -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "130",
+							"uri": "http://localhost:8101/api/v1/contracts/id/lineage/visualization/?as_of=as_of&format=format+AND+1%3D1+--+&include_fields=true&max_depth=10&version=10",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/contracts\/id\/lineage\/visualization\/ (as_of,format,include_fields,max_depth,version)",
+							"method": "GET",
+							"param": "format",
+							"attack": "format OR 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [format AND 1=1 -- ] and [format OR 1=1 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was NOT returned for the original parameter.\nThe vulnerability was detected by successfully retrieving more data than originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "129",
+							"uri": "http://localhost:8101/api/v1/contracts/id/models/model_name+AND+1%3D1+--+/lineage",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/contracts\/id\/models\/model_name AND 1=1 -- \/lineage",
+							"method": "GET",
+							"param": "\u00ABmodel_name\u00BB",
+							"attack": "model_name OR 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [model_name AND 1=1 -- ] and [model_name OR 1=1 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was NOT returned for the original parameter.\nThe vulnerability was detected by successfully retrieving more data than originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "128",
+							"uri": "http://localhost:8101/api/v1/contracts/id/product-details/?lang=en+AND+1%3D1+--+",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/contracts\/id\/product-details\/ (lang)",
+							"method": "GET",
+							"param": "lang",
+							"attack": "en AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [en AND 1=1 -- ] and [en AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "124",
+							"uri": "http://localhost:8101/api/v1/contracts/products/workflows/workflow_instance_id+AND+1%3D1+--+/status",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/contracts\/products\/workflows\/workflow_instance_id AND 1=1 -- \/status",
+							"method": "GET",
+							"param": "\u00ABworkflow_instance_id\u00BB",
+							"attack": "workflow_instance_id OR 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [workflow_instance_id AND 1=1 -- ] and [workflow_instance_id OR 1=1 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was NOT returned for the original parameter.\nThe vulnerability was detected by successfully retrieving more data than originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "106",
+							"uri": "http://localhost:8101/api/v1/datasets/?asset_id=asset_id%27+AND+%271%27%3D%271%27+--+&dataset_format=dataset_format&include_retired=true&ordering=ordering&page=10&page_size=10&search=ZAP",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/datasets\/ (asset_id,dataset_format,include_retired,ordering,page,page_size,search)",
+							"method": "GET",
+							"param": "asset_id",
+							"attack": "asset_id' AND '1'='1' -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [asset_id' AND '1'='1' -- ] and [asset_id' AND '1'='2' -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "142",
+							"uri": "http://localhost:8101/api/v1/datasets/?asset_id=asset_id&dataset_format=dataset_format&include_retired=true+AND+1%3D1+--+&ordering=ordering&page=10&page_size=10&search=ZAP",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/datasets\/ (asset_id,dataset_format,include_retired,ordering,page,page_size,search)",
+							"method": "GET",
+							"param": "include_retired",
+							"attack": "true AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [true AND 1=1 -- ] and [true AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "100",
+							"uri": "http://localhost:8101/api/v1/datasets/id%27+AND+%271%27%3D%271%27+--+/sample",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/datasets\/id' AND '1'='1' -- \/sample",
+							"method": "GET",
+							"param": "\u00ABid\u00BB",
+							"attack": "id' AND '1'='1' -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [id' AND '1'='1' -- ] and [id' AND '1'='2' -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "141",
+							"uri": "http://localhost:8101/api/v1/dq/quality/anomalies/?asset_id=asset_id&dataset_id=dataset_id&severity=severity+AND+1%3D1+--+&since=since",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/dq\/quality\/anomalies\/ (asset_id,dataset_id,severity,since)",
+							"method": "GET",
+							"param": "severity",
+							"attack": "severity OR 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [severity AND 1=1 -- ] and [severity OR 1=1 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was NOT returned for the original parameter.\nThe vulnerability was detected by successfully retrieving more data than originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "94",
+							"uri": "http://localhost:8101/api/v1/dq/quality/scorecards/?asset_id=asset_id+AND+1%3D1+--+&time_range=10",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/dq\/quality\/scorecards\/ (asset_id,time_range)",
+							"method": "GET",
+							"param": "asset_id",
+							"attack": "asset_id AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [asset_id AND 1=1 -- ] and [asset_id AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "109",
+							"uri": "http://localhost:8101/api/v1/dq/quality/scorecards/?asset_id=asset_id&time_range=10+AND+1%3D1+--+",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/dq\/quality\/scorecards\/ (asset_id,time_range)",
+							"method": "GET",
+							"param": "time_range",
+							"attack": "10 OR 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [10 AND 1=1 -- ] and [10 OR 1=1 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was NOT returned for the original parameter.\nThe vulnerability was detected by successfully retrieving more data than originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "90",
+							"uri": "http://localhost:8101/api/v1/dq/quality/trends/?asset_id=asset_id+AND+1%3D1+--+&dataset_id=dataset_id&metric_type=metric_type&period_type=period_type&time_range=10",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/dq\/quality\/trends\/ (asset_id,dataset_id,metric_type,period_type,time_range)",
+							"method": "GET",
+							"param": "asset_id",
+							"attack": "asset_id OR 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [asset_id AND 1=1 -- ] and [asset_id OR 1=1 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was NOT returned for the original parameter.\nThe vulnerability was detected by successfully retrieving more data than originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "97",
+							"uri": "http://localhost:8101/api/v1/dq/quality/trends/?asset_id=asset_id&dataset_id=dataset_id%27+AND+%271%27%3D%271%27+--+&metric_type=metric_type&period_type=period_type&time_range=10",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/dq\/quality\/trends\/ (asset_id,dataset_id,metric_type,period_type,time_range)",
+							"method": "GET",
+							"param": "dataset_id",
+							"attack": "dataset_id' AND '1'='1' -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [dataset_id' AND '1'='1' -- ] and [dataset_id' AND '1'='2' -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "138",
+							"uri": "http://localhost:8101/api/v1/dq/quality/trends/?asset_id=asset_id&dataset_id=dataset_id&metric_type=metric_type&period_type=period_type+AND+1%3D1+--+&time_range=10",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/dq\/quality\/trends\/ (asset_id,dataset_id,metric_type,period_type,time_range)",
+							"method": "GET",
+							"param": "period_type",
+							"attack": "period_type OR 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [period_type AND 1=1 -- ] and [period_type OR 1=1 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was NOT returned for the original parameter.\nThe vulnerability was detected by successfully retrieving more data than originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "89",
+							"uri": "http://localhost:8101/api/v1/drafts/?draft_key=default%27+AND+%271%27%3D%271%27+--+&resource_type=resource_type",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/drafts\/ (draft_key,resource_type)",
+							"method": "GET",
+							"param": "draft_key",
+							"attack": "default' OR '1'='1' -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [default' AND '1'='1' -- ] and [default' OR '1'='1' -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was NOT returned for the original parameter.\nThe vulnerability was detected by successfully retrieving more data than originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "99",
+							"uri": "http://localhost:8101/api/v1/drafts/?draft_key=default&resource_type=resource_type%27+AND+%271%27%3D%271%27+--+",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/drafts\/ (draft_key,resource_type)",
+							"method": "GET",
+							"param": "resource_type",
+							"attack": "resource_type' AND '1'='1' -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [resource_type' AND '1'='1' -- ] and [resource_type' AND '1'='2' -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "88",
+							"uri": "http://localhost:8101/api/v1/events/dlq/?event_type=event_type%27+AND+%271%27%3D%271%27+--+&page=10&page_size=10&resolved=true&subscriber=subscriber",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/events\/dlq\/ (event_type,page,page_size,resolved,subscriber)",
+							"method": "GET",
+							"param": "event_type",
+							"attack": "event_type' OR '1'='1' -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [event_type' AND '1'='1' -- ] and [event_type' OR '1'='1' -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was NOT returned for the original parameter.\nThe vulnerability was detected by successfully retrieving more data than originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "77",
+							"uri": "http://localhost:8101/api/v1/governance/access-requests/id+AND+1%3D1+--+",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/governance\/access-requests\/id AND 1=1 -- ",
+							"method": "GET",
+							"param": "\u00ABid\u00BB",
+							"attack": "id AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [id AND 1=1 -- ] and [id AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "79",
+							"uri": "http://localhost:8101/api/v1/governance/access-requests/id+AND+1%3D1+--+/comments",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/governance\/access-requests\/id AND 1=1 -- \/comments",
+							"method": "GET",
+							"param": "\u00ABid\u00BB",
+							"attack": "id AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [id AND 1=1 -- ] and [id AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "82",
+							"uri": "http://localhost:8101/api/v1/governance/access/access-requests/id+AND+1%3D1+--+/comments",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/governance\/access\/access-requests\/id AND 1=1 -- \/comments",
+							"method": "GET",
+							"param": "\u00ABid\u00BB",
+							"attack": "id AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [id AND 1=1 -- ] and [id AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "105",
+							"uri": "http://localhost:8101/api/v1/governance/access/analytics/anomalies/?end_date=end_date&limit=10+AND+1%3D1+--+&start_date=start_date",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/governance\/access\/analytics\/anomalies\/ (end_date,limit,start_date)",
+							"method": "GET",
+							"param": "limit",
+							"attack": "10 AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [10 AND 1=1 -- ] and [10 AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "116",
+							"uri": "http://localhost:8101/api/v1/governance/access/analytics/anomalies/?end_date=end_date&limit=10&start_date=start_date+AND+1%3D1+--+",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/governance\/access\/analytics\/anomalies\/ (end_date,limit,start_date)",
+							"method": "GET",
+							"param": "start_date",
+							"attack": "start_date AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [start_date AND 1=1 -- ] and [start_date AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "80",
+							"uri": "http://localhost:8101/api/v1/governance/access/analytics/dashboard/?end_date=end_date+AND+1%3D1+--+&start_date=start_date",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/governance\/access\/analytics\/dashboard\/ (end_date,start_date)",
+							"method": "GET",
+							"param": "end_date",
+							"attack": "end_date AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [end_date AND 1=1 -- ] and [end_date AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "146",
+							"uri": "http://localhost:8101/api/v1/governance/access/analytics/patterns/?end_date=end_date&resource_type=resource_type&start_date=start_date&user_id=user_id+AND+1%3D1+--+",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/governance\/access\/analytics\/patterns\/ (end_date,resource_type,start_date,user_id)",
+							"method": "GET",
+							"param": "user_id",
+							"attack": "user_id OR 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [user_id AND 1=1 -- ] and [user_id OR 1=1 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was NOT returned for the original parameter.\nThe vulnerability was detected by successfully retrieving more data than originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "84",
+							"uri": "http://localhost:8101/api/v1/governance/access/analytics/security-events/?end_date=end_date+AND+1%3D1+--+&limit=10&start_date=start_date",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/governance\/access\/analytics\/security-events\/ (end_date,limit,start_date)",
+							"method": "GET",
+							"param": "end_date",
+							"attack": "end_date OR 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [end_date AND 1=1 -- ] and [end_date OR 1=1 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was NOT returned for the original parameter.\nThe vulnerability was detected by successfully retrieving more data than originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "115",
+							"uri": "http://localhost:8101/api/v1/governance/access/analytics/security-events/?end_date=end_date&limit=10&start_date=start_date+AND+1%3D1+--+",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/governance\/access\/analytics\/security-events\/ (end_date,limit,start_date)",
+							"method": "GET",
+							"param": "start_date",
+							"attack": "start_date AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [start_date AND 1=1 -- ] and [start_date AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "83",
+							"uri": "http://localhost:8101/api/v1/governance/access/certifications/id%27+AND+%271%27%3D%271%27+--+",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/governance\/access\/certifications\/id' AND '1'='1' -- ",
+							"method": "GET",
+							"param": "\u00ABid\u00BB",
+							"attack": "id' OR '1'='1' -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [id' AND '1'='1' -- ] and [id' OR '1'='1' -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was NOT returned for the original parameter.\nThe vulnerability was detected by successfully retrieving more data than originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "76",
+							"uri": "http://localhost:8101/api/v1/governance/analytics/anomalies/?end_date=end_date+AND+1%3D1+--+&limit=10&start_date=start_date",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/governance\/analytics\/anomalies\/ (end_date,limit,start_date)",
+							"method": "GET",
+							"param": "end_date",
+							"attack": "end_date AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [end_date AND 1=1 -- ] and [end_date AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "101",
+							"uri": "http://localhost:8101/api/v1/governance/analytics/anomalies/?end_date=end_date&limit=10&start_date=start_date%27+AND+%271%27%3D%271%27+--+",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/governance\/analytics\/anomalies\/ (end_date,limit,start_date)",
+							"method": "GET",
+							"param": "start_date",
+							"attack": "start_date' OR '1'='1' -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [start_date' AND '1'='1' -- ] and [start_date' OR '1'='1' -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was NOT returned for the original parameter.\nThe vulnerability was detected by successfully retrieving more data than originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "87",
+							"uri": "http://localhost:8101/api/v1/governance/analytics/dashboard/?end_date=end_date&start_date=start_date+AND+1%3D1+--+",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/governance\/analytics\/dashboard\/ (end_date,start_date)",
+							"method": "GET",
+							"param": "start_date",
+							"attack": "start_date AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [start_date AND 1=1 -- ] and [start_date AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "91",
+							"uri": "http://localhost:8101/api/v1/governance/analytics/patterns/?end_date=end_date&resource_type=resource_type%27+AND+%271%27%3D%271%27+--+&start_date=start_date&user_id=user_id",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/governance\/analytics\/patterns\/ (end_date,resource_type,start_date,user_id)",
+							"method": "GET",
+							"param": "resource_type",
+							"attack": "resource_type' AND '1'='1' -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [resource_type' AND '1'='1' -- ] and [resource_type' AND '1'='2' -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "96",
+							"uri": "http://localhost:8101/api/v1/governance/analytics/patterns/?end_date=end_date&resource_type=resource_type&start_date=start_date+AND+1%3D1+--+&user_id=user_id",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/governance\/analytics\/patterns\/ (end_date,resource_type,start_date,user_id)",
+							"method": "GET",
+							"param": "start_date",
+							"attack": "start_date AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [start_date AND 1=1 -- ] and [start_date AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "113",
+							"uri": "http://localhost:8101/api/v1/governance/analytics/patterns/?end_date=end_date&resource_type=resource_type&start_date=start_date&user_id=user_id+AND+1%3D1+--+",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/governance\/analytics\/patterns\/ (end_date,resource_type,start_date,user_id)",
+							"method": "GET",
+							"param": "user_id",
+							"attack": "user_id AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [user_id AND 1=1 -- ] and [user_id AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "71",
+							"uri": "http://localhost:8101/api/v1/governance/analytics/security-events/?end_date=end_date+AND+1%3D1+--+&limit=10&start_date=start_date",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/governance\/analytics\/security-events\/ (end_date,limit,start_date)",
+							"method": "GET",
+							"param": "end_date",
+							"attack": "end_date AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [end_date AND 1=1 -- ] and [end_date AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "85",
+							"uri": "http://localhost:8101/api/v1/governance/analytics/security-events/?end_date=end_date&limit=20%2F2&start_date=start_date",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/governance\/analytics\/security-events\/ (end_date,limit,start_date)",
+							"method": "GET",
+							"param": "limit",
+							"attack": "20/2",
+							"evidence": "",
+							"otherinfo": "The original page results were successfully replicated using the expression [20/2] as the parameter value\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison."
+						},
+						{
+							"id": "92",
+							"uri": "http://localhost:8101/api/v1/governance/analytics/security-events/?end_date=end_date&limit=10&start_date=start_date+AND+1%3D1+--+",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/governance\/analytics\/security-events\/ (end_date,limit,start_date)",
+							"method": "GET",
+							"param": "start_date",
+							"attack": "start_date AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [start_date AND 1=1 -- ] and [start_date AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "78",
+							"uri": "http://localhost:8101/api/v1/governance/certifications/expiring/?days_ahead=10+AND+1%3D1+--+",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/governance\/certifications\/expiring\/ (days_ahead)",
+							"method": "GET",
+							"param": "days_ahead",
+							"attack": "10 AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [10 AND 1=1 -- ] and [10 AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "104",
+							"uri": "http://localhost:8101/api/v1/jobs/?ordering=ordering&page=10&page_size=10&search=ZAP+AND+1%3D1+--+",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/jobs\/ (ordering,page,page_size,search)",
+							"method": "GET",
+							"param": "search",
+							"attack": "ZAP OR 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [ZAP AND 1=1 -- ] and [ZAP OR 1=1 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was NOT returned for the original parameter.\nThe vulnerability was detected by successfully retrieving more data than originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "102",
+							"uri": "http://localhost:8101/api/v1/jobs/dlq/?ordering=ordering&page=10&page_size=10&search=ZAP%27+AND+%271%27%3D%271%27+--+",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/jobs\/dlq\/ (ordering,page,page_size,search)",
+							"method": "GET",
+							"param": "search",
+							"attack": "ZAP' OR '1'='1' -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [ZAP' AND '1'='1' -- ] and [ZAP' OR '1'='1' -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was NOT returned for the original parameter.\nThe vulnerability was detected by successfully retrieving more data than originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "66",
+							"uri": "http://localhost:8101/api/v1/jobs/id+AND+1%3D1+--+",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/jobs\/id AND 1=1 -- ",
+							"method": "GET",
+							"param": "\u00ABid\u00BB",
+							"attack": "id AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [id AND 1=1 -- ] and [id AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "64",
+							"uri": "http://localhost:8101/api/v1/marketplace/config/trust-signals/id%27+AND+%271%27%3D%271%27+--+",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/marketplace\/config\/trust-signals\/id' AND '1'='1' -- ",
+							"method": "GET",
+							"param": "\u00ABid\u00BB",
+							"attack": "id' AND '1'='1' -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [id' AND '1'='1' -- ] and [id' AND '1'='2' -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "65",
+							"uri": "http://localhost:8101/api/v1/marketplace/entitlements/id%27+AND+%271%27%3D%271%27+--+",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/marketplace\/entitlements\/id' AND '1'='1' -- ",
+							"method": "GET",
+							"param": "\u00ABid\u00BB",
+							"attack": "id' OR '1'='1' -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [id' AND '1'='1' -- ] and [id' OR '1'='1' -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was NOT returned for the original parameter.\nThe vulnerability was detected by successfully retrieving more data than originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "56",
+							"uri": "http://localhost:8101/api/v1/marketplace/orders/id+AND+1%3D1+--+",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/marketplace\/orders\/id AND 1=1 -- ",
+							"method": "GET",
+							"param": "\u00ABid\u00BB",
+							"attack": "id OR 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [id AND 1=1 -- ] and [id OR 1=1 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was NOT returned for the original parameter.\nThe vulnerability was detected by successfully retrieving more data than originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "47",
+							"uri": "http://localhost:8101/api/v1/marketplace/payment-gateways/list/?contract_id=contract_id+AND+1%3D1+--+",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/marketplace\/payment-gateways\/list\/ (contract_id)",
+							"method": "GET",
+							"param": "contract_id",
+							"attack": "contract_id AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [contract_id AND 1=1 -- ] and [contract_id AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "52",
+							"uri": "http://localhost:8101/api/v1/marketplace/payment-gateways/webhook-url/?contract_id=contract_id+AND+1%3D1+--+&gateway_id=gateway_id",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/marketplace\/payment-gateways\/webhook-url\/ (contract_id,gateway_id)",
+							"method": "GET",
+							"param": "contract_id",
+							"attack": "contract_id OR 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [contract_id AND 1=1 -- ] and [contract_id OR 1=1 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was NOT returned for the original parameter.\nThe vulnerability was detected by successfully retrieving more data than originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "61",
+							"uri": "http://localhost:8101/api/v1/marketplace/payment-gateways/webhook-url/?contract_id=contract_id&gateway_id=gateway_id+AND+1%3D1+--+",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/marketplace\/payment-gateways\/webhook-url\/ (contract_id,gateway_id)",
+							"method": "GET",
+							"param": "gateway_id",
+							"attack": "gateway_id AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [gateway_id AND 1=1 -- ] and [gateway_id AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "53",
+							"uri": "http://localhost:8101/api/v1/marketplace/saved-searches/id+AND+1%3D1+--+",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/marketplace\/saved-searches\/id AND 1=1 -- ",
+							"method": "GET",
+							"param": "\u00ABid\u00BB",
+							"attack": "id OR 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [id AND 1=1 -- ] and [id OR 1=1 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was NOT returned for the original parameter.\nThe vulnerability was detected by successfully retrieving more data than originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "46",
+							"uri": "http://localhost:8101/api/v1/notifications/stream/?format=json+AND+1%3D1+--+",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/notifications\/stream\/ (format)",
+							"method": "GET",
+							"param": "format",
+							"attack": "json OR 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [json AND 1=1 -- ] and [json OR 1=1 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was NOT returned for the original parameter.\nThe vulnerability was detected by successfully retrieving more data than originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "55",
+							"uri": "http://localhost:8101/api/v1/notifications/user-notifications/id+AND+1%3D1+--+",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/notifications\/user-notifications\/id AND 1=1 -- ",
+							"method": "GET",
+							"param": "\u00ABid\u00BB",
+							"attack": "id AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [id AND 1=1 -- ] and [id AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "57",
+							"uri": "http://localhost:8101/api/v1/observability/freshness/stale/?asset_id=asset_id+AND+1%3D1+--+&dataset_id=dataset_id",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/observability\/freshness\/stale\/ (asset_id,dataset_id)",
+							"method": "GET",
+							"param": "asset_id",
+							"attack": "asset_id OR 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [asset_id AND 1=1 -- ] and [asset_id OR 1=1 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was NOT returned for the original parameter.\nThe vulnerability was detected by successfully retrieving more data than originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "60",
+							"uri": "http://localhost:8101/api/v1/observability/freshness/stale/?asset_id=asset_id&dataset_id=dataset_id+AND+1%3D1+--+",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/observability\/freshness\/stale\/ (asset_id,dataset_id)",
+							"method": "GET",
+							"param": "dataset_id",
+							"attack": "dataset_id AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [dataset_id AND 1=1 -- ] and [dataset_id AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "54",
+							"uri": "http://localhost:8101/api/v1/observability/incidents/?assigned_to_id=assigned_to_id+AND+1%3D1+--+&incident_type=incident_type&limit=10&resource_id=resource_id&resource_type=resource_type&severity=severity&status=status",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/observability\/incidents\/ (assigned_to_id,incident_type,limit,resource_id,resource_type,severity,status)",
+							"method": "GET",
+							"param": "assigned_to_id",
+							"attack": "assigned_to_id OR 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [assigned_to_id AND 1=1 -- ] and [assigned_to_id OR 1=1 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was NOT returned for the original parameter.\nThe vulnerability was detected by successfully retrieving more data than originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "103",
+							"uri": "http://localhost:8101/api/v1/observability/incidents/?assigned_to_id=assigned_to_id&incident_type=incident_type&limit=10&resource_id=resource_id%27+AND+%271%27%3D%271%27+--+&resource_type=resource_type&severity=severity&status=status",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/observability\/incidents\/ (assigned_to_id,incident_type,limit,resource_id,resource_type,severity,status)",
+							"method": "GET",
+							"param": "resource_id",
+							"attack": "resource_id' OR '1'='1' -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [resource_id' AND '1'='1' -- ] and [resource_id' OR '1'='1' -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was NOT returned for the original parameter.\nThe vulnerability was detected by successfully retrieving more data than originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "149",
+							"uri": "http://localhost:8101/api/v1/observability/incidents/?assigned_to_id=assigned_to_id&incident_type=incident_type&limit=10&resource_id=resource_id&resource_type=resource_type&severity=severity&status=status%27+AND+%271%27%3D%271%27+--+",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/observability\/incidents\/ (assigned_to_id,incident_type,limit,resource_id,resource_type,severity,status)",
+							"method": "GET",
+							"param": "status",
+							"attack": "status' AND '1'='1' -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [status' AND '1'='1' -- ] and [status' AND '1'='2' -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "51",
+							"uri": "http://localhost:8101/api/v1/observability/pipelines/?limit=20%2F2&pipeline_id=pipeline_id&pipeline_type=pipeline_type",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/observability\/pipelines\/ (limit,pipeline_id,pipeline_type)",
+							"method": "GET",
+							"param": "limit",
+							"attack": "20/2",
+							"evidence": "",
+							"otherinfo": "The original page results were successfully replicated using the expression [20/2] as the parameter value\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison."
+						},
+						{
+							"id": "62",
+							"uri": "http://localhost:8101/api/v1/observability/pipelines/?limit=10&pipeline_id=pipeline_id+AND+1%3D1+--+&pipeline_type=pipeline_type",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/observability\/pipelines\/ (limit,pipeline_id,pipeline_type)",
+							"method": "GET",
+							"param": "pipeline_id",
+							"attack": "pipeline_id AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [pipeline_id AND 1=1 -- ] and [pipeline_id AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "75",
+							"uri": "http://localhost:8101/api/v1/observability/pipelines/?limit=10&pipeline_id=pipeline_id&pipeline_type=pipeline_type+AND+1%3D1+--+",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/observability\/pipelines\/ (limit,pipeline_id,pipeline_type)",
+							"method": "GET",
+							"param": "pipeline_type",
+							"attack": "pipeline_type AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [pipeline_type AND 1=1 -- ] and [pipeline_type AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "74",
+							"uri": "http://localhost:8101/api/v1/observability/schema-drift/?asset_id=asset_id&dataset_id=dataset_id+AND+1%3D1+--+&limit=10",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/observability\/schema-drift\/ (asset_id,dataset_id,limit)",
+							"method": "GET",
+							"param": "dataset_id",
+							"attack": "dataset_id AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [dataset_id AND 1=1 -- ] and [dataset_id AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "81",
+							"uri": "http://localhost:8101/api/v1/observability/schema-drift/?asset_id=asset_id&dataset_id=dataset_id&limit=12-2",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/observability\/schema-drift\/ (asset_id,dataset_id,limit)",
+							"method": "GET",
+							"param": "limit",
+							"attack": "12-2",
+							"evidence": "",
+							"otherinfo": "The original page results were successfully replicated using the expression [12-2] as the parameter value\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison."
+						},
+						{
+							"id": "70",
+							"uri": "http://localhost:8101/api/v1/observability/slas/?asset_id=asset_id&dataset_id=dataset_id+AND+1%3D1+--+&is_active=true&is_violated=true&limit=10&sla_type=sla_type",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/observability\/slas\/ (asset_id,dataset_id,is_active,is_violated,limit,sla_type)",
+							"method": "GET",
+							"param": "dataset_id",
+							"attack": "dataset_id AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [dataset_id AND 1=1 -- ] and [dataset_id AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "86",
+							"uri": "http://localhost:8101/api/v1/observability/slas/?asset_id=asset_id&dataset_id=dataset_id&is_active=true+AND+1%3D1+--+&is_violated=true&limit=10&sla_type=sla_type",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/observability\/slas\/ (asset_id,dataset_id,is_active,is_violated,limit,sla_type)",
+							"method": "GET",
+							"param": "is_active",
+							"attack": "true OR 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [true AND 1=1 -- ] and [true OR 1=1 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was NOT returned for the original parameter.\nThe vulnerability was detected by successfully retrieving more data than originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "93",
+							"uri": "http://localhost:8101/api/v1/observability/slas/?asset_id=asset_id&dataset_id=dataset_id&is_active=true&is_violated=true+AND+1%3D1+--+&limit=10&sla_type=sla_type",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/observability\/slas\/ (asset_id,dataset_id,is_active,is_violated,limit,sla_type)",
+							"method": "GET",
+							"param": "is_violated",
+							"attack": "true AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [true AND 1=1 -- ] and [true AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "107",
+							"uri": "http://localhost:8101/api/v1/observability/slas/?asset_id=asset_id&dataset_id=dataset_id&is_active=true&is_violated=true&limit=20%2F2&sla_type=sla_type",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/observability\/slas\/ (asset_id,dataset_id,is_active,is_violated,limit,sla_type)",
+							"method": "GET",
+							"param": "limit",
+							"attack": "20/2",
+							"evidence": "",
+							"otherinfo": "The original page results were successfully replicated using the expression [20/2] as the parameter value\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison."
+						},
+						{
+							"id": "69",
+							"uri": "http://localhost:8101/api/v1/observability/volume/?asset_id=asset_id&dataset_id=dataset_id+AND+1%3D1+--+&limit=10&period_type=period_type",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/observability\/volume\/ (asset_id,dataset_id,limit,period_type)",
+							"method": "GET",
+							"param": "dataset_id",
+							"attack": "dataset_id AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [dataset_id AND 1=1 -- ] and [dataset_id AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "98",
+							"uri": "http://localhost:8101/api/v1/observability/volume/?asset_id=asset_id&dataset_id=dataset_id&limit=10&period_type=period_type%27+AND+%271%27%3D%271%27+--+",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/observability\/volume\/ (asset_id,dataset_id,limit,period_type)",
+							"method": "GET",
+							"param": "period_type",
+							"attack": "period_type' AND '1'='1' -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [period_type' AND '1'='1' -- ] and [period_type' AND '1'='2' -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "50",
+							"uri": "http://localhost:8101/api/v1/platform/tenants/id%27+AND+%271%27%3D%271%27+--+",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/platform\/tenants\/id' AND '1'='1' -- ",
+							"method": "GET",
+							"param": "\u00ABid\u00BB",
+							"attack": "id' AND '1'='1' -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [id' AND '1'='1' -- ] and [id' AND '1'='2' -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "58",
+							"uri": "http://localhost:8101/api/v1/platform/users/id%27+AND+%271%27%3D%271%27+--+",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/platform\/users\/id' AND '1'='1' -- ",
+							"method": "GET",
+							"param": "\u00ABid\u00BB",
+							"attack": "id' AND '1'='1' -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [id' AND '1'='1' -- ] and [id' AND '1'='2' -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "44",
+							"uri": "http://localhost:8101/api/v1/public/dsar-requests/status/reference_token+AND+1%3D1+--+",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/public\/dsar-requests\/status\/reference_token AND 1=1 -- ",
+							"method": "GET",
+							"param": "\u00ABreference_token\u00BB",
+							"attack": "reference_token AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [reference_token AND 1=1 -- ] and [reference_token AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "45",
+							"uri": "http://localhost:8101/api/v1/quality/anomalies/?asset_id=asset_id%27+AND+%271%27%3D%271%27+--+&dataset_id=dataset_id&severity=severity&since=since",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/quality\/anomalies\/ (asset_id,dataset_id,severity,since)",
+							"method": "GET",
+							"param": "asset_id",
+							"attack": "asset_id' AND '1'='1' -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [asset_id' AND '1'='1' -- ] and [asset_id' AND '1'='2' -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "67",
+							"uri": "http://localhost:8101/api/v1/quality/root-cause-analysis/?asset_id=asset_id&dq_run_id=dq_run_id+AND+1%3D1+--+&lookback_days=10",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/quality\/root-cause-analysis\/ (asset_id,dq_run_id,lookback_days)",
+							"method": "GET",
+							"param": "dq_run_id",
+							"attack": "dq_run_id AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [dq_run_id AND 1=1 -- ] and [dq_run_id AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "72",
+							"uri": "http://localhost:8101/api/v1/quality/root-cause-analysis/?asset_id=asset_id&dq_run_id=dq_run_id&lookback_days=20%2F2",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/quality\/root-cause-analysis\/ (asset_id,dq_run_id,lookback_days)",
+							"method": "GET",
+							"param": "lookback_days",
+							"attack": "20/2",
+							"evidence": "",
+							"otherinfo": "The original page results were successfully replicated using the expression [20/2] as the parameter value\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison."
+						},
+						{
+							"id": "41",
+							"uri": "http://localhost:8101/api/v1/quality/runs/id+AND+1%3D1+--+",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/quality\/runs\/id AND 1=1 -- ",
+							"method": "GET",
+							"param": "\u00ABid\u00BB",
+							"attack": "id OR 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [id AND 1=1 -- ] and [id OR 1=1 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was NOT returned for the original parameter.\nThe vulnerability was detected by successfully retrieving more data than originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "49",
+							"uri": "http://localhost:8101/api/v1/quality/scorecards/?asset_id=asset_id&time_range=20%2F2",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/quality\/scorecards\/ (asset_id,time_range)",
+							"method": "GET",
+							"param": "time_range",
+							"attack": "20/2",
+							"evidence": "",
+							"otherinfo": "The original page results were successfully replicated using the expression [20/2] as the parameter value\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison."
+						},
+						{
+							"id": "95",
+							"uri": "http://localhost:8101/api/v1/quality/trends/?asset_id=asset_id&dataset_id=dataset_id&metric_type=metric_type&period_type=period_type+AND+1%3D1+--+&time_range=10",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/quality\/trends\/ (asset_id,dataset_id,metric_type,period_type,time_range)",
+							"method": "GET",
+							"param": "period_type",
+							"attack": "period_type AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [period_type AND 1=1 -- ] and [period_type AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "108",
+							"uri": "http://localhost:8101/api/v1/quality/trends/?asset_id=asset_id&dataset_id=dataset_id&metric_type=metric_type&period_type=period_type&time_range=10+AND+1%3D1+--+",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/quality\/trends\/ (asset_id,dataset_id,metric_type,period_type,time_range)",
+							"method": "GET",
+							"param": "time_range",
+							"attack": "10 AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [10 AND 1=1 -- ] and [10 AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "73",
+							"uri": "http://localhost:8101/api/v1/security/audit-logs/?cache_operation=cache_operation&end_date=end_date&event_type=event_type+AND+1%3D1+--+&ordering=ordering&page=10&page_size=10&ref_type=ref_type&start_date=start_date&tenant_id=tenant_id&user_id=user_id",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/security\/audit-logs\/ (cache_operation,end_date,event_type,ordering,page,page_size,ref_type,start_date,tenant_id,user_id)",
+							"method": "GET",
+							"param": "event_type",
+							"attack": "event_type OR 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [event_type AND 1=1 -- ] and [event_type OR 1=1 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was NOT returned for the original parameter.\nThe vulnerability was detected by successfully retrieving more data than originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "114",
+							"uri": "http://localhost:8101/api/v1/security/audit-logs/?cache_operation=cache_operation&end_date=end_date&event_type=event_type&ordering=ordering&page=10&page_size=10&ref_type=ref_type+AND+1%3D1+--+&start_date=start_date&tenant_id=tenant_id&user_id=user_id",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/security\/audit-logs\/ (cache_operation,end_date,event_type,ordering,page,page_size,ref_type,start_date,tenant_id,user_id)",
+							"method": "GET",
+							"param": "ref_type",
+							"attack": "ref_type AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [ref_type AND 1=1 -- ] and [ref_type AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "135",
+							"uri": "http://localhost:8101/api/v1/security/audit-logs/?cache_operation=cache_operation&end_date=end_date&event_type=event_type&ordering=ordering&page=10&page_size=10&ref_type=ref_type&start_date=start_date%27+AND+%271%27%3D%271%27+--+&tenant_id=tenant_id&user_id=user_id",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/security\/audit-logs\/ (cache_operation,end_date,event_type,ordering,page,page_size,ref_type,start_date,tenant_id,user_id)",
+							"method": "GET",
+							"param": "start_date",
+							"attack": "start_date' OR '1'='1' -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [start_date' AND '1'='1' -- ] and [start_date' OR '1'='1' -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was NOT returned for the original parameter.\nThe vulnerability was detected by successfully retrieving more data than originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "151",
+							"uri": "http://localhost:8101/api/v1/security/audit-logs/?cache_operation=cache_operation&end_date=end_date&event_type=event_type&ordering=ordering&page=10&page_size=10&ref_type=ref_type&start_date=start_date&tenant_id=tenant_id&user_id=user_id%27+AND+%271%27%3D%271%27+--+",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/security\/audit-logs\/ (cache_operation,end_date,event_type,ordering,page,page_size,ref_type,start_date,tenant_id,user_id)",
+							"method": "GET",
+							"param": "user_id",
+							"attack": "user_id' OR '1'='1' -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [user_id' AND '1'='1' -- ] and [user_id' OR '1'='1' -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was NOT returned for the original parameter.\nThe vulnerability was detected by successfully retrieving more data than originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "68",
+							"uri": "http://localhost:8101/api/v1/security/incidents/?ordering=ordering&page=10&page_size=10&search=ZAP%27+AND+%271%27%3D%271%27+--+",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/security\/incidents\/ (ordering,page,page_size,search)",
+							"method": "GET",
+							"param": "search",
+							"attack": "ZAP' AND '1'='1' -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [ZAP' AND '1'='1' -- ] and [ZAP' AND '1'='2' -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "35",
+							"uri": "http://localhost:8101/api/v1/semantic/ontologies/id+AND+1%3D1+--+",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/semantic\/ontologies\/id AND 1=1 -- ",
+							"method": "GET",
+							"param": "\u00ABid\u00BB",
+							"attack": "id AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [id AND 1=1 -- ] and [id AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "34",
+							"uri": "http://localhost:8101/api/v1/semantic/resource/resource_type/resource_id/?format=html+AND+1%3D1+--+",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/semantic\/resource\/resource_type\/resource_id\/ (format)",
+							"method": "GET",
+							"param": "format",
+							"attack": "html OR 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [html AND 1=1 -- ] and [html OR 1=1 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was NOT returned for the original parameter.\nThe vulnerability was detected by successfully retrieving more data than originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "33",
+							"uri": "http://localhost:8101/api/v1/tenants/tenant_id+AND+1%3D1+--+/config",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/tenants\/tenant_id AND 1=1 -- \/config",
+							"method": "GET",
+							"param": "\u00ABtenant_id\u00BB",
+							"attack": "tenant_id AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [tenant_id AND 1=1 -- ] and [tenant_id AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "36",
+							"uri": "http://localhost:8101/api/v1/tenants/tenant_id+AND+1%3D1+--+/rate-limits",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/tenants\/tenant_id AND 1=1 -- \/rate-limits",
+							"method": "GET",
+							"param": "\u00ABtenant_id\u00BB",
+							"attack": "tenant_id AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [tenant_id AND 1=1 -- ] and [tenant_id AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "37",
+							"uri": "http://localhost:8101/api/v1/tenants/tenant_id+AND+1%3D1+--+/sparql-endpoints/id",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/tenants\/tenant_id AND 1=1 -- \/sparql-endpoints\/id",
+							"method": "GET",
+							"param": "\u00ABtenant_id\u00BB",
+							"attack": "tenant_id AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [tenant_id AND 1=1 -- ] and [tenant_id AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "39",
+							"uri": "http://localhost:8101/api/v1/users/me/erasure-requests/id%27+AND+%271%27%3D%271",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/users\/me\/erasure-requests\/id' AND '1'='1",
+							"method": "GET",
+							"param": "\u00ABid\u00BB",
+							"attack": "id' AND '1'='1",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [id' AND '1'='1] and [id' AND '1'='2]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "32",
+							"uri": "http://localhost:8101/api/v1/versioning/compare/?id_a=id_a+AND+1%3D1+--+&id_b=id_b&resource_type=contract",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/versioning\/compare\/ (id_a,id_b,resource_type)",
+							"method": "GET",
+							"param": "id_a",
+							"attack": "id_a AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [id_a AND 1=1 -- ] and [id_a AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "63",
+							"uri": "http://localhost:8101/api/v1/versioning/compare/?id_a=id_a&id_b=id_b&resource_type=contract%27+AND+%271%27%3D%271%27+--+",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/versioning\/compare\/ (id_a,id_b,resource_type)",
+							"method": "GET",
+							"param": "resource_type",
+							"attack": "contract' OR '1'='1' -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [contract' AND '1'='1' -- ] and [contract' OR '1'='1' -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was NOT returned for the original parameter.\nThe vulnerability was detected by successfully retrieving more data than originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "59",
+							"uri": "http://localhost:8101/api/v1/versioning/versions/?resource_id=resource_id&resource_type=contract+AND+1%3D1+--+",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/versioning\/versions\/ (resource_id,resource_type)",
+							"method": "GET",
+							"param": "resource_type",
+							"attack": "contract OR 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [contract AND 1=1 -- ] and [contract OR 1=1 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was NOT returned for the original parameter.\nThe vulnerability was detected by successfully retrieving more data than originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "40",
+							"uri": "http://localhost:8101/api/v1/versioning/versions/compare/?id_a=id_a%27+AND+%271%27%3D%271%27+--+&id_b=id_b&resource_type=contract",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/versioning\/versions\/compare\/ (id_a,id_b,resource_type)",
+							"method": "GET",
+							"param": "id_a",
+							"attack": "id_a' OR '1'='1' -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [id_a' AND '1'='1' -- ] and [id_a' OR '1'='1' -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was NOT returned for the original parameter.\nThe vulnerability was detected by successfully retrieving more data than originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "48",
+							"uri": "http://localhost:8101/api/v1/versioning/versions/compare/?id_a=id_a&id_b=id_b%27+AND+%271%27%3D%271%27+--+&resource_type=contract",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/versioning\/versions\/compare\/ (id_a,id_b,resource_type)",
+							"method": "GET",
+							"param": "id_b",
+							"attack": "id_b' AND '1'='1' -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [id_b' AND '1'='1' -- ] and [id_b' AND '1'='2' -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "43",
+							"uri": "http://localhost:8101/api/v1/webhooks/webhook-deliveries/id%27+AND+%271%27%3D%271%27+--+",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/webhooks\/webhook-deliveries\/id' AND '1'='1' -- ",
+							"method": "GET",
+							"param": "\u00ABid\u00BB",
+							"attack": "id' OR '1'='1' -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [id' AND '1'='1' -- ] and [id' OR '1'='1' -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was NOT returned for the original parameter.\nThe vulnerability was detected by successfully retrieving more data than originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "42",
+							"uri": "http://localhost:8101/api/v1/webhooks/webhooks/id%27+AND+%271%27%3D%271%27+--+/deliveries",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/webhooks\/webhooks\/id' AND '1'='1' -- \/deliveries",
+							"method": "GET",
+							"param": "\u00ABid\u00BB",
+							"attack": "id' OR '1'='1' -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [id' AND '1'='1' -- ] and [id' OR '1'='1' -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was NOT returned for the original parameter.\nThe vulnerability was detected by successfully retrieving more data than originally returned, by manipulating the parameter."
+						},
+						{
+							"id": "38",
+							"uri": "http://localhost:8101/api/v1/workflows/ZAP+AND+1%3D1+--+",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/workflows\/ZAP AND 1=1 -- ",
+							"method": "GET",
+							"param": "\u00ABname\u00BB",
+							"attack": "ZAP AND 1=1 -- ",
+							"evidence": "",
+							"otherinfo": "The page results were successfully manipulated using the boolean conditions [ZAP AND 1=1 -- ] and [ZAP AND 1=2 -- ]\nThe parameter value being modified was stripped from the HTML output for the purposes of the comparison.\nData was returned for the original parameter.\nThe vulnerability was detected by successfully restricting the data originally returned, by manipulating the parameter."
+						}
+					],
+					"count": "123",
+					"systemic": false,
+					"solution": "<p>Do not trust client side input, even if there is client side validation in place.</p><p>In general, type check all data on the server side.</p><p>If the application uses JDBC, use PreparedStatement or CallableStatement, with parameters passed by '?'</p><p>If the application uses ASP, use ADO Command Objects with strong type checking and parameterized queries.</p><p>If database Stored Procedures can be used, use them.</p><p>Do *not* concatenate strings into queries in the stored procedure, or use 'exec', 'exec immediate', or equivalent functionality!</p><p>Do not create dynamic SQL queries using simple string concatenation.</p><p>Escape all data received from the client.</p><p>Apply an 'allow list' of allowed characters, or a 'deny list' of disallowed characters in user input.</p><p>Apply the principle of least privilege by using the least privileged database user possible.</p><p>In particular, avoid using the 'sa' or 'db-owner' database users. This does not eliminate SQL injection, but minimizes its impact.</p><p>Grant the minimum database access that is necessary for the application.</p>",
+					"otherinfo": "<p>The page results were successfully manipulated using the boolean conditions [true' AND '1'='1' -- ] and [true' OR '1'='1' -- ]</p><p>The parameter value being modified was stripped from the HTML output for the purposes of the comparison.</p><p>Data was NOT returned for the original parameter.</p><p>The vulnerability was detected by successfully retrieving more data than originally returned, by manipulating the parameter.</p>",
+					"reference": "<p>https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html</p>",
+					"cweid": "89",
+					"wascid": "19",
+					"sourceid": "1149"
+				},
+				{
+					"pluginid": "10055",
+					"alertRef": "10055-13",
+					"alert": "CSP: Failure to Define Directive with No Fallback",
+					"name": "CSP: Failure to Define Directive with No Fallback",
+					"riskcode": "2",
+					"confidence": "3",
+					"riskdesc": "Medium (High)",
+					"desc": "<p>The Content Security Policy fails to define one of the directives that has no fallback. Missing/excluding them is the same as allowing anything.</p>",
+					"instances":[ 
+						{
+							"id": "1",
+							"uri": "http://localhost:8101/api/v1/admin/tenants/tenant_id/",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/admin\/tenants\/tenant_id\/",
+							"method": "DELETE",
+							"param": "content-security-policy",
+							"attack": "",
+							"evidence": "default-src",
+							"otherinfo": "The directive(s): frame-ancestors, form-action is/are among the directives that do not fallback to default-src."
+						},
+						{
+							"id": "3",
+							"uri": "http://localhost:8101/api/v1/admin/tenants/tenant_id/feature-flags/",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/admin\/tenants\/tenant_id\/feature-flags\/",
+							"method": "GET",
+							"param": "content-security-policy",
+							"attack": "",
+							"evidence": "default-src",
+							"otherinfo": "The directive(s): frame-ancestors, form-action is/are among the directives that do not fallback to default-src."
+						},
+						{
+							"id": "5",
+							"uri": "http://localhost:8101/api/v1/admin/tenants/tenant_id/onboarding-state/",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/admin\/tenants\/tenant_id\/onboarding-state\/",
+							"method": "GET",
+							"param": "content-security-policy",
+							"attack": "",
+							"evidence": "default-src",
+							"otherinfo": "The directive(s): frame-ancestors, form-action is/are among the directives that do not fallback to default-src."
+						},
+						{
+							"id": "8",
+							"uri": "http://localhost:8101/api/v1/assets/workflows/workflow_instance_id/status/",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/assets\/workflows\/workflow_instance_id\/status\/",
+							"method": "GET",
+							"param": "content-security-policy",
+							"attack": "",
+							"evidence": "default-src",
+							"otherinfo": "The directive(s): frame-ancestors, form-action is/are among the directives that do not fallback to default-src."
+						},
+						{
+							"id": "14",
+							"uri": "http://localhost:8101/api/v1/contracts/id/lineage/visualization/?as_of=as_of&format=format&include_fields=true&max_depth=10&version=10",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/contracts\/id\/lineage\/visualization\/ (as_of,format,include_fields,max_depth,version)",
+							"method": "GET",
+							"param": "content-security-policy",
+							"attack": "",
+							"evidence": "default-src",
+							"otherinfo": "The directive(s): frame-ancestors, form-action is/are among the directives that do not fallback to default-src."
+						}
+					],
+					"count": "5",
+					"systemic": true,
+					"solution": "<p>Ensure that your web server, application server, load balancer, etc. is properly configured to set the Content-Security-Policy header.</p>",
+					"otherinfo": "<p>The directive(s): frame-ancestors, form-action is/are among the directives that do not fallback to default-src.</p>",
+					"reference": "<p>https://www.w3.org/TR/CSP/</p><p>https://caniuse.com/#search=content+security+policy</p><p>https://content-security-policy.com/</p><p>https://github.com/HtmlUnit/htmlunit-csp</p><p>https://web.dev/articles/csp#resource-options</p>",
+					"cweid": "693",
+					"wascid": "15",
+					"sourceid": "22"
+				},
+				{
+					"pluginid": "90022",
+					"alertRef": "90022",
+					"alert": "Application Error Disclosure",
+					"name": "Application Error Disclosure",
+					"riskcode": "1",
+					"confidence": "2",
+					"riskdesc": "Low (Medium)",
+					"desc": "<p>This page contains an error/warning message that may disclose sensitive information like the location of the file that produced the unhandled exception. This information can be used to launch further attacks against the web application. The alert could be a false positive if the error message is found inside a documentation page.</p>",
+					"instances":[ 
+						{
+							"id": "12",
+							"uri": "http://localhost:8101/api/v1/contracts/id/export/?format=hubcontract&output_format=json&version=2.2.2",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/contracts\/id\/export\/ (format,output_format,version)",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "HTTP/1.1 500 Internal Server Error",
+							"otherinfo": ""
+						},
+						{
+							"id": "21",
+							"uri": "http://localhost:8101/api/v1/marketplace/listings/id/download/?format=hubcontract&output_format=json",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/marketplace\/listings\/id\/download\/ (format,output_format)",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "HTTP/1.1 500 Internal Server Error",
+							"otherinfo": ""
+						},
+						{
+							"id": "22",
+							"uri": "http://localhost:8101/api/v1/marketplace/orders/?page=10&page_size=10",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/marketplace\/orders\/ (page,page_size)",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "HTTP/1.1 500 Internal Server Error",
+							"otherinfo": ""
+						},
+						{
+							"id": "24",
+							"uri": "http://localhost:8101/api/v1/marketplace/payment-gateways/webhook-url/?contract_id=contract_id&gateway_id=gateway_id",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/marketplace\/payment-gateways\/webhook-url\/ (contract_id,gateway_id)",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "HTTP/1.1 500 Internal Server Error",
+							"otherinfo": ""
+						},
+						{
+							"id": "27",
+							"uri": "http://localhost:8101/api/v1/semantic/id/field/asset_uuid/field_name",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/semantic\/id\/field\/asset_uuid\/field_name",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "HTTP/1.1 500 Internal Server Error",
+							"otherinfo": ""
+						},
+						{
+							"id": "30",
+							"uri": "http://localhost:8101/metrics/observability/incidents/?assigned_to_id=assigned_to_id&incident_type=incident_type&limit=10&resource_id=resource_id&resource_type=resource_type&severity=severity&status=status",
+							"nodeName": "http:\/\/localhost:8101\/metrics\/observability\/incidents\/ (assigned_to_id,incident_type,limit,resource_id,resource_type,severity,status)(\"John Doe\")",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "HTTP/1.1 500 Internal Server Error",
+							"otherinfo": ""
+						}
+					],
+					"count": "6",
+					"systemic": false,
+					"solution": "<p>Review the source code of this page. Implement custom error pages. Consider implementing a mechanism to provide a unique error reference/identifier to the client (browser) while logging the details on the server side and not exposing them to the user.</p>",
+					"otherinfo": "",
+					"reference": "",
+					"cweid": "550",
+					"wascid": "13",
+					"sourceid": "197"
+				},
+				{
+					"pluginid": "10055",
+					"alertRef": "10055-3",
+					"alert": "CSP: Notices",
+					"name": "CSP: Notices",
+					"riskcode": "1",
+					"confidence": "3",
+					"riskdesc": "Low (High)",
+					"desc": "<p>Content Security Policy (CSP) is an added layer of security that helps to detect and mitigate certain types of attacks. Including (but not limited to) Cross Site Scripting (XSS), and data injection attacks. These attacks are used for everything from data theft to site defacement or distribution of malware. CSP provides a set of standard HTTP headers that allow website owners to declare approved sources of content that browsers should be allowed to load on that page \u2014 covered types are JavaScript, CSS, HTML frames, fonts, images and embeddable objects such as Java applets, ActiveX, audio and video files.</p>",
+					"instances":[ 
+						{
+							"id": "0",
+							"uri": "http://localhost:8101/api/v1/admin/tenants/tenant_id/",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/admin\/tenants\/tenant_id\/",
+							"method": "DELETE",
+							"param": "content-security-policy",
+							"attack": "",
+							"evidence": "default-src",
+							"otherinfo": "Errors:\nSource-expression lists cannot be empty (use 'none' instead)\n"
+						},
+						{
+							"id": "2",
+							"uri": "http://localhost:8101/api/v1/admin/tenants/tenant_id/feature-flags/",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/admin\/tenants\/tenant_id\/feature-flags\/",
+							"method": "GET",
+							"param": "content-security-policy",
+							"attack": "",
+							"evidence": "default-src",
+							"otherinfo": "Errors:\nSource-expression lists cannot be empty (use 'none' instead)\n"
+						},
+						{
+							"id": "4",
+							"uri": "http://localhost:8101/api/v1/admin/tenants/tenant_id/onboarding-state/",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/admin\/tenants\/tenant_id\/onboarding-state\/",
+							"method": "GET",
+							"param": "content-security-policy",
+							"attack": "",
+							"evidence": "default-src",
+							"otherinfo": "Errors:\nSource-expression lists cannot be empty (use 'none' instead)\n"
+						},
+						{
+							"id": "6",
+							"uri": "http://localhost:8101/api/v1/assets/workflows/workflow_instance_id/status/",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/assets\/workflows\/workflow_instance_id\/status\/",
+							"method": "GET",
+							"param": "content-security-policy",
+							"attack": "",
+							"evidence": "default-src",
+							"otherinfo": "Errors:\nSource-expression lists cannot be empty (use 'none' instead)\n"
+						},
+						{
+							"id": "13",
+							"uri": "http://localhost:8101/api/v1/contracts/id/lineage/visualization/?as_of=as_of&format=format&include_fields=true&max_depth=10&version=10",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/contracts\/id\/lineage\/visualization\/ (as_of,format,include_fields,max_depth,version)",
+							"method": "GET",
+							"param": "content-security-policy",
+							"attack": "",
+							"evidence": "default-src",
+							"otherinfo": "Errors:\nSource-expression lists cannot be empty (use 'none' instead)\n"
+						}
+					],
+					"count": "5",
+					"systemic": true,
+					"solution": "<p>Ensure that your web server, application server, load balancer, etc. is properly configured to set the Content-Security-Policy header.</p>",
+					"otherinfo": "<p>Errors:</p><p>Source-expression lists cannot be empty (use 'none' instead)</p><p></p>",
+					"reference": "<p>https://www.w3.org/TR/CSP/</p><p>https://caniuse.com/#search=content+security+policy</p><p>https://content-security-policy.com/</p><p>https://github.com/HtmlUnit/htmlunit-csp</p><p>https://web.dev/articles/csp#resource-options</p>",
+					"cweid": "693",
+					"wascid": "15",
+					"sourceid": "22"
+				},
+				{
+					"pluginid": "10023",
+					"alertRef": "10023",
+					"alert": "Information Disclosure - Debug Error Messages",
+					"name": "Information Disclosure - Debug Error Messages",
+					"riskcode": "1",
+					"confidence": "2",
+					"riskdesc": "Low (Medium)",
+					"desc": "<p>The response appeared to contain common error messages returned by platforms such as ASP.NET, and Web-servers such as IIS and Apache. You can configure the list of common debug messages.</p>",
+					"instances":[ 
+						{
+							"id": "23",
+							"uri": "http://localhost:8101/api/v1/marketplace/orders/?page=10&page_size=10",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/marketplace\/orders\/ (page,page_size)",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "Internal server error",
+							"otherinfo": ""
+						},
+						{
+							"id": "25",
+							"uri": "http://localhost:8101/api/v1/marketplace/payment-gateways/webhook-url/?contract_id=contract_id&gateway_id=gateway_id",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/marketplace\/payment-gateways\/webhook-url\/ (contract_id,gateway_id)",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "Internal server error",
+							"otherinfo": ""
+						},
+						{
+							"id": "28",
+							"uri": "http://localhost:8101/api/v1/semantic/id/field/asset_uuid/field_name",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/semantic\/id\/field\/asset_uuid\/field_name",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "Internal server error",
+							"otherinfo": ""
+						},
+						{
+							"id": "31",
+							"uri": "http://localhost:8101/metrics/observability/incidents/?assigned_to_id=assigned_to_id&incident_type=incident_type&limit=10&resource_id=resource_id&resource_type=resource_type&severity=severity&status=status",
+							"nodeName": "http:\/\/localhost:8101\/metrics\/observability\/incidents\/ (assigned_to_id,incident_type,limit,resource_id,resource_type,severity,status)(\"John Doe\")",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "Internal server error",
+							"otherinfo": ""
+						}
+					],
+					"count": "4",
+					"systemic": false,
+					"solution": "<p>Disable debugging messages before pushing to production.</p>",
+					"otherinfo": "",
+					"reference": "",
+					"cweid": "1295",
+					"wascid": "13",
+					"sourceid": "482"
+				},
+				{
+					"pluginid": "10111",
+					"alertRef": "10111",
+					"alert": "Authentication Request Identified",
+					"name": "Authentication Request Identified",
+					"riskcode": "0",
+					"confidence": "1",
+					"riskdesc": "Informational (Low)",
+					"desc": "<p>The given request has been identified as an authentication request. The 'Other Info' field contains a set of key=value lines which identify any relevant fields. If the request is in a context which has an Authentication Method set to \"Auto-Detect\" then this rule will change the authentication to match the request identified.</p>",
+					"instances":[ 
+						{
+							"id": "29",
+							"uri": "http://localhost:8101/api/v1/users/",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/users\/ ()({email,display_name,tenant,password,role_ids:[],send_invitation})",
+							"method": "POST",
+							"param": "email",
+							"attack": "",
+							"evidence": "password",
+							"otherinfo": "userParam=email\nuserValue=zaproxy@example.com\npasswordParam=password"
+						},
+						{
+							"id": "10",
+							"uri": "http://localhost:8101/api/v1/auth/login/",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/auth\/login\/ ()({email,password})",
+							"method": "POST",
+							"param": "email",
+							"attack": "",
+							"evidence": "password",
+							"otherinfo": "userParam=email\nuserValue=zaproxy@example.com\npasswordParam=password"
+						}
+					],
+					"count": "2",
+					"systemic": false,
+					"solution": "<p>This is an informational alert rather than a vulnerability and so there is nothing to fix.</p>",
+					"otherinfo": "<p>userParam=email</p><p>userValue=zaproxy@example.com</p><p>passwordParam=password</p>",
+					"reference": "<p>https://www.zaproxy.org/docs/desktop/addons/authentication-helper/auth-req-id/</p>",
+					"cweid": "-1",
+					"wascid": "-1",
+					"sourceid": "708"
+				},
+				{
+					"pluginid": "10024",
+					"alertRef": "10024",
+					"alert": "Information Disclosure - Sensitive Information in URL",
+					"name": "Information Disclosure - Sensitive Information in URL",
+					"riskcode": "0",
+					"confidence": "2",
+					"riskdesc": "Informational (Medium)",
+					"desc": "<p>The request appeared to contain sensitive information leaked in the URL. This can violate PCI and most organizational compliance policies. You can configure the list of strings for this check to add or remove values specific to your environment.</p>",
+					"instances":[ 
+						{
+							"id": "7",
+							"uri": "http://localhost:8101/api/v1/audit/audit-events/?action=action&actor_user_id=actor_user_id&end_date=end_date&page=10&page_size=10&q=q&resource_id=resource_id&resource_type=resource_type&start_date=start_date",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/audit\/audit-events\/ (action,actor_user_id,end_date,page,page_size,q,resource_id,resource_type,start_date)",
+							"method": "GET",
+							"param": "actor_user_id",
+							"attack": "",
+							"evidence": "actor_user_id",
+							"otherinfo": "The URL contains potentially sensitive information. The following string was found via the pattern: user\nactor_user_id"
+						},
+						{
+							"id": "9",
+							"uri": "http://localhost:8101/api/v1/audit/audit-events/export/?action=action&actor_user_id=actor_user_id&end_date=end_date&format=csv&q=q&resource_id=resource_id&resource_type=resource_type&start_date=start_date",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/audit\/audit-events\/export\/ (action,actor_user_id,end_date,format,q,resource_id,resource_type,start_date)",
+							"method": "GET",
+							"param": "actor_user_id",
+							"attack": "",
+							"evidence": "actor_user_id",
+							"otherinfo": "The URL contains potentially sensitive information. The following string was found via the pattern: user\nactor_user_id"
+						},
+						{
+							"id": "11",
+							"uri": "http://localhost:8101/api/v1/compliance/webhooks/completed/report/?token=token",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/compliance\/webhooks\/completed\/report\/ (token)",
+							"method": "GET",
+							"param": "token",
+							"attack": "",
+							"evidence": "token",
+							"otherinfo": "The URL contains potentially sensitive information. The following string was found via the pattern: token\ntoken"
+						},
+						{
+							"id": "15",
+							"uri": "http://localhost:8101/api/v1/governance/access/analytics/patterns/?end_date=end_date&resource_type=resource_type&start_date=start_date&user_id=user_id",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/governance\/access\/analytics\/patterns\/ (end_date,resource_type,start_date,user_id)",
+							"method": "GET",
+							"param": "user_id",
+							"attack": "",
+							"evidence": "user_id",
+							"otherinfo": "The URL contains potentially sensitive information. The following string was found via the pattern: user\nuser_id"
+						},
+						{
+							"id": "16",
+							"uri": "http://localhost:8101/api/v1/governance/analytics/patterns/?end_date=end_date&resource_type=resource_type&start_date=start_date&user_id=user_id",
+							"nodeName": "http:\/\/localhost:8101\/api\/v1\/governance\/analytics\/patterns\/ (end_date,resource_type,start_date,user_id)",
+							"method": "GET",
+							"param": "user_id",
+							"attack": "",
+							"evidence": "user_id",
+							"otherinfo": "The URL contains potentially sensitive information. The following string was found via the pattern: user\nuser_id"
+						}
+					],
+					"count": "5",
+					"systemic": true,
+					"solution": "<p>Do not pass sensitive information in URIs.</p>",
+					"otherinfo": "<p>The URL contains potentially sensitive information. The following string was found via the pattern: user</p><p>actor_user_id</p>",
+					"reference": "",
+					"cweid": "598",
+					"wascid": "13",
+					"sourceid": "75"
+				}
+			]
+		},
+		{
+			"@name": "http://localhost:18900",
+			"@host": "localhost",
+			"@port": "18900",
+			"@ssl": "false",
+			"alerts": [ 
+			]
+		}
+	],
+	"sequences":[
+	]
+
+}

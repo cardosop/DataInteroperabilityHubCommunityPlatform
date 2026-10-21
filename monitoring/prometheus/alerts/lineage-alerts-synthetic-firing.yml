@@ -1,0 +1,151 @@
+# Phase 228 X (228.X.7.5 / REQ-LIN-X-007) — synthetic firing test
+# for the four spec-named alerts.
+#
+# Run with:
+#   promtool test rules monitoring/prometheus/alerts/lineage-alerts-synthetic-firing.yml
+#
+# Each test case fabricates a metric series + asserts the alert
+# fires after its `for:` window. This is a CI-runnable equivalent
+# of the operational "synthetic firing" check the spec calls for
+# in REQ-LIN-X-007 — it doesn't require Prometheus to be running,
+# just the YAML rules + the promtool binary.
+
+rule_files:
+  - lineage-alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  # -------------------------------------------------------------
+  # 228.X.7.1 LineageQueryHighLatency
+  # -------------------------------------------------------------
+  - interval: 1m
+    name: LineageQueryHighLatency synthetic
+    input_series:
+      # Fabricate a histogram bucket series with p99 > 1s. The buckets
+      # are CUMULATIVE counters (Prometheus convention), so each must
+      # grow monotonically — `Nx10` (constant) makes ``rate()`` return
+      # 0 and the alert never fires. ``0+Nx10`` = 0, N, 2N, ..., 10N.
+      # Per-bucket ratios at any post-warmup eval point:
+      #   le=0.1 / +Inf = 10%, le=0.5 / +Inf = 20%, le=1.0 / +Inf = 40%,
+      #   le=2.5 / +Inf = 95%, le=+Inf = 100%.
+      # histogram_quantile(0.99, ...) lands in the (1.0, 2.5] bucket
+      # (95% → 99% interpolates to ~2.45s), comfortably above the 1s
+      # threshold.
+      - series: 'lineage_query_duration_seconds_bucket{le="0.1",detail="full"}'
+        values: '0+10x10'
+      - series: 'lineage_query_duration_seconds_bucket{le="0.5",detail="full"}'
+        values: '0+20x10'
+      - series: 'lineage_query_duration_seconds_bucket{le="1.0",detail="full"}'
+        values: '0+40x10'
+      - series: 'lineage_query_duration_seconds_bucket{le="2.5",detail="full"}'
+        values: '0+95x10'
+      - series: 'lineage_query_duration_seconds_bucket{le="+Inf",detail="full"}'
+        values: '0+100x10'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: LineageQueryHighLatency
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              component: lineage
+              phase: "228.X"
+              # Rule aggregates ``sum by (le, detail) (rate(...))`` and
+              # ``histogram_quantile`` consumes ``le``, so ``detail`` is
+              # preserved on the alert's label set. The synthetic series
+              # carries ``detail="full"``; promtool exact-matches labels.
+              detail: "full"
+            # promtool exact-matches exp_annotations against rendered
+            # rule output, so omitting `description` would fail with
+            # "exp:{summary=...}, got:{summary=..., description=...}".
+            # Mirror the rule's full annotation block.
+            exp_annotations:
+              summary: "Lineage query p99 latency > 1s sustained 5m (REQ-LIN-X-007)"
+              description: |
+                Spec-named alert. Aggregate p99 across all detail tiers
+                exceeded 1s for 5m. Companion: LineageQueryHighP99Latency
+                scoped to detail="full". Runbook:
+                docs/runbooks/lineage-edge-sync-drift.md.
+
+  # -------------------------------------------------------------
+  # 228.X.7.3 OpenLineageDLQGrowing
+  # -------------------------------------------------------------
+  - interval: 1m
+    name: OpenLineageDLQGrowing synthetic
+    input_series:
+      # Pending DLQ depth growing from 50 → 200 over 60 minutes.
+      - series: 'openlineage_dlq_depth{permanently_failed="false"}'
+        values: '60+5x60'
+    alert_rule_test:
+      - eval_time: 61m
+        alertname: OpenLineageDLQGrowing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              component: openlineage
+              phase: "228.X"
+              # Rule expression is a bare-metric comparison
+              # (``openlineage_dlq_depth{permanently_failed="false"} > 50``)
+              # with no aggregation, so all underlying-series labels
+              # propagate to the alert.
+              permanently_failed: "false"
+            exp_annotations:
+              summary: "OpenLineage DLQ depth growing for 1h (REQ-LIN-X-007)"
+              description: |
+                ``openlineage_dlq_depth{permanently_failed="false"}`` is
+                growing AND exceeds 50 pending rows. Replay:
+                ``python manage.py replay_openlineage_dlq --max=500``.
+                Runbook: docs/runbooks/openlineage-dlq-replay.md.
+
+  # -------------------------------------------------------------
+  # 228.X.7.4 LineageNotificationFailureRate
+  # -------------------------------------------------------------
+  - interval: 1m
+    name: LineageNotificationFailureRate synthetic
+    input_series:
+      # 90 failed / 100 total = 90% failure rate (well over 5%).
+      - series: 'lineage_notification_dispatch_total{result="failed"}'
+        values: '0+90x20'
+      - series: 'lineage_notification_dispatch_total{result="ok"}'
+        values: '0+10x20'
+    alert_rule_test:
+      - eval_time: 16m
+        alertname: LineageNotificationFailureRate
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              component: lineage
+              phase: "228.X"
+            exp_annotations:
+              summary: "Lineage notification failure rate > 5% (REQ-LIN-X-007)"
+              description: |
+                Lineage-impact notification dispatcher is dropping >5%
+                of attempts for 15m. Inspect the dispatcher logs +
+                confirm Redis / SES are healthy. Runbook:
+                docs/runbooks/lineage-notification-storm.md.
+
+  # -------------------------------------------------------------
+  # 228.X.7.2 LineageEdgeSyncDrift
+  # -------------------------------------------------------------
+  # Skipped synthetic — the alert expression references
+  # `lineage_jsonb_entries_total` which is emitted by the
+  # JSONB-source-of-truth scrape job, not by the application. The
+  # sync test for this alert lives in the integration suite at
+  # tests/integration/lineage_edge_sync_drift_test.py (228.0
+  # delivered) which fabricates the divergence directly. Including
+  # the synthetic stub here so promtool reports the alert exists
+  # without expecting it to fire (the seeded series don't satisfy
+  # the predicate).
+  - interval: 1m
+    name: LineageEdgeSyncDrift smoke (alert exists, does not fire)
+    input_series:
+      - series: 'lineage_edge_writes_total{operation="add"}'
+        values: '100x5'
+      - series: 'lineage_edge_writes_total{operation="remove"}'
+        values: '0x5'
+      - series: 'lineage_jsonb_entries_total'
+        values: '100x5'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: LineageEdgeSyncDrift
+        exp_alerts: []

@@ -1,0 +1,227 @@
+/**
+ * 285.9.4.6 — Transformation Wizard dark mode + a11y styles.
+ */
+.transformation-wizard {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.transformation-wizard h1 {
+  font-size: 1.5rem;
+  margin-bottom: 24px;
+}
+
+/* ── Direction picker ─────────────────────────────── */
+.wizard-direction-picker .direction-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.direction-card {
+  padding: 24px;
+  border: 2px solid var(--color-border, #ddd);
+  border-radius: 8px;
+  background: var(--color-surface, #fff);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.direction-card:hover {
+  border-color: var(--color-primary, #2563eb);
+}
+
+.direction-card.selected {
+  border-color: var(--color-primary, #2563eb);
+  box-shadow: 0 0 0 2px var(--color-primary, #2563eb);
+}
+
+.direction-card h3 {
+  margin: 0 0 8px 0;
+  font-size: 1.1rem;
+}
+
+.direction-card p {
+  margin: 0;
+  color: var(--color-text-secondary, #666);
+  font-size: 0.9rem;
+}
+
+/* ── Dbt config form ──────────────────────────────── */
+.wizard-dbt-config {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.wizard-dbt-config label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-weight: 500;
+}
+
+.wizard-dbt-config input,
+.wizard-dbt-config select {
+  padding: 8px 12px;
+  border: 1px solid var(--color-border, #ddd);
+  border-radius: 4px;
+  font: inherit;
+  background: var(--color-surface, #fff);
+  color: var(--color-text, #111);
+}
+
+.wizard-dbt-config input:focus,
+.wizard-dbt-config select:focus {
+  outline: 2px solid var(--color-primary, #2563eb);
+  outline-offset: 1px;
+}
+
+/* ── Review step ───────────────────────────────────── */
+.wizard-review .contract-preview-json {
+  max-height: 400px;
+  overflow: auto;
+  padding: 12px;
+  background: var(--color-code-bg, #f5f5f5);
+  border: 1px solid var(--color-border, #ddd);
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+}
+
+/* ── Buttons ───────────────────────────────────────── */
+.wizard-buttons {
+  display: flex;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.wizard-buttons button {
+  padding: 10px 20px;
+  border: 1px solid var(--color-border, #ddd);
+  border-radius: 4px;
+  font: inherit;
+  cursor: pointer;
+  background: var(--color-surface, #fff);
+  color: var(--color-text, #111);
+}
+
+.wizard-buttons button.primary {
+  background: var(--color-primary, #2563eb);
+  color: #fff;
+  border-color: var(--color-primary, #2563eb);
+}
+
+.wizard-buttons button:focus-visible {
+  outline: 2px solid var(--color-primary, #2563eb);
+  outline-offset: 2px;
+}
+
+/* ── Validation result ─────────────────────────────── */
+.validation-result .validation-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.validation-result .validation-form input,
+.validation-result .validation-form select {
+  padding: 8px 12px;
+  border: 1px solid var(--color-border, #ddd);
+  border-radius: 4px;
+  font: inherit;
+}
+
+.validation-summary.match {
+  border-left: 4px solid var(--color-success, #16a34a);
+  padding-left: 16px;
+}
+
+.validation-summary.mismatch {
+  border-left: 4px solid var(--color-warning, #f59e0b);
+  padding-left: 16px;
+}
+
+/* ── Contract preview table ────────────────────────── */
+.contract-preview table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.contract-preview th,
+.contract-preview td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--color-border, #eee);
+}
+
+.contract-preview th {
+  font-weight: 600;
+  background: var(--color-surface-alt, #f9fafb);
+}
+
+/* ── Error ─────────────────────────────────────────── */
+.transformation-wizard [role="alert"],
+.validation-result [role="alert"],
+.contract-preview [role="alert"] {
+  padding: 12px;
+  background: var(--color-error-bg, #fef2f2);
+  border: 1px solid var(--color-error, #dc2626);
+  border-radius: 4px;
+  color: var(--color-error, #dc2626);
+  margin-bottom: 16px;
+}
+
+/* ── Dark mode ─────────────────────────────────────── */
+[data-theme="dark"] .direction-card {
+  background: var(--color-surface-dark, #1e293b);
+  border-color: var(--color-border-dark, #334155);
+  color: var(--color-text-dark, #e2e8f0);
+}
+
+[data-theme="dark"] .direction-card:hover {
+  border-color: var(--color-primary-dark, #60a5fa);
+}
+
+[data-theme="dark"] .direction-card.selected {
+  border-color: var(--color-primary-dark, #60a5fa);
+  box-shadow: 0 0 0 2px var(--color-primary-dark, #60a5fa);
+}
+
+[data-theme="dark"] .direction-card p {
+  color: var(--color-text-secondary-dark, #94a3b8);
+}
+
+[data-theme="dark"] .wizard-dbt-config input,
+[data-theme="dark"] .wizard-dbt-config select,
+[data-theme="dark"] .validation-result .validation-form input,
+[data-theme="dark"] .validation-result .validation-form select {
+  background: var(--color-surface-dark, #1e293b);
+  color: var(--color-text-dark, #e2e8f0);
+  border-color: var(--color-border-dark, #334155);
+}
+
+[data-theme="dark"] .wizard-review .contract-preview-json {
+  background: var(--color-code-bg-dark, #0f172a);
+  border-color: var(--color-border-dark, #334155);
+}
+
+[data-theme="dark"] .wizard-buttons button {
+  background: var(--color-surface-dark, #1e293b);
+  color: var(--color-text-dark, #e2e8f0);
+  border-color: var(--color-border-dark, #334155);
+}
+
+[data-theme="dark"] .contract-preview th {
+  background: var(--color-surface-alt-dark, #1e293b);
+}
+
+[data-theme="dark"] .contract-preview td {
+  border-color: var(--color-border-dark, #334155);
+}

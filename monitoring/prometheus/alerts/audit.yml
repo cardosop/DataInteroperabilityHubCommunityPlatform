@@ -1,0 +1,128 @@
+groups:
+  - name: audit_alerts
+    interval: 30s
+    rules:
+      # ----------------------------------------------------------------------
+      # Tamper-evidence (Phase 234.7.2)
+      # ----------------------------------------------------------------------
+      #
+      # The chain verifier increments ``audit_chain_break_total`` once per
+      # detected mismatch row, per-reason. ``chain_hash_mismatch`` is a
+      # content-tamper signal; ``prev_link_mismatch`` is a splice/insertion
+      # signal (no-gap case — a GDPR erasure gap is reported separately as
+      # informational); ``snapshot_root_mismatch`` is the Merkle cross-check
+      # disagreeing with the stored row hashes (full-chain rewrite forensic).
+      # ANY break is a PagerDuty incident — there is no "noise floor" for
+      # this counter.
+
+      - alert: AuditChainBreakDetected
+        expr: increase(audit_chain_break_total[5m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          component: audit
+          phase: "234"
+          runbook: "docs/runbooks/audit-tamper-evidence.md"
+        annotations:
+          summary: "Audit chain tampering detected"
+          description: |
+            audit_chain_break_total incremented {{ $value }} times in the last
+            5 minutes (reason={{ $labels.reason }}, tenant_id={{ $labels.tenant_id }}).
+            This is the tamper-evidence load-bearing signal — investigate
+            immediately. See docs/runbooks/audit-tamper-evidence.md for the
+            triage flow.
+
+      # ----------------------------------------------------------------------
+      # Merkle snapshot pipeline (Phase 234.7.2)
+      # ----------------------------------------------------------------------
+      #
+      # The hourly snapshot job builds the per-tenant tree + signs + uploads
+      # to S3 Object Lock. p99 typically sub-second; sustained > 30s usually
+      # means S3 PUT latency excursion (warm S3 endpoints, IAM throttle).
+
+      - alert: AuditMerkleSnapshotSlow
+        expr: histogram_quantile(0.99, sum by (le) (rate(audit_merkle_snapshot_duration_seconds_bucket[10m]))) > 30
+        for: 10m
+        labels:
+          severity: warning
+          component: audit
+          phase: "234"
+          runbook: "docs/runbooks/audit-tamper-evidence.md#merkle-snapshot-slow"
+        annotations:
+          summary: "Audit Merkle snapshot pipeline slow (p99 > 30s for 10m)"
+          description: |
+            The Phase 234.1.5 hourly Merkle snapshot pipeline is taking
+            longer than 30s at p99. Most likely cause: S3 Object-Lock PUT
+            latency. Check AWS S3 dashboard + audit-merkle bucket health.
+
+      # ----------------------------------------------------------------------
+      # FTS slow-query (Phase 234.6.AUDIT.4)
+      # ----------------------------------------------------------------------
+
+      - alert: AuditSearchSlow
+        expr: histogram_quantile(0.95, sum by (le) (rate(audit_search_query_duration_seconds_bucket[5m]))) > 5
+        for: 5m
+        labels:
+          severity: warning
+          component: audit
+          phase: "234"
+          runbook: "docs/runbooks/audit-tamper-evidence.md#audit-fts-slow"
+        annotations:
+          summary: "Audit FTS slow (p95 > 5s for 5m)"
+          description: |
+            audit_search_query_duration_seconds p95 > 5s for 5 minutes.
+            GIN index audit_events_details_tsv_gin is probably bloated;
+            consider REINDEX CONCURRENTLY. See
+            docs/runbooks/audit-search-rollout.md for the operational
+            triage steps.
+
+      # ----------------------------------------------------------------------
+      # Retention sweep (Phase 234.7.2)
+      # ----------------------------------------------------------------------
+      #
+      # Two contrasting alerts:
+      # 1) **Sweep ran wide** — a single tenant unexpectedly purged a large
+      #    batch in one run (could indicate a misconfigured override policy
+      #    or a regulator-driven retroactive change). Operator notice, not
+      #    page-out.
+      # 2) **Sweep stopped running** — no purges and no AUDIT_RETENTION_PURGED
+      #    meta-audits for >36h means the daily cron is broken. Page on this
+      #    because GDPR exposure grows with every day the sweep is silent.
+
+      - alert: AuditRetentionPurgeBatchUnusuallyLarge
+        expr: increase(audit_retention_purged_total{dry_run="false"}[1h]) > 100000
+        for: 0m
+        labels:
+          severity: warning
+          component: audit
+          phase: "234"
+          runbook: "docs/runbooks/audit-tamper-evidence.md#retention-batch-unusually-large"
+        annotations:
+          summary: "Audit retention purge batch unusually large (>100k rows/1h)"
+          description: |
+            audit_retention_purged_total saw >100,000 rows hard-deleted in
+            one hour for tenant {{ $labels.tenant_id }}. Verify the
+            AuditEventRetentionPolicy rows for this tenant didn't recently
+            change (e.g. a CCPA override applied retroactively to a long
+            tail). The AUDIT_RETENTION_PURGED meta-audit carries the
+            forensic id sample.
+
+      - alert: AuditRetentionSweepStalled
+        expr: |
+          (time() - max(audit_retention_purged_total_created)) > 129600
+          and
+          sum(audit_retention_purged_total) > 0
+        for: 0m
+        labels:
+          severity: critical
+          component: audit
+          phase: "234"
+          runbook: "docs/runbooks/audit-tamper-evidence.md#retention-sweep-stalled"
+        annotations:
+          summary: "Audit retention sweep has not run in >36h"
+          description: |
+            No new audit_retention_purged_total observations for >36h. The
+            daily CronJob ``audit-permanent-delete-daily`` likely failed.
+            GDPR exposure compounds with every silent day — investigate
+            the Kubernetes CronJob status + the Job row table for
+            ``AUDIT_PERMANENT_DELETE_SWEEP`` failures.

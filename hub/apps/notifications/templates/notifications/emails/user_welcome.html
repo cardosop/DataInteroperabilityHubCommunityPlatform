@@ -1,0 +1,17 @@
+{% extends "notifications/emails/base.html" %}
+
+{% block title %}Welcome to {{ app_name|default:"Meshant" }}{% endblock %}
+
+{% block content %}
+<h2>Welcome{% if user_name %} {{ user_name }}{% endif %}!</h2>
+<p>Your account has been created successfully on <strong>{{ tenant_name|default:app_name|default:"Meshant" }}</strong>.</p>
+<p>You can now log in and start using the platform.</p>
+{% if verification_url %}
+<p style="text-align: center;">
+    <a href="{{ verification_url }}" class="button">Verify Your Email</a>
+</p>
+<p>Or copy and paste this link into your browser:</p>
+<div class="code">{{ verification_url }}</div>
+{% endif %}
+<p>If you have any questions, please contact your administrator or our support team.</p>
+{% endblock %}

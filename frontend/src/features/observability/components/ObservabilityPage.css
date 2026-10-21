@@ -1,0 +1,97 @@
+.observability-page {
+  padding: 1.5rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.observability-header {
+  margin-bottom: 1.5rem;
+}
+
+.observability-header h1 {
+  margin: 0 0 0.25rem 0;
+  font-size: 1.75rem;
+}
+
+.observability-subtitle {
+  margin: 0;
+  color: var(--text-muted, #666);
+  font-size: 0.95rem;
+}
+
+.observability-tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 1.5rem;
+  border-bottom: 1px solid var(--border-color, #ddd);
+}
+
+.observability-tab {
+  padding: 0.5rem 1rem;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 0.95rem;
+  color: var(--text-muted, #666);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+
+.observability-tab:hover {
+  color: var(--text-primary, #333);
+}
+
+.observability-tab.active {
+  color: var(--link-color, #0066cc);
+  border-bottom-color: var(--link-color, #0066cc);
+  font-weight: 500;
+}
+
+.observability-content {
+  min-height: 200px;
+}
+
+.observability-section h2 {
+  margin: 0 0 1rem 0;
+  font-size: 1.25rem;
+}
+
+.observability-summary {
+  background: var(--bg-secondary, #f5f5f5);
+  padding: 1rem;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+  overflow-x: auto;
+}
+
+.observability-summary pre {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.observability-no-data {
+  color: var(--text-muted, #666);
+  font-style: italic;
+}
+
+.observability-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.observability-item {
+  padding: 0.75rem;
+  background: var(--bg-secondary, #f9f9f9);
+  border-radius: 4px;
+  font-size: 0.9rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.observability-item pre {
+  margin: 0;
+  font-size: 0.8rem;
+  overflow-x: auto;
+}

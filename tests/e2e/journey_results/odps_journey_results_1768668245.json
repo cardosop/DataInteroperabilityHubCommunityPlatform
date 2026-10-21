@@ -1,0 +1,29 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "ODPS-003-VERSION-97b17759",
+      "journey_name": "ODPS Export - Version Specific",
+      "persona": "Data Product Owner",
+      "status": "failed",
+      "start_time": 1768668232.3774111,
+      "end_time": 1768668245.8130558,
+      "duration": 13.435644626617432,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": "'str' object has no attribute 'get'",
+      "error_type": "AttributeError",
+      "steps": [],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-01-17T16:44:05.813125"
+}

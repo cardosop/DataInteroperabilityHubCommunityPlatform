@@ -1,0 +1,34 @@
+# public_resync_drift_allowlist.txt — P2-5 (G13) drift classification.
+#
+# Files that exist in the OLD public tree but NOT in the new built tree
+# are public-only content the re-sync would drop. Each such file must be
+# classified here (TAB-separated path + reason) or the sync refuses
+# (scripts/check_public_resync_diff.py, exit 1). Entries are file paths
+# or trailing-slash directory prefixes; "#" starts a comment.
+#
+# The entries below are the measured P-1 structural drift (2026-10-20,
+# the pre-replacement public main at ad776193): two classes, both
+# verified against the private history —
+#   1. checkout litter the old `git add -A` swept into sync commits
+#      (storybook-static/, frontend/public/ build output — the P-1 drift
+#      root cause, fixed by the exact-tree index discipline in
+#      publish_sync.sh);
+#   2. files deliberately removed/renamed by the private-tree
+#      consolidation commits of 2026-10-18/20 (b0c53036d, 730e6e77e,
+#      babace476 — each sampled path's deleting commit verified).
+# The genuine public-only content (LICENSE, SECURITY.md, the overlay)
+# is asserted present by the same checker, never listed here.
+
+cli/tests/	superseded CLI test READMEs + a renamed databricks test
+frontend/public/	generated PWA/service-worker build artifacts (private tree generates them at build time)
+frontend/scripts/	frontend tooling scripts moved/renamed in the frontend consolidation
+frontend/src/	frontend test files consolidated (730e6e77e + the hook-test consolidation)
+frontend/storybook-static/	generated Storybook build output (never tracked in the private tree — old `git add -A` litter)
+hub/apps/	backend consolidation 2026-10-18/20 (b0c53036d et al.) removed/renamed these modules from the private tree — superseded
+hub/data_movement/	backend consolidation removed these modules (superseded by the consolidated data_movement tree)
+hub/	top-level hub modules removed in the backend consolidation
+hub/testing/	the testing package was folded away in the backend consolidation
+scripts/	one-shot audit scripts + superseded tooling deleted in the scripts consolidation (wiring-ledger 'deleted' section)
+sdk/	superseded SDK test READMEs
+setup.sh	removed in the backend consolidation (replaced by Makefile flows)
+tests/	the legacy top-level tests/ layout (docs + integration/e2e/performance/ci/fixtures/utils) moved into cli/tests/ + per-app suites

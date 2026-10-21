@@ -1,0 +1,779 @@
+{
+  "overview": "Remediation plan for service integration pattern compliance",
+  "phases": [
+    {
+      "phase": 2,
+      "name": "Fix High Priority Issues",
+      "priority": "high",
+      "issues": [
+        {
+          "file_path": "hub/apps/webhooks/ssrf_guard.py",
+          "line_number": 14,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct urllib direct call found. Should use service client instead.",
+          "code_snippet": "from urllib.parse import urlparse",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/webhooks/business_rules.py",
+          "line_number": 401,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct urllib direct call found. Should use service client instead.",
+          "code_snippet": "from urllib.parse import urlparse",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/webhooks/business_rules.py",
+          "line_number": 731,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct urllib direct call found. Should use service client instead.",
+          "code_snippet": "from urllib.parse import urlparse",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/marketplace/payment_gateway_utils.py",
+          "line_number": 8,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct urllib direct call found. Should use service client instead.",
+          "code_snippet": "from urllib.parse import urlparse",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/scheduled_export/views.py",
+          "line_number": 70,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct requests direct call found. Should use service client instead.",
+          "code_snippet": "resp = requests.post(url, json=payload, headers=headers, timeout=timeout_seconds)",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/scheduled_export/views.py",
+          "line_number": 125,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct requests direct call found. Should use service client instead.",
+          "code_snippet": "resp = requests.post(url, json=payload, headers=headers, timeout=timeout_seconds)",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/scheduled_ingestion/views.py",
+          "line_number": 92,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct requests direct call found. Should use service client instead.",
+          "code_snippet": "resp = requests.post(url, json=payload, headers=headers, timeout=timeout_seconds)",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/scheduled_ingestion/views.py",
+          "line_number": 147,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct requests direct call found. Should use service client instead.",
+          "code_snippet": "resp = requests.post(url, json=payload, headers=headers, timeout=timeout_seconds)",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/notifications/templates.py",
+          "line_number": 7,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct urllib direct call found. Should use service client instead.",
+          "code_snippet": "from urllib.parse import urlencode",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/notifications/services.py",
+          "line_number": 39,
+          "issue_type": "missing_base_service",
+          "severity": "high",
+          "description": "Service class EmailService does not extend BaseService.",
+          "code_snippet": "class EmailService(...):",
+          "recommendation": "Change to: class EmailService(BaseService, ...):",
+          "pattern_violated": "Service Layer Pattern"
+        },
+        {
+          "file_path": "hub/apps/users/services.py",
+          "line_number": 405,
+          "issue_type": "missing_base_service",
+          "severity": "high",
+          "description": "Service class UserTenantMembershipService does not extend BaseService.",
+          "code_snippet": "class UserTenantMembershipService(...):",
+          "recommendation": "Change to: class UserTenantMembershipService(BaseService, ...):",
+          "pattern_violated": "Service Layer Pattern"
+        },
+        {
+          "file_path": "hub/apps/billing/services.py",
+          "line_number": 920,
+          "issue_type": "missing_base_service",
+          "severity": "high",
+          "description": "Service class PlanLimitService does not extend BaseService.",
+          "code_snippet": "class PlanLimitService(...):",
+          "recommendation": "Change to: class PlanLimitService(BaseService, ...):",
+          "pattern_violated": "Service Layer Pattern"
+        },
+        {
+          "file_path": "hub/apps/processor_agreements/validators.py",
+          "line_number": 6,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct urllib direct call found. Should use service client instead.",
+          "code_snippet": "from urllib.parse import urlparse",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/contracts/validation.py",
+          "line_number": 9,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct urllib direct call found. Should use service client instead.",
+          "code_snippet": "from urllib.parse import urlparse",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/contracts/ref_resolver.py",
+          "line_number": 25,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct urllib direct call found. Should use service client instead.",
+          "code_snippet": "from urllib.parse import urlparse, urljoin",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/health/synthetic_probes.py",
+          "line_number": 163,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct requests direct call found. Should use service client instead.",
+          "code_snippet": "resp = requests.get(",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/health/synthetic_probes.py",
+          "line_number": 167,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct requests direct call found. Should use service client instead.",
+          "code_snippet": "resp = requests.post(",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/graphql_ld/views.py",
+          "line_number": 450,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct urllib direct call found. Should use service client instead.",
+          "code_snippet": "from urllib.parse import urlparse",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/api/mailhog_proxy_views.py",
+          "line_number": 165,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct requests direct call found. Should use service client instead.",
+          "code_snippet": "response = requests.get(",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/files/storage.py",
+          "line_number": 124,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct urllib direct call found. Should use service client instead.",
+          "code_snippet": "from urllib.parse import urlparse",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/files/storage.py",
+          "line_number": 596,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct urllib direct call found. Should use service client instead.",
+          "code_snippet": "from urllib.parse import urlparse as _urlparse, parse_qs as _parse_qs",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/orchestration/views.py",
+          "line_number": 8,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct urllib direct call found. Should use service client instead.",
+          "code_snippet": "from urllib.parse import urlencode",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/auth/sso.py",
+          "line_number": 409,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct urllib direct call found. Should use service client instead.",
+          "code_snippet": "from urllib.parse import urlencode",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/auth/sso.py",
+          "line_number": 422,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct urllib direct call found. Should use service client instead.",
+          "code_snippet": "from urllib.parse import urlencode",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/auth/password_validators.py",
+          "line_number": 183,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct urllib direct call found. Should use service client instead.",
+          "code_snippet": "import urllib.request",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/auth/password_validators.py",
+          "line_number": 186,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct urllib direct call found. Should use service client instead.",
+          "code_snippet": "req = urllib.request.Request(",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/auth/password_validators.py",
+          "line_number": 190,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct urllib direct call found. Should use service client instead.",
+          "code_snippet": "with urllib.request.urlopen(req, timeout=self.timeout) as resp:",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/security/views.py",
+          "line_number": 28,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct urllib direct call found. Should use service client instead.",
+          "code_snippet": "from urllib.parse import urlparse",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/security/url_validators.py",
+          "line_number": 43,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct urllib direct call found. Should use service client instead.",
+          "code_snippet": "from urllib.parse import urlparse",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/compliance/webhook_emission.py",
+          "line_number": 12,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct urllib direct call found. Should use service client instead.",
+          "code_snippet": "from urllib.parse import quote",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/integrations/metrics_utils.py",
+          "line_number": 37,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct httpx direct call found. Should use service client instead.",
+          "code_snippet": "response = httpx.get(url)",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/transformation/dbt_executor.py",
+          "line_number": 22,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct urllib direct call found. Should use service client instead.",
+          "code_snippet": "from urllib.parse import urlparse, urlunparse",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/transformation/dbt_executor.py",
+          "line_number": 278,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct urllib direct call found. Should use service client instead.",
+          "code_snippet": "from urllib.parse import urlparse, urlunparse",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/core/cross_service_version_check.py",
+          "line_number": 143,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct httpx direct call found. Should use service client instead.",
+          "code_snippet": "response = httpx.get(url, timeout=timeout_s)",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/jobs/tasks_prefect_sync.py",
+          "line_number": 69,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct requests direct call found. Should use service client instead.",
+          "code_snippet": "resp = requests.post(url, json=payload, headers=headers, timeout=15)",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/dsar/captcha.py",
+          "line_number": 6,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct urllib direct call found. Should use service client instead.",
+          "code_snippet": "import urllib.parse",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/dsar/captcha.py",
+          "line_number": 7,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct urllib direct call found. Should use service client instead.",
+          "code_snippet": "import urllib.request",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/dsar/captcha.py",
+          "line_number": 26,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct urllib direct call found. Should use service client instead.",
+          "code_snippet": "data = urllib.parse.urlencode(",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/dsar/captcha.py",
+          "line_number": 33,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct urllib direct call found. Should use service client instead.",
+          "code_snippet": "req = urllib.request.Request(",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/dsar/captcha.py",
+          "line_number": 40,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct urllib direct call found. Should use service client instead.",
+          "code_snippet": "with urllib.request.urlopen(req, timeout=10) as resp:",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/dq/tasks.py",
+          "line_number": 443,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct requests direct call found. Should use service client instead.",
+          "code_snippet": "response = requests.post(",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/virtualization/_services_legacy.py",
+          "line_number": 4217,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct urllib direct call found. Should use service client instead.",
+          "code_snippet": "import urllib.parse",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/virtualization/_services_legacy.py",
+          "line_number": 4235,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct urllib direct call found. Should use service client instead.",
+          "code_snippet": "query_params = urllib.parse.urlencode(parameters)",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/virtualization/business_rules.py",
+          "line_number": 725,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct urllib direct call found. Should use service client instead.",
+          "code_snippet": "from urllib.parse import urlparse",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/virtualization/business_rules.py",
+          "line_number": 755,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct urllib direct call found. Should use service client instead.",
+          "code_snippet": "from urllib.parse import urlparse",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/consent/services.py",
+          "line_number": 26,
+          "issue_type": "missing_base_service",
+          "severity": "high",
+          "description": "Service class ConsentService does not extend BaseService.",
+          "code_snippet": "class ConsentService(...):",
+          "recommendation": "Change to: class ConsentService(BaseService, ...):",
+          "pattern_violated": "Service Layer Pattern"
+        },
+        {
+          "file_path": "hub/apps/semantic/uri_validators.py",
+          "line_number": 16,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct urllib direct call found. Should use service client instead.",
+          "code_snippet": "from urllib.parse import urlparse",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/semantic/business_rules.py",
+          "line_number": 22,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct urllib direct call found. Should use service client instead.",
+          "code_snippet": "from urllib.parse import urlparse",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/semantic/federation.py",
+          "line_number": 138,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct urllib direct call found. Should use service client instead.",
+          "code_snippet": "from urllib.parse import urlparse",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/semantic/federation.py",
+          "line_number": 203,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct urllib direct call found. Should use service client instead.",
+          "code_snippet": "from urllib.parse import urlparse, urlunparse",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/semantic/tasks_ldn.py",
+          "line_number": 254,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct urllib direct call found. Should use service client instead.",
+          "code_snippet": "from urllib.parse import urlparse",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/semantic/tasks_ldn.py",
+          "line_number": 280,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct httpx direct call found. Should use service client instead.",
+          "code_snippet": "response = httpx.post(",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/semantic/services.py",
+          "line_number": 68,
+          "issue_type": "missing_base_service",
+          "severity": "high",
+          "description": "Service class SPARQLQueryService does not extend BaseService.",
+          "code_snippet": "class SPARQLQueryService(...):",
+          "recommendation": "Change to: class SPARQLQueryService(BaseService, ...):",
+          "pattern_violated": "Service Layer Pattern"
+        },
+        {
+          "file_path": "hub/apps/semantic/services.py",
+          "line_number": 472,
+          "issue_type": "missing_base_service",
+          "severity": "high",
+          "description": "Service class SemanticMappingService does not extend BaseService.",
+          "code_snippet": "class SemanticMappingService(...):",
+          "recommendation": "Change to: class SemanticMappingService(BaseService, ...):",
+          "pattern_violated": "Service Layer Pattern"
+        },
+        {
+          "file_path": "hub/apps/semantic/services.py",
+          "line_number": 601,
+          "issue_type": "missing_base_service",
+          "severity": "high",
+          "description": "Service class SemanticURIResolutionService does not extend BaseService.",
+          "code_snippet": "class SemanticURIResolutionService(...):",
+          "recommendation": "Change to: class SemanticURIResolutionService(BaseService, ...):",
+          "pattern_violated": "Service Layer Pattern"
+        },
+        {
+          "file_path": "hub/apps/semantic/services.py",
+          "line_number": 848,
+          "issue_type": "missing_base_service",
+          "severity": "high",
+          "description": "Service class SemanticGraphService does not extend BaseService.",
+          "code_snippet": "class SemanticGraphService(...):",
+          "recommendation": "Change to: class SemanticGraphService(BaseService, ...):",
+          "pattern_violated": "Service Layer Pattern"
+        },
+        {
+          "file_path": "hub/apps/scheduled_ingestion/management/commands/detect_and_remediate_stuck_runs.py",
+          "line_number": 245,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct requests direct call found. Should use service client instead.",
+          "code_snippet": "resp = requests.get(url, headers=headers, timeout=5)",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/contracts/config/odps_refs_config.py",
+          "line_number": 17,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct urllib direct call found. Should use service client instead.",
+          "code_snippet": "from urllib.parse import urlparse",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/contracts/normalization/odps_normalizer_bitol_v1.py",
+          "line_number": 113,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct urllib direct call found. Should use service client instead.",
+          "code_snippet": "from urllib.parse import urlparse",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/contracts/management/commands/delete_lineage_edges_for_tenant.py",
+          "line_number": 41,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct urllib direct call found. Should use service client instead.",
+          "code_snippet": "from urllib.parse import urlparse",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/api/utils/api_url_builder.py",
+          "line_number": 103,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct urllib direct call found. Should use service client instead.",
+          "code_snippet": "from urllib.parse import urlencode",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/integrations/connectors/azure_marketplace_connector.py",
+          "line_number": 14,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct urllib direct call found. Should use service client instead.",
+          "code_snippet": "from urllib.parse import quote",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/integrations/connectors/ckan_connector.py",
+          "line_number": 21,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct urllib direct call found. Should use service client instead.",
+          "code_snippet": "from urllib.parse import urljoin, urlparse",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/integrations/connectors/ckan_connector.py",
+          "line_number": 1078,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct httpx direct call found. Should use service client instead.",
+          "code_snippet": "download_response = httpx.get(",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/integrations/connectors/dados_gov_br_client.py",
+          "line_number": 12,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct urllib direct call found. Should use service client instead.",
+          "code_snippet": "from urllib.parse import urljoin",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/integrations/connectors/dados_gov_br_client.py",
+          "line_number": 88,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct httpx direct call found. Should use service client instead.",
+          "code_snippet": "response = httpx.get(swagger_url, timeout=10.0, follow_redirects=True)",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/integrations/connectors/dados_gov_br_connector.py",
+          "line_number": 12,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct urllib direct call found. Should use service client instead.",
+          "code_snippet": "from urllib.parse import urljoin",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/core/utils/prefect_deployment.py",
+          "line_number": 63,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct requests direct call found. Should use service client instead.",
+          "code_snippet": "resp = requests.delete(",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/jobs/management/commands/recover_stuck_jobs.py",
+          "line_number": 430,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct httpx direct call found. Should use service client instead.",
+          "code_snippet": "resp = httpx.get(",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/websocket/middleware/auth.py",
+          "line_number": 268,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct urllib direct call found. Should use service client instead.",
+          "code_snippet": "import urllib.parse",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/websocket/middleware/auth.py",
+          "line_number": 270,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct urllib direct call found. Should use service client instead.",
+          "code_snippet": "query_params[key] = urllib.parse.unquote(value)",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/dq/clients/webhook_client.py",
+          "line_number": 67,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct requests direct call found. Should use service client instead.",
+          "code_snippet": "response = requests.post(",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/dq/clients/pagerduty_client.py",
+          "line_number": 69,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct requests direct call found. Should use service client instead.",
+          "code_snippet": "response = requests.post(",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/dq/clients/slack_client.py",
+          "line_number": 57,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct requests direct call found. Should use service client instead.",
+          "code_snippet": "response = requests.post(",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/virtualization/services/query_service.py",
+          "line_number": 3293,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct urllib direct call found. Should use service client instead.",
+          "code_snippet": "import urllib.parse",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        },
+        {
+          "file_path": "hub/apps/virtualization/services/query_service.py",
+          "line_number": 3311,
+          "issue_type": "direct_http_call",
+          "severity": "high",
+          "description": "Direct urllib direct call found. Should use service client instead.",
+          "code_snippet": "query_params = urllib.parse.urlencode(parameters)",
+          "recommendation": "Use appropriate service client (ComplianceServiceClient, DQServiceClient, etc.) instead of direct HTTP calls.",
+          "pattern_violated": "Pattern 1: Direct Service Calls"
+        }
+      ],
+      "actions": [
+        "Replace direct HTTP calls with service clients",
+        "Ensure all services extend BaseService",
+        "Add circuit breakers where missing",
+        "Add retry logic where missing",
+        "Add distributed tracing"
+      ]
+    }
+  ]
+}

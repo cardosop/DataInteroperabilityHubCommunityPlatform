@@ -1,0 +1,94 @@
+{% extends "notifications/emails/base.html" %}
+
+{% block title %}Final warning — assets will be auto-reverted to DRAFT{% endblock %}
+
+{% block content %}
+<h2>Final warning: assets in {{ tenant_name }} will be auto-reverted to DRAFT</h2>
+
+<p>Hello{% if admin_first_name %} {{ admin_first_name }}{% endif %},</p>
+
+<p>
+  As part of the {{ app_name|default:"Meshant" }} <strong>structureless-contract
+  remediation programme</strong> (Phase 227 Wave 5), you have
+  <strong>{{ residue_count }}</strong> active contract(s) in
+  <strong>{{ tenant_name }}</strong> whose normalized payload contains
+  no models or schema fields. On
+  <strong><code>{{ deadline_iso }}</code></strong> the assets backing
+  these contracts will be auto-reverted from <code>ACTIVE</code> to
+  <code>DRAFT</code>.
+</p>
+
+<p>
+  This is the <strong>final warning window</strong>. The previous
+  Wave 0 (T-14) and Wave 4 (T+7) reminders, plus the Wave 2
+  Schema-editor GA announcement, gave a 30+ day window to remediate.
+  After <code>{{ deadline_iso }}</code>, downstream consumers will no
+  longer be able to rely on the affected assets for schema discovery,
+  lineage, or marketplace publication.
+</p>
+
+<h3>Affected contracts</h3>
+
+{% if contracts %}
+<table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
+  <thead>
+    <tr>
+      <th style="text-align: left; border-bottom: 1px solid #ccc; padding: 6px;">Contract</th>
+      <th style="text-align: left; border-bottom: 1px solid #ccc; padding: 6px;">Spec</th>
+      <th style="text-align: left; border-bottom: 1px solid #ccc; padding: 6px;">Action</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for contract in contracts %}
+    <tr>
+      <td style="border-bottom: 1px solid #eee; padding: 6px;">
+        <strong>{{ contract.name|default:contract.id }}</strong>
+        <br>
+        <small style="color: #666;">{{ contract.id }}</small>
+      </td>
+      <td style="border-bottom: 1px solid #eee; padding: 6px;">{{ contract.spec_type }}</td>
+      <td style="border-bottom: 1px solid #eee; padding: 6px;">
+        {% if contract.schema_editor_url %}
+        <a href="{{ contract.schema_editor_url }}" class="button">
+          Open Schema editor
+        </a>
+        {% else %}
+        Use the Schema editor in {{ app_name|default:"Meshant" }} to add models and fields.
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p><em>No specific contracts attached to this notification.</em></p>
+{% endif %}
+
+<h3>What you need to do</h3>
+
+<ol>
+  <li>Open each contract above in the {{ app_name|default:"Meshant" }} Schema editor.</li>
+  <li>Add models, fields, and types matching your data shape — or
+      attach an existing structurally-complete contract.</li>
+  <li>Save. Validation will confirm the contract is structurally sound.</li>
+  <li>Repeat for every contract listed before <code>{{ deadline_iso }}</code>.</li>
+</ol>
+
+<h3>If the auto-revert happens anyway</h3>
+
+<p>
+  Auto-reverts are <strong>fully reversible</strong> via the L6.4
+  reverse migration (see
+  <a href="https://docs.{{ app_name|default:"meshant"|lower }}.com/runbooks/structureless-contracts">
+    operator runbook
+  </a>). Each demotion emits an audit event with the prior status
+  recorded; the migration replays those events to restore. You will
+  receive a per-asset notification email at the moment of demotion
+  with the restoration deep-link.
+</p>
+
+<p>
+  Thank you,<br>
+  The {{ app_name|default:"Meshant" }} Data Governance Team
+</p>
+{% endblock %}

@@ -1,0 +1,5 @@
+{
+  "budget": 262,
+  "note": "Phase 226 C1 ratchet — only ever lower this number. Adding a waitForTimeout requires raising the budget in the same PR with justification.",
+  "updatedAt": "2026-04-25T02:45:02.834Z"
+}

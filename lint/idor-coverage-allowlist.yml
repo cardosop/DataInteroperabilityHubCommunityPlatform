@@ -1,0 +1,37 @@
+# W11.3 (oss-release-remediation) — ASVS V4 IDOR-probe coverage allowlist.
+#
+# The ≤5% remainder of tenant-scoped route keys that the generated probe
+# suite (tests/security/test_w113_asvs_v4_access_control.py) does not
+# exercise with the generic cross-tenant contract.  Each entry MUST carry
+# a written reason — an unreasoned entry is the vibe-code signature of
+# "defense in depth as prose" (register row 9) and fails the veracity pin
+# (scripts/tests/test_w113_idor_matrix_veracity.py) and
+# `manage.py check_idor_coverage`.
+#
+# A DEAD entry (no matching route in docs/api-audit/idor-probe-manifest.json)
+# FAILS both gates — the W12 dead-anchor ratchet.
+#
+# Format per entry:
+#   - method: <METHOD>
+#     path: /api/v1/.../   # the normalized path template from the manifest
+#     reason: <why the generic probe does not apply — cite the owning suite>
+entries:
+  - method: POST
+    path: /api/v1/databricks/workspaces/
+    reason: >
+      The create runs SSRF host validation with live DNS resolution — a
+      synthetic probe hostname can never pass, and the payload carries no
+      tenant-scoped FK reference surface for the payload-FK direction.
+      The workspace object-level IDOR probes (GET/PATCH/DELETE detail
+      routes) stay probed by the matrix.
+  - method: POST
+    path: /api/v1/contracts/products/
+    reason: >
+      The create executes the full ODPS product-creation workflow (schema
+      validation chain + external workflow steps) and the payload carries no
+      tenant-scoped FK reference surface, so neither the create half nor the
+      payload-FK direction is probeable in the DB-only security job.  The
+      tenant boundary for contract creation is pinned by the standard
+      contract-create probe (POST /api/v1/contracts/) and the contracts
+      IDOR suites (tests/security/test_idor_contracts.py).
+

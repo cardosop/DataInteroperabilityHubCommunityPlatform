@@ -1,0 +1,38 @@
+{
+  "schema": "https://opendataproducts.org/schema/v4.1",
+  "version": "4.1",
+  "product": {
+    "details": {
+      "en": {
+        "productID": "e2e-minimal-odps",
+        "name": "E2E Minimal ODPS Product",
+        "description": "Minimal valid ODPS v4.1 document for E2E upload tests.",
+        "productVersion": "1.0.0"
+      }
+    },
+    "dataSchema": {
+      "fields": [
+        { "name": "id", "type": "string" },
+        { "name": "name", "type": "string" },
+        { "name": "value", "type": "number" }
+      ]
+    },
+    "contract": {
+      "spec": {
+        "apiVersion": "odcs.io/v3.0.2",
+        "kind": "DataContract",
+        "id": "e2e-embedded-odcs",
+        "name": "E2E Embedded ODCS Contract",
+        "version": "1.0.0",
+        "description": "Embedded ODCS contract in ODPS for E2E tests",
+        "schema": {
+          "fields": [
+            { "name": "id", "type": "string", "nullable": false, "description": "Unique identifier" },
+            { "name": "name", "type": "string", "nullable": true, "description": "Display name" },
+            { "name": "value", "type": "number", "nullable": true, "description": "Numeric value" }
+          ]
+        }
+      }
+    }
+  }
+}

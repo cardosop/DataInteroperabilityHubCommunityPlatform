@@ -1,0 +1,201 @@
+"""
+Authentication Service
+
+Service layer for API key operations.
+All create/update/delete paths apply validation and audit.
+"""
+
+import contextlib
+from datetime import timedelta
+
+from django.db import transaction
+from django.utils import timezone
+
+from hub.apps.audit.utils import create_audit_event
+from hub.apps.core.services.base import BaseService, NotFoundError, ValidationError
+
+from .models import APIKey
+
+
+class APIKeyService(BaseService):
+    """
+    Service for API key operations.
+
+    Provides business logic for:
+    - API key creation with validation and audit
+    - API key update
+    - API key deletion
+    """
+
+    service_name = "api_key_service"
+
+    def __init__(self, tenant_id: str | None = None, user_id: str | None = None):
+        self.tenant_id = tenant_id
+        self.user_id = user_id
+
+    @transaction.atomic
+    def create_api_key(
+        self,
+        tenant_id: str,
+        user_id: str | None,
+        name: str,
+        scopes: list | None = None,
+        expires_in_days: int | None = None,
+        rate_limit_per_hour: int | None = None,
+        expires_at=None,
+        tier_name: str | None = None,
+    ) -> tuple[APIKey, str]:
+        """
+        Create an API key with validation and audit.
+
+        Args:
+            tenant_id: Tenant ID
+            user_id: Optional user ID (for user-scoped keys)
+            name: API key name
+            scopes: Optional list of scopes
+            expires_in_days: Optional expiration in days
+            rate_limit_per_hour: Optional rate limit
+            expires_at: Optional explicit expiration datetime (takes
+                precedence over expires_in_days)
+            tier_name: Optional BaaS tier name (resolved through the
+                commercial hook; Phase 313 paid-ward FK)
+
+        Returns:
+            Tuple of (APIKey instance, plaintext_key)
+
+        Raises:
+            ValidationError: If validation fails
+        """
+        from django.contrib.auth import get_user_model
+
+        from hub.apps.tenants.models import Tenant
+
+        User = get_user_model()
+
+        # Get tenant
+        try:
+            tenant = Tenant.objects.get(id=tenant_id)
+        except Tenant.DoesNotExist:
+            raise NotFoundError(f"Tenant {tenant_id} not found") from None
+
+        # Get user if provided
+        user = None
+        if user_id:
+            try:
+                user = User.objects.get(id=user_id, tenant_id=tenant_id)
+            except User.DoesNotExist:
+                raise NotFoundError(f"User {user_id} not found") from None
+
+        # Resolve the BaaS tier through the commercial hook (Phase 313
+        # paid-ward FK). The paid layer registers the resolver; unknown
+        # names raise LookupError and core-only deployments have no
+        # resolver at all — both surface as service validation errors.
+        tier = None
+        if tier_name:
+            from hub.apps.core.commercial_hooks import resolve_api_key_tier
+
+            try:
+                tier = resolve_api_key_tier(tier_name)
+            except LookupError as exc:
+                raise ValidationError(str(exc)) from exc
+            if tier is None:
+                raise ValidationError(f"API tier '{tier_name}' is not available in this deployment")
+
+        # Generate API key
+        plaintext_key = APIKey.generate_key()
+        key_hash = APIKey.hash_key(plaintext_key)
+
+        # Calculate expiration (explicit expires_at wins over expires_in_days)
+        if expires_at is None and expires_in_days:
+            expires_at = timezone.now() + timedelta(days=expires_in_days)
+
+        # Create API key (the tier property persists the paid-ward
+        # assignment post-insert; None is a no-op).
+        api_key = APIKey.objects.create(
+            tenant=tenant,
+            user=user,
+            key_hash=key_hash,
+            name=name,
+            scopes=scopes or [],
+            expires_at=expires_at,
+            rate_limit_per_hour=rate_limit_per_hour,
+            tier=tier,
+        )
+
+        # Store plaintext key temporarily for response (not saved to DB)
+        api_key._plaintext_key = plaintext_key
+
+        # Create audit event
+        from django.contrib.auth import get_user_model
+
+        User = get_user_model()
+        actor_user = None
+        if self.user_id or user_id:
+            with contextlib.suppress(User.DoesNotExist):
+                actor_user = User.objects.get(id=self.user_id or user_id)
+
+        create_audit_event(
+            resource_type="API_KEY",
+            action="API_KEY_CREATED",
+            actor_user=actor_user,
+            tenant=tenant,
+            resource_id=str(api_key.id),
+            details={
+                "name": name,
+                "scopes": scopes,
+                "tier": tier.name if tier is not None else None,
+                "expires_at": expires_at.isoformat() if expires_at else None,
+            },
+        )
+
+        return api_key, plaintext_key
+
+    @transaction.atomic
+    def delete_api_key(
+        self,
+        api_key_id: str,
+        tenant_id: str,
+        actor_user_id: str,
+    ) -> None:
+        """
+        Delete (revoke) an API key with audit.
+
+        Single identity (D2) contract: DELETE revokes the key — the row is
+        kept (``revoked_at`` set) so usage records and audit history keep
+        their FK attribution; ``is_active()`` becomes False.
+
+        Args:
+            api_key_id: API key ID
+            tenant_id: Tenant ID
+            actor_user_id: User ID performing the deletion
+
+        Raises:
+            NotFoundError: If API key not found
+        """
+        # Get API key
+        api_key = self.get_resource_or_raise(
+            APIKey,
+            api_key_id,
+            tenant_id=tenant_id,
+        )
+
+        # Create audit event before revocation
+        from django.contrib.auth import get_user_model
+
+        User = get_user_model()
+        actor_user = None
+        if actor_user_id:
+            with contextlib.suppress(User.DoesNotExist):
+                actor_user = User.objects.get(id=actor_user_id)
+
+        create_audit_event(
+            resource_type="API_KEY",
+            action="API_KEY_REVOKED",
+            actor_user=actor_user,
+            tenant=api_key.tenant,
+            resource_id=str(api_key.id),
+            details={"name": api_key.name},
+        )
+
+        # Revoke the key (soft delete)
+        api_key.revoke()

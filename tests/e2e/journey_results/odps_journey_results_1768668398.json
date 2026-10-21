@@ -1,0 +1,69 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "ODPS-003-1a1a1a73",
+      "journey_name": "ODPS Export/Download Journey",
+      "persona": "Data Product Owner",
+      "status": "failed",
+      "start_time": 1768668387.9216433,
+      "end_time": 1768668398.7265453,
+      "duration": 10.804902076721191,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": "Expected dict, got <class 'str'>: {\n  \"schema\": \"https://opendataproducts.org/schema/v4.1\",\n  \"version\": \"4.1\",\n  \"product\": {\n    \"details\": {\n      \"en\": {\n        \"productID\": \"test-product-8185f8d5\",\n        \"name\": \"Test Product test-product-8185f8d5\",\n        \"description\": \"Test product for ODPS journey testing\",\n        \"productVersion\": \"1.0.0\"\n      }\n    },\n    \"marketplace\": {\n      \"pricingPlans\": [\n        {\n          \"name\": \"Basic Plan\",\n          \"price\": 9.99,\n          \"planID\": \"basic\",\n          \"currency\": \"USD\",\n          \"billingPeriod\": \"monthly\"\n        }\n      ],\n      \"accessMethods\": {\n        \"api\": {\n          \"type\": \"REST_API\",\n          \"endpoint\": \"https://api.example.com/data\",\n          \"protocol\": \"HTTPS\"\n        }\n      },\n      \"paymentGateways\": {\n        \"stripe\": {\n          \"type\": \"STRIPE\",\n          \"enabled\": true\n        }\n      }\n    }\n  }\n}",
+      "error_type": "TypeError",
+      "steps": [
+        {
+          "step_name": "Create Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768668387.9216542,
+          "end_time": 1768668388.174412,
+          "duration": 0.2527577877044678,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Create ODPS Contract",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768668388.174494,
+          "end_time": 1768668398.7125785,
+          "duration": 10.538084506988525,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        },
+        {
+          "step_name": "Export ODPS as JSON",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1768668398.7125878,
+          "end_time": 1768668398.7265263,
+          "duration": 0.013938426971435547,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "Response"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-01-17T16:46:38.726662"
+}

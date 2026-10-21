@@ -1,0 +1,341 @@
+/**
+ * Retention Policy Create Page Tests
+ * Real useCreateRetentionPolicy; only API client mocked (no mocks of application code).
+ * Scenarios: form render, validation (name, resource, retention period), submit success, mutation error, loading.
+ */
+
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import type { HttpClient } from '../../../shared/types/api';
+import { type ReactNode } from 'react';
+import { MemoryRouter } from 'react-router-dom';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { RetentionAction, RetentionPolicyType } from '../../../shared/types/governanceRetention';
+import { RetentionPolicyCreatePage } from './RetentionPolicyCreatePage';
+
+vi.mock('../../../shared/api/client');
+
+import { apiClient } from '../../../shared/api/client';
+
+const VALID_ASSET_UUID = '550e8400-e29b-41d4-a716-446655440000';
+
+describe('RetentionPolicyCreatePage', () => {
+  let queryClient: QueryClient;
+  let mockClient: HttpClient;
+
+  function wrapper({ children }: { children: ReactNode }) {
+    return (
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>{children}</MemoryRouter>
+      </QueryClientProvider>
+    );
+  }
+
+  const mockAssets = {
+    results: [
+      { id: VALID_ASSET_UUID, name: 'Test Asset', key: 'test-asset' },
+    ],
+    count: 1,
+  };
+
+  beforeEach(() => {
+    Element.prototype.scrollIntoView = vi.fn();
+    vi.clearAllMocks();
+    queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+
+    const realClient = apiClient.getClient();
+    mockClient = realClient;
+    vi.mocked(mockClient.post).mockClear();
+    vi.mocked(mockClient.get).mockResolvedValue({ data: mockAssets });
+  });
+
+  it('should render form fields', () => {
+    render(<RetentionPolicyCreatePage />, { wrapper });
+
+    expect(screen.getByLabelText(/name/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/description/i)).toBeInTheDocument();
+    expect(screen.getByTestId('retention-asset-picker')).toBeInTheDocument();
+    expect(screen.getByTestId('retention-dataset-picker')).toBeInTheDocument();
+    expect(screen.getByTestId('retention-file-picker')).toBeInTheDocument();
+    expect(screen.getByLabelText(/policy type/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/retention period/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/action/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/enabled/i)).toBeInTheDocument();
+  });
+
+  it('should validate required name field', async () => {
+    const user = userEvent.setup();
+
+    render(<RetentionPolicyCreatePage />, { wrapper });
+
+    const assetPickerInput = screen.getByTestId('retention-asset-picker').querySelector('input');
+    expect(assetPickerInput).toBeTruthy();
+    await user.click(assetPickerInput!);
+    await waitFor(() => {
+      expect(screen.getByText(/Test Asset/i)).toBeInTheDocument();
+    });
+    await user.click(screen.getByText(/Test Asset/i));
+
+    const retentionPeriodInput = screen.getByLabelText(/retention period/i);
+    await user.type(retentionPeriodInput, '30');
+
+    const form = document.querySelector('form') as HTMLFormElement;
+    expect(form).toBeTruthy();
+    fireEvent.submit(form);
+
+    await waitFor(
+      () => {
+        expect(screen.getByText(/name is required/i)).toBeInTheDocument();
+      },
+      { timeout: 3000 }
+    );
+  });
+
+  it('should validate at least one resource ID', async () => {
+    const user = userEvent.setup();
+
+    render(<RetentionPolicyCreatePage />, { wrapper });
+
+    const nameInput = screen.getByLabelText(/name/i);
+    await user.type(nameInput, 'Test Policy');
+
+    const retentionPeriodInput = screen.getByLabelText(/retention period/i);
+    await user.type(retentionPeriodInput, '30');
+
+    const form = document.querySelector('form') as HTMLFormElement;
+    expect(form).toBeTruthy();
+    fireEvent.submit(form);
+
+    await waitFor(
+      () => {
+        expect(
+          screen.getByText(/at least one of asset, dataset, or file is required/i)
+        ).toBeInTheDocument();
+      },
+      { timeout: 3000 }
+    );
+  });
+
+  it('should validate retention period for time-based policies', async () => {
+    const user = userEvent.setup();
+
+    render(<RetentionPolicyCreatePage />, { wrapper });
+
+    const nameInput = screen.getByLabelText(/name/i);
+    await user.type(nameInput, 'Test Policy');
+
+    const assetPickerInput = screen.getByTestId('retention-asset-picker').querySelector('input');
+    expect(assetPickerInput).toBeTruthy();
+    await user.click(assetPickerInput!);
+    await waitFor(() => {
+      expect(screen.getByText(/Test Asset/i)).toBeInTheDocument();
+    });
+    await user.click(screen.getByText(/Test Asset/i));
+
+    const policyTypeSelect = screen.getByLabelText(/policy type/i);
+    expect(policyTypeSelect).toHaveValue(RetentionPolicyType.TIME_BASED);
+
+    const retentionPeriodInput = screen.getByLabelText(/retention period/i) as HTMLInputElement;
+    await user.clear(retentionPeriodInput);
+    expect(retentionPeriodInput.value).toBe('');
+
+    const form = document.querySelector('form') as HTMLFormElement;
+    expect(form).toBeTruthy();
+    fireEvent.submit(form);
+
+    await waitFor(
+      () => {
+        expect(
+          screen.getByText(/retention period days is required for time-based policies/i)
+        ).toBeInTheDocument();
+      },
+      { timeout: 3000 }
+    );
+  });
+
+  it('should submit form with valid data', async () => {
+    const user = userEvent.setup();
+    const createdPolicy = {
+      id: 'policy-1',
+      name: 'Test Policy',
+      tenant: 'tenant-1',
+      description: 'Test description',
+      asset: VALID_ASSET_UUID,
+      dataset: null,
+      file: null,
+      policy_type: RetentionPolicyType.TIME_BASED,
+      retention_period_days: 30,
+      event_trigger: null,
+      action: RetentionAction.SOFT_DELETE,
+      grace_period_days: 30,
+      legal_hold: false,
+      legal_hold_reason: null,
+      legal_hold_expires_at: null,
+      enabled: true,
+      last_enforced_at: null,
+      created_by: 'user-1',
+      created_at: '2024-01-01T00:00:00Z',
+      updated_at: '2024-01-01T00:00:00Z',
+    };
+    vi.mocked(mockClient.post).mockResolvedValue({
+      data: createdPolicy,
+    } as never);
+
+    render(<RetentionPolicyCreatePage />, { wrapper });
+
+    const nameInput = screen.getByLabelText(/name/i);
+    await user.type(nameInput, 'Test Policy');
+
+    const descriptionInput = screen.getByLabelText(/description/i);
+    await user.type(descriptionInput, 'Test description');
+
+    const assetPickerInput = screen.getByTestId('retention-asset-picker').querySelector('input');
+    expect(assetPickerInput).toBeTruthy();
+    await user.click(assetPickerInput!);
+    await waitFor(() => {
+      expect(screen.getByText(/Test Asset/i)).toBeInTheDocument();
+    });
+    await user.click(screen.getByText(/Test Asset/i));
+
+    const retentionPeriodInput = screen.getByLabelText(/retention period/i);
+    await user.clear(retentionPeriodInput);
+    await user.type(retentionPeriodInput, '30');
+
+    const submitButton = screen.getByRole('button', { name: /create retention policy/i });
+    await user.click(submitButton);
+
+    await waitFor(
+      () => {
+        expect(mockClient.post).toHaveBeenCalledWith(
+          'governance/retention-policies/',
+          expect.objectContaining({
+            name: 'Test Policy',
+            description: 'Test description',
+            asset_id: VALID_ASSET_UUID,
+            policy_type: RetentionPolicyType.TIME_BASED,
+            retention_period_days: 30,
+            action: RetentionAction.SOFT_DELETE,
+            enabled: true,
+          })
+        );
+      },
+      { timeout: 5000 }
+    );
+  });
+
+  it('should display mutation error when create fails', async () => {
+    const user = userEvent.setup();
+    vi.mocked(mockClient.post).mockRejectedValue({
+      response: {
+        status: 400,
+        data: {
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'Invalid data',
+            http_status: 400,
+            request_id: 'req-1',
+            timestamp: new Date().toISOString(),
+          },
+        },
+      },
+    });
+
+    render(<RetentionPolicyCreatePage />, { wrapper });
+
+    const nameInput = screen.getByLabelText(/name/i);
+    await user.type(nameInput, 'Test Policy');
+
+    const assetPickerInput = screen.getByTestId('retention-asset-picker').querySelector('input');
+    expect(assetPickerInput).toBeTruthy();
+    await user.click(assetPickerInput!);
+    await waitFor(() => {
+      expect(screen.getByText(/Test Asset/i)).toBeInTheDocument();
+    });
+    await user.click(screen.getByText(/Test Asset/i));
+
+    const retentionPeriodInput = screen.getByLabelText(/retention period/i);
+    await user.clear(retentionPeriodInput);
+    await user.type(retentionPeriodInput, '30');
+
+    const submitButton = screen.getByRole('button', { name: /create retention policy/i });
+    await user.click(submitButton);
+
+    await waitFor(
+      () => {
+        expect(screen.getByRole('alert')).toBeInTheDocument();
+        expect(screen.getByText(/an unexpected error occurred/i)).toBeInTheDocument();
+      },
+      { timeout: 5000 }
+    );
+  });
+
+  it('should show loading state during submission', async () => {
+    const user = userEvent.setup();
+    let resolvePost: (value: unknown) => void;
+    const postPromise = new Promise((resolve) => {
+      resolvePost = resolve;
+    });
+    vi.mocked(mockClient.post).mockReturnValue(postPromise as never);
+
+    render(<RetentionPolicyCreatePage />, { wrapper });
+
+    const nameInput = screen.getByLabelText(/name/i);
+    await user.type(nameInput, 'Test Policy');
+
+    const assetPickerInput = screen.getByTestId('retention-asset-picker').querySelector('input');
+    expect(assetPickerInput).toBeTruthy();
+    await user.click(assetPickerInput!);
+    await waitFor(() => {
+      expect(screen.getByText(/Test Asset/i)).toBeInTheDocument();
+    });
+    await user.click(screen.getByText(/Test Asset/i));
+
+    const retentionPeriodInput = screen.getByLabelText(/retention period/i);
+    await user.clear(retentionPeriodInput);
+    await user.type(retentionPeriodInput, '30');
+
+    const submitButton = screen.getByRole('button', { name: /create retention policy/i });
+    await user.click(submitButton);
+
+    // Button uses loading prop: label stays, button is disabled + aria-busy
+    const loadingBtn = screen.getByRole('button', { name: /create retention policy/i });
+    expect(loadingBtn).toBeDisabled();
+    expect(loadingBtn).toHaveAttribute('aria-busy', 'true');
+
+    resolvePost!({
+      data: {
+        id: 'policy-1',
+        name: 'Test Policy',
+        tenant: 'tenant-1',
+        description: '',
+        asset: VALID_ASSET_UUID,
+        dataset: null,
+        file: null,
+        policy_type: RetentionPolicyType.TIME_BASED,
+        retention_period_days: 30,
+        event_trigger: null,
+        action: RetentionAction.SOFT_DELETE,
+        grace_period_days: 30,
+        legal_hold: false,
+        legal_hold_reason: null,
+        legal_hold_expires_at: null,
+        enabled: true,
+        last_enforced_at: null,
+        created_by: 'user-1',
+        created_at: '2024-01-01T00:00:00Z',
+        updated_at: '2024-01-01T00:00:00Z',
+      },
+    });
+    await waitFor(() => {
+      // After success, the component navigates away; button should not be loading
+      const btn = screen.queryByRole('button', { name: /create retention policy/i });
+      if (btn) expect(btn).not.toBeDisabled();
+    });
+  });
+});

@@ -1,0 +1,105 @@
+{
+  "title": "Database Performance",
+  "tags": [
+    "hub",
+    "database",
+    "performance"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 16,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Query Latency",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(db_query_duration_seconds_bucket[5m])) by (operation, le))",
+          "legendFormat": "{{operation}} P95"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": 2,
+      "title": "Active Connections",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "db_connections_active",
+          "legendFormat": "Active Connections"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      }
+    },
+    {
+      "id": 3,
+      "title": "Connection Pool Usage",
+      "type": "gauge",
+      "targets": [
+        {
+          "expr": "db_connections_active",
+          "legendFormat": "Active Connections"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "value": 0,
+                "color": "green"
+              },
+              {
+                "value": 70,
+                "color": "yellow"
+              },
+              {
+                "value": 90,
+                "color": "red"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Cache Hit Rate",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "(sum(rate(cache_hits_total[5m])) by (cache_key_prefix) / (sum(rate(cache_hits_total[5m])) by (cache_key_prefix) + sum(rate(cache_misses_total[5m])) by (cache_key_prefix))) * 100",
+          "legendFormat": "{{cache_key_prefix}}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      }
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{% extends "notifications/emails/base.html" %}
+
+{% block title %}Access Request Pending Approval{% endblock %}
+
+{% block content %}
+<h2>Access Request Pending Approval</h2>
+<p>Hello{% if user.display_name %} {{ user.display_name }}{% endif %},</p>
+<p>A new access request is awaiting your approval.</p>
+<p><strong>Access Request ID:</strong> {{ access_request_id }}</p>
+<p><strong>Resource:</strong> {{ resource }}</p>
+<p><strong>Requested By:</strong> {{ requested_by }}</p>
+<p><strong>Reason:</strong> {{ reason }}</p>
+<p>Please review and take action on this request.</p>
+{% endblock %}

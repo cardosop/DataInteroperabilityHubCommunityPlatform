@@ -1,0 +1,44 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DPO-010-454961a9",
+      "journey_name": "Publish Asset with Usage-Based Pricing",
+      "persona": "Data Product Owner",
+      "status": "failed",
+      "start_time": 1770553587.2689433,
+      "end_time": 1770553587.2854602,
+      "duration": 0.016516923904418945,
+      "completion_rate": 0.0,
+      "success_rate": 0.0,
+      "error_message": "Failed to create asset: 500 - {'error': {'code': 'PLAN_NOT_FOUND', 'message': 'No plan assigned to tenant and default FREE plan not found', 'http_status': 500, 'request_id': 'c3214869-03c2-4696-8252-50847859e8f0', 'timestamp': '2026-02-08T12:26:27.278157+00:00'}}",
+      "error_type": "Exception",
+      "steps": [
+        {
+          "step_name": "Select Asset",
+          "status": "StepStatus.FAILED",
+          "start_time": 1770553587.2689533,
+          "end_time": 1770553587.2854536,
+          "duration": 0.016500234603881836,
+          "error_message": "Failed to create asset: 500 - {'error': {'code': 'PLAN_NOT_FOUND', 'message': 'No plan assigned to tenant and default FREE plan not found', 'http_status': 500, 'request_id': 'c3214869-03c2-4696-8252-50847859e8f0', 'timestamp': '2026-02-08T12:26:27.278157+00:00'}}",
+          "error_type": "Exception",
+          "retry_count": 0,
+          "metadata": {
+            "args": "()",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-08T12:26:27.285584"
+}

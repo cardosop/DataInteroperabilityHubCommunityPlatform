@@ -1,0 +1,260 @@
+# 285.13.15.2 — Billing operational alerts
+#
+# Metrics:
+#   plan_price_drift_total{tenant_id,plan_slug,direction}
+#     (hub.apps.billing.metrics)
+#   stripe_product_sync_mismatch_total{tenant_id,plan_slug,field}
+#     (hub.apps.billing.metrics)
+#   plan_upgrade_total / plan_upgrade_failed_total
+#     (hub.apps.billing.metrics)
+#   plan_payment_failed_total{tenant_id,plan_tier,reason}
+#     (hub.apps.billing.metrics)
+#
+# Dashboard: monitoring/grafana/dashboards/billing-upgrade-funnel.json
+# Runbooks:
+#   docs/runbooks/RB-BILLING-001-pricing-changes.md
+#   docs/runbooks/RB-MKT-002-refund-discrepancy.md
+
+groups:
+  - name: billing_pricing_alerts
+    interval: 30s
+    rules:
+      # -------------------------------------------------------------------
+      # P1 — PlanPricingDrift
+      #
+      # Fires when local plan price_amount_cents differs from the Stripe-side
+      # subscription item unit_amount for any active paid subscription.
+      #
+      # The alert expression detects increases in plan_price_drift_total over
+      # a 5-minute window.  Any non-zero increase means reconcile_stripe found
+      # a mismatch that has not yet been fixed.
+      #
+      # Remediation:
+      #   1. Run: python manage.py reconcile_stripe --dry-run
+      #   2. Identify the mismatched plan(s) from the counter labels.
+      #   3. If Stripe is the source of truth: run
+      #        python manage.py reconcile_stripe --fix
+      #   4. If local is the source of truth: update the Stripe Price object
+      #        via the Stripe Dashboard or API.
+      #   5. File a billing incident if drift exceeds $100/mo or affects
+      #      more than 3 tenants.
+      # -------------------------------------------------------------------
+      - alert: PlanPricingDrift
+        expr: increase(plan_price_drift_total[5m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+          priority: P1
+          team: billing
+        annotations:
+          summary: >
+            Plan price drift detected: {{ $labels.plan_slug }}
+            direction={{ $labels.direction }}
+          description: >
+            plan_price_drift_total incremented {{ $value }} time(s) in the
+            last 5 minutes for plan {{ $labels.plan_slug }} (tenant
+            {{ $labels.tenant_id }}, direction {{ $labels.direction }}).
+            This means the local price_amount_cents does not match the
+            Stripe-side unit_amount. If the mismatch persists past the
+            next reconciliation run, billing amounts will be incorrect.
+            Run: python manage.py reconcile_stripe --dry-run
+          runbook_url: >
+            https://github.com/meshant/data-interoperability-hub/blob/main/docs/runbooks/RB-BILLING-001-pricing-changes.md
+          dashboard_url: >
+            http://grafana:3000/d/billing-upgrade-funnel/billing-upgrade-funnel
+
+      # -------------------------------------------------------------------
+      # P1 — ZeroPriceSubscription
+      #
+      # Fires when reconcile_stripe detects a subscription on a paid plan
+      # (price_amount_cents > 0) whose Stripe-side unit_amount is zero.
+      # This means the tenant is not being billed despite being on a paid
+      # tier.  The metric plan_zero_price_detected_total is emitted by
+      # reconcile_stripe (285.13.15.4) during the per-subscription price
+      # check.
+      #
+      # Any non-zero increase over a 1-hour window means at least one
+      # subscription is billing $0 on a paid plan.  Each reconcile run
+      # re-emits the metric, so the alert re-fires until the zero-price
+      # condition is resolved.
+      #
+      # Remediation:
+      #   1. Run: python manage.py reconcile_stripe --dry-run
+      #      Look for "event": "zero_price_on_paid_plan" lines.
+      #   2. Check the affected tenant's subscription:
+      #        SELECT s.id, s.tenant_id, s.plan_id, s.status,
+      #               tp.slug AS plan_slug, tp.price_amount_cents
+      #        FROM subscriptions s
+      #        JOIN tenant_plans tp ON s.plan_id = tp.id
+      #        WHERE s.status IN ('ACTIVE','TRIAL','PAST_DUE')
+      #          AND tp.price_amount_cents > 0;
+      #   3. Cross-check Stripe Dashboard → the subscription item's Price.
+      #   4. If the Stripe Price object has unit_amount=0: recreate the
+      #        Price with the correct amount and update stripe_price_id.
+      #        Run: python manage.py reconcile_stripe --fix
+      #   5. If the plan price was incorrectly set to zero: file a
+      #        PlanPriceChangeApproval and follow the two-person rule
+      #        for price changes > $1,000/mo.
+      # -------------------------------------------------------------------
+      - alert: ZeroPriceSubscription
+        expr: increase(plan_zero_price_detected_total[1h]) > 0
+        for: 0m
+        labels:
+          severity: warning
+          priority: P1
+          team: billing
+        annotations:
+          summary: >
+            Zero-price subscription on paid plan detected:
+            plan={{ $labels.plan_slug }} tier={{ $labels.plan_tier }}
+          description: >
+            plan_zero_price_detected_total incremented {{ $value }} time(s)
+            in the last hour for plan {{ $labels.plan_slug }} (tenant
+            {{ $labels.tenant_id }}, tier {{ $labels.plan_tier }}).
+            The Stripe-side unit_amount is 0 but the local plan has
+            price_amount_cents > 0 — the tenant is not being billed.
+            Run: python manage.py reconcile_stripe --dry-run
+          runbook_url: >
+            https://github.com/meshant/data-interoperability-hub/blob/main/docs/runbooks/RB-BILLING-001-pricing-changes.md
+          dashboard_url: >
+            http://grafana:3000/d/billing-upgrade-funnel/billing-upgrade-funnel
+
+      # -------------------------------------------------------------------
+      # P2 — StripeProductSyncMismatch
+      #
+      # Fires when Stripe Product metadata (unit_amount, currency,
+      # product name, or metadata.plan_slug) does not match the local
+      # TenantPlan row for an active paid subscription.
+      #
+      # Any non-zero increase in stripe_product_sync_mismatch_total over
+      # 15 minutes means reconciliation found at least one mismatch.
+      #
+      # Remediation:
+      #   1. Identify the mismatched plan from the counter labels.
+      #   2. Cross-check Stripe Dashboard → Products → the Product object.
+      #   3. If Stripe metadata is stale: update via Stripe Dashboard or
+      #        via python manage.py reconcile_stripe --fix
+      #   4. If local metadata is stale: update the TenantPlan row.
+      #   5. If the mismatch is in unit_amount and the price change
+      #        exceeds $1,000/mo, a PlanPriceChangeApproval is required
+      #        (two-person rule).
+      # -------------------------------------------------------------------
+      - alert: StripeProductSyncMismatch
+        expr: increase(stripe_product_sync_mismatch_total[15m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          priority: P2
+          team: billing
+        annotations:
+          summary: >
+            Stripe Product sync mismatch: {{ $labels.plan_slug }}
+            field={{ $labels.field }}
+          description: >
+            stripe_product_sync_mismatch_total incremented {{ $value }}
+            time(s) in the last 15 minutes for plan {{ $labels.plan_slug }}
+            (tenant {{ $labels.tenant_id }}, field {{ $labels.field }}).
+            The local TenantPlan and the Stripe Product/Price object have
+            diverged. Run reconcile_stripe for details and consider
+            --fix to auto-correct.
+          runbook_url: >
+            https://github.com/meshant/data-interoperability-hub/blob/main/docs/runbooks/RB-BILLING-001-pricing-changes.md
+          dashboard_url: >
+            http://grafana:3000/d/billing-upgrade-funnel/billing-upgrade-funnel
+
+      # -------------------------------------------------------------------
+      # P2 — HighPlanUpgradeFailureRate
+      #
+      # Fires when the plan upgrade failure rate exceeds 30% over a
+      # 10-minute window with non-trivial traffic (>2 attempts).
+      #
+      # Remediation:
+      #   1. Check Stripe circuit breaker state:
+      #        python manage.py shell -c "
+      #        from hub.apps.billing.services import stripe_circuit_breaker
+      #        print(stripe_circuit_breaker.state)
+      #        "
+      #   2. If circuit is OPEN: check Stripe API status at
+      #        https://status.stripe.com
+      #   3. If circuit is CLOSED: check application logs for
+      #        stripe_subscription_creation_failed events.
+      #   4. Common causes: invalid payment method, card declined,
+      #        Stripe Tax address missing, duplicate subscription guard.
+      # -------------------------------------------------------------------
+      - alert: HighPlanUpgradeFailureRate
+        expr: >
+          (
+            sum(rate(plan_upgrade_failed_total[10m]))
+            /
+            clamp_min(
+              sum(rate(plan_upgrade_total[10m]))
+              +
+              sum(rate(plan_upgrade_failed_total[10m])),
+              0.001
+            )
+          ) > 0.30
+          and
+          (
+            sum(rate(plan_upgrade_total[10m]))
+            +
+            sum(rate(plan_upgrade_failed_total[10m]))
+          ) > 0.2
+        for: 10m
+        labels:
+          severity: warning
+          priority: P2
+          team: billing
+        annotations:
+          summary: >
+            Plan upgrade failure rate exceeds 30%
+            ({{ $value | humanizePercentage }})
+          description: >
+            {{ $value | humanizePercentage }} of plan upgrade attempts are
+            failing over the last 10 minutes with non-trivial traffic.
+            Check Stripe API health, circuit breaker state, and
+            application logs for stripe_subscription_creation_failed events.
+          runbook_url: >
+            https://github.com/meshant/data-interoperability-hub/blob/main/docs/runbooks/RB-BILLING-001-pricing-changes.md
+          dashboard_url: >
+            http://grafana:3000/d/billing-upgrade-funnel/billing-upgrade-funnel
+
+      # -------------------------------------------------------------------
+      # P2 — PaymentFailureSpike
+      #
+      # Fires when payment failures exceed 5 events in a 15-minute window.
+      # Sustained payment failures indicate a systemic issue — Stripe
+      # outage, webhook delivery failure, or expired-card cohort.
+      #
+      # Remediation:
+      #   1. Check Stripe Dashboard → Payments for the affected tenants.
+      #   2. If a single tenant: contact the tenant's billing contact
+      #        to update their payment method.
+      #   3. If multiple tenants: check Stripe API health and webhook
+      #        delivery status.
+      #   4. Check Stripe webhook event processing:
+      #        SELECT COUNT(*), event_type
+      #        FROM stripe_webhook_events
+      #        WHERE created_at > NOW() - INTERVAL '1 hour'
+      #          AND processed = FALSE
+      #        GROUP BY event_type;
+      # -------------------------------------------------------------------
+      - alert: PaymentFailureSpike
+        expr: increase(plan_payment_failed_total[15m]) > 5
+        for: 5m
+        labels:
+          severity: warning
+          priority: P2
+          team: billing
+        annotations:
+          summary: >
+            Payment failure spike: {{ $value }} failures in 15 minutes
+          description: >
+            plan_payment_failed_total has increased by {{ $value }} in the
+            last 15 minutes (threshold: 5). Affected tiers:
+            {{ $labels.plan_tier }}, reason: {{ $labels.reason }}.
+            Check Stripe Dashboard for the affected tenants and verify
+            webhook delivery is healthy.
+          runbook_url: >
+            https://github.com/meshant/data-interoperability-hub/blob/main/docs/runbooks/RB-BILLING-001-pricing-changes.md
+          dashboard_url: >
+            http://grafana:3000/d/billing-upgrade-funnel/billing-upgrade-funnel

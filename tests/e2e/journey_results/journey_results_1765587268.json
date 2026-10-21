@@ -1,0 +1,96 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DC-001-a2862ff9",
+      "journey_name": "Discover and Purchase Marketplace Asset",
+      "persona": "Data Consumer / Buyer",
+      "status": "failed",
+      "start_time": 1765587266.4854665,
+      "end_time": 1765587268.6028647,
+      "duration": 2.117398262023926,
+      "completion_rate": 80.0,
+      "success_rate": 80.0,
+      "error_message": "type object 'OrderStatus' has no attribute 'PENDING'",
+      "error_type": "AttributeError",
+      "steps": [
+        {
+          "step_name": "Provider Creates Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765587266.4854784,
+          "end_time": 1765587268.5601282,
+          "duration": 2.0746498107910156,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Provider Creates Listing",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765587268.56014,
+          "end_time": 1765587268.5640142,
+          "duration": 0.0038743019104003906,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "UUID"
+          }
+        },
+        {
+          "step_name": "Provider Publishes Listing",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765587268.5640206,
+          "end_time": 1765587268.5675588,
+          "duration": 0.0035381317138671875,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "UUID"
+          }
+        },
+        {
+          "step_name": "Browse Marketplace",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765587268.5675673,
+          "end_time": 1765587268.6028244,
+          "duration": 0.03525710105895996,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "ReturnList"
+          }
+        },
+        {
+          "step_name": "Create Purchase Order",
+          "status": "StepStatus.FAILED",
+          "start_time": 1765587268.602832,
+          "end_time": 1765587268.6028614,
+          "duration": 2.9325485229492188e-05,
+          "error_message": "type object 'OrderStatus' has no attribute 'PENDING'",
+          "error_type": "AttributeError",
+          "retry_count": 0,
+          "metadata": {
+            "args": "(UUID('a4e27b03-0aeb-4fbd-b5f7-eaed478bcaec'),)",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2025-12-13T00:54:28.602988"
+}

@@ -1,0 +1,86 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 1.107384443283081
+  },
+  "journeys": [
+    {
+      "journey_id": "CPO-002-4f791f78",
+      "journey_name": "Generate Compliance Report",
+      "persona": "Compliance & Privacy Officer",
+      "status": "completed",
+      "start_time": 1765620180.6511238,
+      "end_time": 1765620181.7585082,
+      "duration": 1.107384443283081,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Create Asset with Compliance Data",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765620180.651129,
+          "end_time": 1765620181.757414,
+          "duration": 1.1062850952148438,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Select Regulation",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765620181.7574232,
+          "end_time": 1765620181.7574275,
+          "duration": 4.291534423828125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Collect Compliance Data",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765620181.7574294,
+          "end_time": 1765620181.7574313,
+          "duration": 1.9073486328125e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "dict"
+          }
+        },
+        {
+          "step_name": "Generate Report",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765620181.7574322,
+          "end_time": 1765620181.7585042,
+          "duration": 0.001071929931640625,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "UUID"
+          }
+        }
+      ],
+      "metadata": {
+        "asset_id": "ebd6980f-20b9-47a0-8728-0155b8ddee95",
+        "regulation": "GDPR",
+        "report_id": "d11c0f36-1882-4b80-836c-2e9e788215bc"
+      }
+    }
+  ],
+  "exported_at": "2025-12-13T10:03:01.758574"
+}

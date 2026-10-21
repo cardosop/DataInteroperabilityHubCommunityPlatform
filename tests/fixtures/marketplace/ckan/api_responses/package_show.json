@@ -1,0 +1,106 @@
+{
+  "success": true,
+  "result": {
+    "id": "sample-dataset-1",
+    "name": "sample-dataset-1",
+    "title": "Sample Dataset 1",
+    "notes": "This is a sample dataset for testing purposes. It contains various data points and resources.",
+    "tags": [
+      {
+        "id": "tag-1",
+        "name": "environment",
+        "vocabulary_id": null,
+        "display_name": "Environment"
+      },
+      {
+        "id": "tag-2",
+        "name": "data",
+        "vocabulary_id": null,
+        "display_name": "Data"
+      },
+      {
+        "id": "tag-3",
+        "name": "testing",
+        "vocabulary_id": null,
+        "display_name": "Testing"
+      }
+    ],
+    "organization": {
+      "id": "test-org",
+      "name": "test-org",
+      "title": "Test Organization",
+      "description": "Test organization for CKAN fixtures",
+      "type": "organization",
+      "image_url": "https://example.com/org-logo.png"
+    },
+    "license_id": "cc-by",
+    "license_title": "Creative Commons Attribution",
+    "author": "Test Author",
+    "author_email": "author@example.com",
+    "maintainer": "Test Maintainer",
+    "maintainer_email": "maintainer@example.com",
+    "version": "1.0.0",
+    "metadata_created": "2024-01-15T10:00:00Z",
+    "metadata_modified": "2024-01-20T15:30:00Z",
+    "creator_user_id": "user-123",
+    "type": "dataset",
+    "resources": [
+      {
+        "id": "resource-1",
+        "package_id": "sample-dataset-1",
+        "name": "Sample CSV Resource",
+        "description": "A sample CSV file containing test data",
+        "url": "https://example.com/data/sample.csv",
+        "format": "CSV",
+        "size": 1024,
+        "mimetype": "text/csv",
+        "mimetype_inner": null,
+        "hash": "abc123def456",
+        "created": "2024-01-15T10:00:00Z",
+        "last_modified": "2024-01-15T10:00:00Z",
+        "cache_url": null,
+        "cache_last_updated": null,
+        "position": 0,
+        "resource_type": null,
+        "url_type": null
+      },
+      {
+        "id": "resource-2",
+        "package_id": "sample-dataset-1",
+        "name": "Sample JSON Resource",
+        "description": "A sample JSON file containing test data",
+        "url": "https://example.com/data/sample.json",
+        "format": "JSON",
+        "size": 2048,
+        "mimetype": "application/json",
+        "mimetype_inner": null,
+        "hash": "def456ghi789",
+        "created": "2024-01-15T11:00:00Z",
+        "last_modified": "2024-01-15T11:00:00Z",
+        "cache_url": null,
+        "cache_last_updated": null,
+        "position": 1,
+        "resource_type": null,
+        "url_type": null
+      }
+    ],
+    "extras": [
+      {
+        "key": "odps_metadata",
+        "value": "{\"pricing_plans\": [{\"planID\": \"plan-1\", \"name\": \"Basic Plan\", \"price\": 0}]}"
+      },
+      {
+        "key": "odcs_metadata",
+        "value": "{\"schema\": {\"fields\": [{\"name\": \"id\", \"type\": \"string\"}]}}"
+      }
+    ],
+    "groups": [],
+    "relationships_as_subject": [],
+    "relationships_as_object": [],
+    "num_resources": 2,
+    "num_tags": 3,
+    "isopen": true,
+    "state": "active"
+  }
+}
+

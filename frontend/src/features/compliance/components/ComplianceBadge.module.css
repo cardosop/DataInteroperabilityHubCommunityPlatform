@@ -1,0 +1,92 @@
+.wrap {
+  margin: 0.75rem 0;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--color-border-subtle, #d0d7de);
+  border-radius: 8px;
+  background: var(--color-surface-muted, #f6f8fa);
+}
+
+.wrapCompact {
+  margin: 0.5rem 0 0;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.85rem;
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.title {
+  font-weight: 600;
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  border: 1px solid transparent;
+}
+
+.pillNone {
+  background: var(--color-success-subtle);
+  color: var(--color-success-900);
+  border-color: var(--color-success-500);
+}
+
+.pillLow {
+  background: var(--color-info-subtle);
+  color: var(--color-primary-800);
+  border-color: var(--color-primary-200);
+}
+
+.pillMedium {
+  background: var(--color-warning-50);
+  color: var(--color-warning-800);
+  border-color: var(--color-warning-300);
+}
+
+.pillHigh {
+  background: var(--color-error-50);
+  color: var(--color-error-900);
+  border-color: var(--color-error-500);
+}
+
+.pillCritical {
+  background: var(--color-neutral-900);
+  color: var(--color-text-on-primary);
+  border-color: var(--color-error-900);
+}
+
+.pillUnknown {
+  background: var(--color-neutral-100);
+  color: var(--color-neutral-800);
+  border-color: var(--color-neutral-300);
+}
+
+.meta {
+  margin: 0.35rem 0 0;
+  font-size: 0.8rem;
+  color: var(--color-text-secondary, #57606a);
+}
+
+.actions {
+  margin-top: 0.5rem;
+}
+
+.copyBtn {
+  font-size: 0.8rem;
+}
+
+.summaries {
+  margin: 0.35rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.8rem;
+}

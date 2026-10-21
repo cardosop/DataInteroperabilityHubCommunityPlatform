@@ -1,0 +1,84 @@
+# pip-audit triage allowlist (pilot-readiness 4.2, GATE-47).
+#
+# Policy: block on MEDIUM+ — every pip-audit finding must be TRIAGED
+# here (vuln id + package, severity, rationale, review_by) or FIXED by
+# a pin bump. An untriaged finding blocks CI; an entry whose review
+# date has passed blocks again (the .trivyignore Review-by convention).
+# scripts/check_dependency_vulns.py enforces this file.
+#
+# P0-1 pin landing (close-oss-release-conditions, 2026-10-18) — CORRECTED
+# record: the 4.2 first triage (2026-10-06) upgraded the venv and wrote
+# this header claiming the pin bumps had shipped, but the pin-file
+# changes never landed in requirements.txt / requirements-core.txt — the
+# gate kept resolving the OLD versions and stood RED with 28 untriaged
+# findings (incl. the 5 H-3 advisories: pyjwt PYSEC-2026-4152/4183,
+# strawberry-graphql PYSEC-2026-4302/4303, weasyprint PYSEC-2026-4311).
+# P0-1 landed the pins behind the compat battery + the RED-first pin
+# (scripts/tests/test_p01_vuln_upgrade_pins.py): pyjwt 2.15.0,
+# strawberry-graphql 0.327.2, WeasyPrint 70.0, requests 2.33.0,
+# cryptography 46.0.7, databricks-sql-connector >=4.0,<5.0 (thrift
+# 0.24.0). The 8 residual findings below are the triaged remainder —
+# every one is either a major-version-only fix or a deliberate repo pin.
+allowlist:
+  - id: PYSEC-2026-3827
+    package: djangorestframework
+    severity: medium
+    rationale: >-
+      Pinned on the DRF 3.16 contract (CLAUDE.md: the 3.16
+      action-kwargs/throttled-removal semantics are documented and
+      tested). Fix 3.17.2 is a MINOR bump of the framework — upgrading
+      is its own change, not a silent pin bump.
+    review_by: 2026-11-05
+  - id: PYSEC-2026-3828
+    package: djangorestframework
+    severity: medium
+    rationale: >-
+      Same DRF 3.16 contract as PYSEC-2026-3827; fix 3.17.2.
+    review_by: 2026-11-05
+  - id: PYSEC-2026-3552
+    package: cryptography
+    severity: high
+    rationale: >-
+      Fix 50.0.0 is a MAJOR bump; the 46.x line is the
+      Django/pyOpenSSL-compatible family (the CVE-2026-26007 pin
+      comment). Upgrade to the 48+ line is tracked as a review-dated
+      follow-up with its own verification run.
+    review_by: 2026-11-05
+  - id: PYSEC-2026-3553
+    package: cryptography
+    severity: high
+    rationale: >-
+      Fix 49.0.0 MAJOR — same 46.x-family rationale as
+      PYSEC-2026-3552.
+    review_by: 2026-11-05
+  - id: GHSA-537c-gmf6-5ccf
+    package: cryptography
+    severity: high
+    rationale: >-
+      Fix 48.0.1 MAJOR — same 46.x-family rationale as
+      PYSEC-2026-3552.
+    review_by: 2026-11-05
+  - id: PYSEC-2026-3554
+    package: cryptography
+    severity: medium
+    rationale: >-
+      Fix 49.0.0 MAJOR — same 46.x-family rationale as
+      PYSEC-2026-3552.
+    review_by: 2026-11-05
+  - id: PYSEC-2024-161
+    package: pyarrow
+    severity: medium
+    rationale: >-
+      Fix 17.0.0 conflicts with the deliberate pyarrow<15.0.0 pin
+      (wire-databricks-dlt-movement 6.7: keeps dlt's arrow extras
+      (>=16) out of the resolution). Revisit when the arrow-extra
+      constraint is reworked.
+    review_by: 2026-11-05
+  - id: PYSEC-2026-4114
+    package: oauthlib
+    severity: medium
+    rationale: >-
+      Fix 4.0.0 is a MAJOR bump; oauthlib is transitive via
+      databricks-sql-connector. Track the parent-package upgrade path
+      (the connector already lives on >=4.0,<5.0).
+    review_by: 2026-11-05

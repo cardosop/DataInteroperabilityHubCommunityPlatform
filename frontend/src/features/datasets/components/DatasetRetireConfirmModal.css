@@ -1,0 +1,106 @@
+/**
+ * Phase 260.4.A.2 — DatasetRetireConfirmModal styles.
+ *
+ * Visual hierarchy: destructive CTA uses error-colour tokens so the
+ * "Retire dataset" button stands out from "Cancel" — but only after
+ * the acknowledge checkbox is ticked.
+ */
+
+.dataset-retire-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.dataset-retire-confirm-modal {
+  background: var(--color-background-primary, #ffffff);
+  border-radius: var(--border-radius-md, 8px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  max-width: 520px;
+  width: 90%;
+  max-height: 90vh;
+  overflow: auto;
+}
+
+.dataset-retire-confirm-header {
+  padding: var(--spacing-md, 12px) var(--spacing-lg, 16px);
+  border-bottom: 1px solid var(--color-neutral-200, #EEEEEE);
+}
+
+.dataset-retire-confirm-header h2 {
+  margin: 0;
+  font-size: var(--font-size-lg, 18px);
+  color: var(--color-error-700, #D32F2F);
+}
+
+.dataset-retire-confirm-body {
+  padding: var(--spacing-lg, 16px);
+  font-size: var(--font-size-sm, 14px);
+  line-height: 1.5;
+}
+
+.dataset-retire-confirm-body ul {
+  margin: var(--spacing-sm, 8px) 0;
+  padding-left: var(--spacing-lg, 16px);
+}
+
+.dataset-retire-confirm-body li {
+  margin-bottom: var(--spacing-xs, 4px);
+}
+
+.dataset-retire-confirm-acknowledge-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs, 4px);
+  margin-top: var(--spacing-sm, 8px);
+  cursor: pointer;
+  user-select: none;
+}
+
+.dataset-retire-confirm-footer {
+  padding: var(--spacing-md, 12px) var(--spacing-lg, 16px);
+  border-top: 1px solid var(--color-neutral-200, #EEEEEE);
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-sm, 8px);
+}
+
+.dataset-retire-confirm-cancel,
+.dataset-retire-confirm-cta {
+  padding: var(--spacing-xs, 4px) var(--spacing-md, 12px);
+  border-radius: var(--border-radius-sm, 4px);
+  font-size: var(--font-size-sm, 14px);
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.dataset-retire-confirm-cancel {
+  background: var(--color-neutral-100, #F5F5F5);
+  border-color: var(--color-neutral-300, #E0E0E0);
+  color: var(--color-neutral-800, #424242);
+}
+
+.dataset-retire-confirm-cancel:hover:not(:disabled) {
+  background: var(--color-neutral-200, #EEEEEE);
+}
+
+.dataset-retire-confirm-cta {
+  background: var(--color-error-500, #F44336);
+  border-color: var(--color-error-700, #D32F2F);
+  color: var(--color-text-inverse);
+  font-weight: 600;
+}
+
+.dataset-retire-confirm-cta:hover:not(:disabled) {
+  background: var(--color-error-700, #D32F2F);
+}
+
+.dataset-retire-confirm-cta:disabled,
+.dataset-retire-confirm-cancel:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

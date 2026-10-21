@@ -1,0 +1,108 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 1,
+    "failed": 0,
+    "in_progress": 0,
+    "average_completion_rate": 100.0,
+    "average_success_rate": 100.0,
+    "average_duration": 5.793571472167969e-05
+  },
+  "journeys": [
+    {
+      "journey_id": "DE-008-3092b78e",
+      "journey_name": "Integrate AI Schema Matching into Workflow",
+      "persona": "Data Engineer",
+      "status": "completed",
+      "start_time": 1770553592.8188717,
+      "end_time": 1770553592.8189297,
+      "duration": 5.793571472167969e-05,
+      "completion_rate": 100.0,
+      "success_rate": 100.0,
+      "error_message": null,
+      "error_type": null,
+      "steps": [
+        {
+          "step_name": "Configure AI Service",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1770553592.818882,
+          "end_time": 1770553592.8188927,
+          "duration": 1.0728836059570312e-05,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "bool"
+          }
+        },
+        {
+          "step_name": "Integrate Schema Matching API",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1770553592.8188963,
+          "end_time": 1770553592.8189018,
+          "duration": 5.4836273193359375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "bool"
+          }
+        },
+        {
+          "step_name": "Test Schema Matching",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1770553592.818904,
+          "end_time": 1770553592.818908,
+          "duration": 4.0531158447265625e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "bool"
+          }
+        },
+        {
+          "step_name": "Configure Acceptance Rules",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1770553592.8189101,
+          "end_time": 1770553592.8189147,
+          "duration": 4.5299530029296875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "bool"
+          }
+        },
+        {
+          "step_name": "Deploy Workflow",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1770553592.8189163,
+          "end_time": 1770553592.8189216,
+          "duration": 5.245208740234375e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "bool"
+          }
+        },
+        {
+          "step_name": "Monitor Performance",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1770553592.8189232,
+          "end_time": 1770553592.8189278,
+          "duration": 4.5299530029296875e-06,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "bool"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2026-02-08T12:26:32.819063"
+}

@@ -1,0 +1,36 @@
+{
+  "schema": "https://opendataproducts.org/schema/v4.0",
+  "version": "4.0",
+  "product": {
+    "details": {
+      "en": {
+        "productID": "sample-product-internal-ref-v4.0",
+        "name": "Sample Data Product with Internal $ref v4.0",
+        "description": "A sample ODPS 4.0 data product demonstrating internal $ref usage."
+      }
+    },
+    "contract": {
+      "contractURL": "https://example.com/contracts/sample-product-internal-ref-v4.0"
+    },
+    "dataQuality": {
+      "qualityScore": 92,
+      "completeness": 0.95
+    },
+    "marketplace": {
+      "pricingPlans": [
+        {
+          "planID": "standard",
+          "name": "Standard Plan",
+          "price": 19.99,
+          "currency": "EUR"
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "dataQualityReference": {
+      "$ref": "#/product/dataQuality"
+    }
+  }
+}
+

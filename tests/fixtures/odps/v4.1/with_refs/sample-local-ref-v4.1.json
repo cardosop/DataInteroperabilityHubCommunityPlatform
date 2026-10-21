@@ -1,0 +1,30 @@
+{
+  "schema": "https://opendataproducts.org/schema/v4.1",
+  "version": "4.1",
+  "product": {
+    "details": {
+      "en": {
+        "productID": "sample-product-local-ref-v4.1",
+        "name": "Sample Data Product with Local $ref v4.1",
+        "description": "A sample ODPS 4.1 data product demonstrating local $ref usage. The quality rules are defined in a separate local file and referenced using $ref."
+      }
+    },
+    "contract": {
+      "contractURL": "https://example.com/contracts/sample-product-local-ref-v4.1"
+    },
+    "dataQuality": {
+      "$ref": "./quality-rules.yaml"
+    },
+    "marketplace": {
+      "pricingPlans": [
+        {
+          "planID": "basic",
+          "name": "Basic Plan",
+          "price": 9.99,
+          "currency": "USD"
+        }
+      ]
+    }
+  }
+}
+

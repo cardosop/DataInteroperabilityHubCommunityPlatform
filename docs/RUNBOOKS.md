@@ -1,0 +1,2651 @@
+# Operational Runbooks
+
+Complete troubleshooting and operational procedures for the Data Interoperability Hub.
+
+## Table of Contents
+
+1. [Full test suite (Phase 12A-style)](#full-test-suite-phase-12a-style)
+2. [Batch execution (Phase 12A path-based batches)](#batch-execution-phase-12a-path-based-batches)
+3. [Gap remediation validation](#gap-remediation-validation)
+4. [Security suite (Phase 12A.3)](#security-suite-phase-12a3)
+5. [Chaos tests (manual only)](#chaos-tests-manual-only)
+6. [Dependency and vulnerability scans](#dependency-and-vulnerability-scans)
+7. [Deployment and rollback](#deployment-and-rollback)
+8. [Normalization Failures](#normalization-failures)
+9. [Lineage Issues](#lineage-issues)
+10. [Scheduled Ingestion Failures [Post-MVP]](#scheduled-ingestion-failures-post-mvp)
+11. [Prefect Server Issues [Post-MVP]](#prefect-server-issues-post-mvp)
+12. [Prefect Workers Issues [Post-MVP]](#prefect-workers-issues-post-mvp)
+13. [Search Service Issues](#search-service-issues)
+14. [Observability Service Issues](#observability-service-issues)
+15. [Webhook Service Issues](#webhook-service-issues)
+16. [Marketplace Connector Pattern Violations](#marketplace-connector-pattern-violations)
+17. [BaaS Platform Troubleshooting [Post-MVP]](#baas-platform-troubleshooting-post-mvp)
+18. [ODH Integration Troubleshooting](#odh-integration-troubleshooting)
+19. [Disaster Recovery](#disaster-recovery)
+20. [Backup and Recovery](#backup-and-recovery)
+21. [BaaS Infrastructure (dedicated instances) [Post-MVP]](#baas-infrastructure-dedicated-instances-post-mvp)
+22. [Marketplace orders and entitlements — KYC required](#marketplace-orders-and-entitlements-kyc-required)
+23. [KYC provider integration [Post-MVP]](#kyc-provider-integration-post-mvp)
+24. [Real Scheduled Ingestion/Export E2E [Post-MVP]](#real-scheduled-ingestionexport-e2e-post-mvp)
+25. [Compliance Service — Policy and Risk Config](#compliance-service-policy-and-risk-config)
+26. [Compliance Run Stuck PENDING](#compliance-run-stuck-pending)
+27. [Personal tenant creation failures](#personal-tenant-creation-failures)
+28. [Subscription plan change failures](#subscription-plan-change-failures)
+29. [ODBC Virtualization Issues [Post-MVP]](#odbc-virtualization-issues-post-mvp)
+30. [Brand Name Change](#brand-name-change)
+31. [Tenant switch failures](#tenant-switch-failures)
+32. [Frontend UX troubleshooting](#frontend-ux-troubleshooting)
+33. [Data-first asset creation](#data-first-asset-creation)
+34. [Resource Picker troubleshooting](#resource-picker-troubleshooting)
+
+---
+
+## Data-first asset creation
+
+**When to use:** POST /api/v1/assets/data-first/ fails; workflow errors; file not found; cross-tenant file_id.
+
+**Quick reference:**
+- Endpoint: `POST /api/v1/assets/data-first/` with `file_id`, `key`, `name`.
+- Prerequisites: File uploaded, ACTIVE status, same tenant.
+- Tests: `./scripts/run_dataset_creation_flow_tests.sh --skip-e2e` or `--quick` for validation+IDOR only.
+
+**Full runbook:** [docs/runbooks/DATA_FIRST_ASSET_CREATION.md](runbooks/DATA_FIRST_ASSET_CREATION.md)
+
+---
+
+## Frontend UX troubleshooting
+
+**When to use:** Toast notifications not showing; Breadcrumbs hidden; ConfirmDialog/EmptyState issues; UUID validation errors; Notifications dropdown.
+
+**Quick reference:**
+- Feature flags: `VITE_FEATURE_TOAST_ENABLED`, `VITE_FEATURE_BREADCRUMBS_ENABLED` (default: true). Rebuild after env change.
+- Components: Toast, Breadcrumbs, ConfirmDialog, EmptyState, UuidWithCopy — see shared components.
+
+**Full runbook:** [docs/runbooks/FRONTEND_UX.md](runbooks/FRONTEND_UX.md)
+
+---
+
+## Resource Picker troubleshooting
+
+**When to use:** Picker dropdowns empty or not loading; list API 403/404; integration tests failing; a11y violations; picker shows text input instead of search UI.
+
+**Quick reference:**
+- Feature flag: `VITE_FEATURE_RESOURCE_PICKERS_ENABLED=true` (default). When `false`, pickers render text inputs for manual UUID entry.
+- Test script: `./scripts/run_resource_picker_tests.sh` — frontend unit (102), backend list API (51), integration, a11y; `--e2e` for optional E2E picker flows.
+- Components: AssetPicker, ContractPicker, DatasetPicker, FilePicker (and Multi variants) in `frontend/src/shared/components/pickers/`.
+
+**Full runbook:** [docs/runbooks/RESOURCE_PICKER_TROUBLESHOOTING.md](runbooks/RESOURCE_PICKER_TROUBLESHOOTING.md)
+
+---
+
+## Tenant switch failures
+
+**When to use:** GET /auth/me/tenants/ or POST /auth/switch-tenant/ returns 403; X-Tenant-Id header rejected; tenant switcher not visible in UI.
+
+**Quick reference:**
+- Feature flag: `FEATURE_TENANT_SWITCH_ENABLED=true` (default). Set to `false` to disable.
+- Endpoints: GET /auth/me/tenants/, POST /auth/switch-tenant/
+- X-Tenant-Id: Validated against UserTenantMembership; 403 if no membership or feature disabled.
+
+**Full runbook:** [docs/runbooks/TENANT_SWITCH.md](runbooks/TENANT_SWITCH.md)
+
+---
+
+## Brand Name Change
+
+**When to use:** Changing the product brand name (e.g. from Meshant to a custom name) across UI, emails, OpenAPI, SDKs.
+
+**Quick reference:**
+- Frontend: `VITE_APP_NAME=MyBrand` in `frontend/.env` or `APP_NAME=MyBrand` for Docker build
+- Backend: `APP_NAME=MyBrand` in `.env.dev` / `.env.staging` / `.env.production`
+
+**Full runbook:** [docs/runbooks/BRAND_NAME_CHANGE.md](runbooks/BRAND_NAME_CHANGE.md)
+
+---
+
+## ODBC Virtualization Issues [Post-MVP]
+
+**When to use:** Virtual dataset query execution fails for ODBC sources. Error may indicate missing driver, connection failure, or invalid config.
+
+**Root causes and fixes:**
+
+1. **pyodbc or driver not available — `MISSING_DEPENDENCY` or `[IM002] [unixODBC][Driver Manager]Data source name not found`**
+   - **Cause:** `pyodbc` not installed, or ODBC driver (e.g. PostgreSQL) not installed in the API container or host.
+   - **Fix:** Install `pip install pyodbc`. For API Docker image, ensure `unixodbc`, `unixodbc-dev`, and `odbc-postgresql` are in the Dockerfile. For local/CI: `sudo apt-get install -y unixodbc unixodbc-dev odbc-postgresql`.
+   - **Verify:** `odbcinst -q -d` lists the driver; `python -c "import pyodbc; print(pyodbc.drivers())"` shows driver names.
+
+2. **Connection refused or timeout**
+   - **Cause:** Wrong host/port, firewall, or database not reachable from API container.
+   - **Fix:** Use correct host (e.g. `postgres` from API container in docker-compose, not `localhost`). Ensure database accepts connections from API network. Check `pg_hba.conf` for PostgreSQL.
+   - **Verify:** From API container: `nc -zv postgres 5432` or `psql -h postgres -U hub -d hub -c "SELECT 1"`.
+
+3. **Authentication failed**
+   - **Cause:** Incorrect username/password in `connection_string` or host+database config.
+   - **Fix:** Ensure `username`/`password` or `UID`/`PWD` in connection string match database credentials.
+   - **Verify:** Test with `psql` or `isql` using same credentials.
+
+4. **ODBC source requires 'connection_string' or both 'host' and 'database'**
+   - **Cause:** Source config missing required fields. Must have either full `connection_string` or both `host` and `database`.
+   - **Fix:** Add `connection_string` or populate `host`, `database`, and optionally `port`, `username`, `password`, `driver`.
+   - **Verify:** API validates on create/update; check request body.
+
+5. **Credential masking in logs**
+   - **Cause:** Expected behavior — passwords and connection strings are masked in logs and audit.
+   - **Fix:** None; use debug/verbose logging cautiously. Verify config via API response (masked) or direct DB check.
+
+**References:** `docs/VIRTUALIZATION_ODBC_SOURCES.md`; `hub/apps/virtualization/services.py` `_execute_odbc_query`; `hub/apps/virtualization/tests/test_real_source_integration.py`.
+
+---
+
+## Subscription plan change failures
+
+**When to use:** POST `/api/v1/billing/subscription/current/change-plan/` fails with 400, 403, or 404. Tenant admin or platform admin cannot change subscription plan.
+
+**Root causes and fixes:**
+
+1. **403 Forbidden — "You do not have permission to change the subscription plan"**
+   - **Cause:** User lacks TENANT_ADMIN or PLATFORM_ADMIN role.
+   - **Fix:** Assign TENANT_ADMIN role to the user for their tenant, or use a platform admin account.
+   - **Verify:** User has `user_roles` with role name `TENANT_ADMIN`, or `user.is_platform_admin` is True.
+
+2. **400 — "Plan 'X' not found or inactive"**
+   - **Cause:** Requested plan slug does not exist or `is_active=False`.
+   - **Fix:** Run `python manage.py seed_default_plans` to ensure FREE, PRO, ENTERPRISE exist. Or create/activate the plan in TenantPlan.
+   - **Verify:** `TenantPlan.objects.filter(slug='pro', is_active=True).exists()` returns True.
+
+3. **400 — "Already on this plan"**
+   - **Cause:** Tenant's current subscription already uses the requested plan.
+   - **Fix:** No action needed; this is expected when user selects current plan. UI should filter out current plan from dropdown.
+
+4. **400 — "Tenant context required"**
+   - **Cause:** User has no tenant (e.g. platform admin without tenant, or X-Tenant-ID header missing).
+   - **Fix:** Ensure user has `tenant_id` set or X-Tenant-ID header is sent. Platform admin changing plan for a tenant must have tenant context (e.g. from user.tenant or header).
+
+5. **404 — "No subscription found"**
+   - **Cause:** Tenant has no Subscription record.
+   - **Fix:** Create subscription via `SubscriptionService.create_subscription(tenant, plan)` or ensure tenant onboarding created one. Run `seed_default_plans` and create subscription for FREE plan if needed.
+   - **Verify:** `Subscription.objects.filter(tenant_id=tenant_id).exists()` returns True.
+
+**Stripe integration:** When subscription has `stripe_subscription_id`, plan change also updates Stripe metadata. Stripe errors are logged but do not fail the request (graceful degradation). Check logs for `Failed to update Stripe subscription` if Stripe sync is needed.
+
+**Audit:** Successful plan changes create `SUBSCRIPTION` / `PLAN_CHANGED` audit event with old_plan_slug, new_plan_slug.
+
+**References:** Phase 17; `hub/apps/billing/views.py` change_plan; `hub/apps/billing/services.py` SubscriptionService.update_subscription; `docs/BILLING.md`.
+
+---
+
+## Personal tenant creation failures
+
+**When to use:** Registration fails when creating a personal tenant (POST `/api/v1/auth/register/` without `tenant_id`). Error may indicate FREE plan missing, slug collision, or subscription creation failure.
+
+**Root causes and fixes:**
+
+1. **FREE plan missing** — `TenantPlan.DoesNotExist` or similar
+   - **Fix:** Run `python manage.py seed_default_plans` to create FREE, PRO, ENTERPRISE plans.
+   - **Verify:** `TenantPlan.objects.filter(slug='free', is_active=True).exists()` returns True.
+
+2. **Slug collision** — Tenant slug `personal-{uuid8}` already exists (rare)
+   - **Fix:** Service retries up to 5 times with new UUID. If still failing, check for manual duplicate slugs or DB constraint issues.
+   - **Verify:** No duplicate `Tenant.slug` values in database.
+
+3. **Subscription creation failure** — Subscription record creation fails
+   - **Fix:** Ensure TenantPlan exists; check TenantConfig and Subscription model constraints.
+   - **Verify:** `Subscription.objects.filter(tenant=tenant, status=ACTIVE).exists()` after personal tenant creation.
+
+**Generic error:** API returns `REGISTRATION_FAILED` (400) with message "Registration failed. Please try again." — does not leak internal details (slug, collision). Retry registration; if persistent, check logs and run `seed_default_plans`.
+
+**References:** useronboardfix design; `hub/apps/tenants/services.py` PersonalTenantService; `hub/apps/auth/views.py` register().
+
+---
+
+## Compliance Service — Policy and Risk Config
+
+**When to use:** Adjust compliance-service policy thresholds (allowed_to_store) and risk level thresholds via environment variables without code changes.
+
+**Full runbook:** [runbooks/COMPLIANCE_SERVICE_CONFIG.md](runbooks/COMPLIANCE_SERVICE_CONFIG.md) — env vars `COMPLIANCE_POLICY_*`, `COMPLIANCE_RISK_THRESHOLD_*`, defaults, and references.
+
+---
+
+## Compliance Run Stuck PENDING
+
+**When to use:** Compliance run shows PENDING / "Running..." indefinitely; never completes.
+
+**Root causes and checks:**
+
+1. **Wrong queue** — Jobs were enqueued to `default` but the RQ worker listens to `job_critical`, `job_default`, `job_low`. Fixed in code: compliance service now enqueues to `job_critical`.
+
+2. **Worker not running** — Verify worker container is up:
+   - Dev: `docker compose ps hub-worker` (or `hub-dev-worker`)
+   - Test: `docker compose -f docker-compose.test.yml ps hub-test-worker`
+
+3. **Redis misconfiguration** — API and worker must use the same `REDIS_QUEUE_URL` (e.g. `redis://redis-queue:6379/0` for dev, `redis://redis-queue-test:6379/0` for test).
+
+4. **Compliance service unreachable** — Worker needs `COMPLIANCE_SERVICE_URL` to reach the compliance microservice. Test stack: `COMPLIANCE_SERVICE_URL=http://compliance-service-test:8082`. If health check fails, ComplianceRun is now updated to FAILED with error details.
+
+5. **Enqueue failure** — Check API logs for "Failed to enqueue compliance run job" (Redis unreachable or worker queue misconfigured).
+
+**Quick check (test stack):**
+```bash
+docker exec hub-test-worker python -c "
+from django_rq import get_queue
+for q in ['job_critical','job_default','default']:
+    print(q, get_queue(q).count)
+"
+```
+
+---
+
+## Real Scheduled Ingestion/Export E2E [Post-MVP]
+
+**When to use:** Manual or environment-gated validation of scheduled ingestion and scheduled export with **real credentials and real storage** (S3, GCS, Azure Blob, HTTP/HTTPS, FTP/SFTP, DATABASE). No credentials in repo; use env vars or Prefect Blocks.
+
+**Full runbook:** [runbooks/REAL_SCHEDULED_INGESTION_EXPORT_E2E.md](runbooks/REAL_SCHEDULED_INGESTION_EXPORT_E2E.md) — prerequisites, connector support, env vars, Prefect Blocks, steps to run a real ingestion and export, optional pytest marker `real_scheduled_e2e` (guard `REAL_SCHEDULED_E2E=1`). Exclude from default/CI: `pytest -m 'not real_scheduled_e2e'`.
+
+---
+
+## KYC provider integration [Post-MVP]
+
+**Purpose:** Documented path for a future KYC provider to set tenant `kyc_status` to VERIFIED or PENDING_REVIEW in a secure, auditable, and idempotent way. No live provider implementation in this change.
+
+**Options:** (1) **Secure webhook (future):** Add an authenticated webhook that accepts provider payloads and calls `TenantService.update_tenant(tenant_id=..., kyc_status=...)` so every change is audited; optional idempotency key for at-least-once delivery. (2) **Admin API (current):** Use `PATCH /api/v1/tenants/{id}/` with `kyc_status` and platform-admin (or service-account) auth; provider backend calls this after external verification.
+
+**Idempotency:** Setting the same status again is a no-op (no row change, no duplicate audit). **Audit:** Every real change produces `KYC_STATUS_CHANGED` (see feat1 2.3; do not use `QuerySet.update()` for provider-driven updates).
+
+**Full runbook:** [runbooks/KYC_PROVIDER_INTEGRATION.md](runbooks/KYC_PROVIDER_INTEGRATION.md) — webhook vs admin API, idempotency, audit, and scope. Design: [openspec/changes/feat1/design.md](../openspec/changes/feat1/design.md) D5.
+
+---
+
+## Marketplace orders and entitlements — KYC required
+
+**When it applies**: Creating marketplace orders (POST `/api/v1/marketplace/orders/`, POST `/api/v1/marketplace/orders/purchase/`) and granting entitlements (POST `/api/v1/marketplace/orders/{id}/approve/`) require the **consumer tenant** to have verified KYC.
+
+**Rule**: The tenant that creates the order (buyer/consumer) must have `kyc_status = VERIFIED`. If not, the API returns **403 Forbidden** with a body that includes an error code so clients can handle it explicitly.
+
+**403 response format**:
+- **Status**: `403 Forbidden`
+- **Body**: `{"error": "<message>", "code": "kyc_not_verified"}`
+- **Message**: e.g. "Orders and entitlements require verified KYC for the consumer tenant."
+
+**Flows enforced**:
+1. **Order creation** (create order, purchase): consumer tenant (request user’s tenant) must be KYC-verified.
+2. **Entitlement grant** (approve order): consumer tenant (order’s tenant) must be KYC-verified before the provider can approve and grant entitlement.
+
+**Allowlist (optional)**: Tenant IDs in `MARKETPLACE_KYC_ALLOWLIST_TENANT_IDS` (env list, comma-separated UUIDs) are exempt and can create orders / receive entitlements without VERIFIED KYC. Default is empty. Use only for testing or documented exemptions.
+
+**References**: feat1 task 2.4; `hub/apps/marketplace/kyc.py`; order checks in `hub/apps/marketplace/order_views.py` and `hub/apps/marketplace/services.py`.
+
+---
+
+## BaaS Infrastructure (dedicated instances) [Post-MVP]
+
+Optional dedicated Postgres and Redis for BaaS usage and quota. When `BAAS_DATABASE_URL` and `BAAS_REDIS_URL` are set, BaaS uses these; when unset, it uses the main DB and Redis. See **[runbooks/BAAS_INFRASTRUCTURE.md](runbooks/BAAS_INFRASTRUCTURE.md)** for Docker wiring, env vars, and test setup.
+
+---
+
+## Full test suite (Phase 12A-style)
+
+**When to run**: Pre-release, after major changes, or when validating the full test suite per [TEST_EXECUTION_PLAN.md](TEST_EXECUTION_PLAN.md) and [openspec/changes/gapfix1](../openspec/changes/gapfix1).
+
+### Commands
+
+**Prerequisites**: (1) Scripts must be executable. If `./scripts/run_phase_12a_...` fails with "Permission denied", run: `chmod +x scripts/run_phase_12a_backend_suites.sh scripts/run_phase_12a_full_suites.sh scripts/generate_test_summary_report.sh scripts/generate_sign_off_snippet.sh`. (2) The test stack must be up so backend and smoke tests can run: `docker compose -f docker-compose.test.yml --env-file .env.test up -d` (wait until `api-service-test` is healthy). Use `--env-file .env.test` so Postgres initializes with `hub_test` credentials. Same as [Batch execution](#batch-execution-phase-12a-path-based-batches) start step.
+
+1. **Backend only** (unit, integration, E2E):
+   ```bash
+   ./scripts/run_phase_12a_backend_suites.sh
+   ```
+2. **Full suite** (backend + frontend unit/E2E + security + performance + concurrency + regression):
+   ```bash
+   ./scripts/run_phase_12a_full_suites.sh
+   ```
+   Use `--continue-on-failure` to run all phases regardless of failures (for debugging); exit non-zero at end if any failed. Use `--help` for options.
+3. **Where artifacts are stored**: `test_reports_comprehensive/YYYY-MM-DD/` with subdirs `unit/`, `integration/`, `e2e/`, `smoke/`, `security/`, `performance/`, `concurrency/`, `regression/`, `frontend-unit/`, `frontend-e2e/`. Summary artifacts: `phase_12a_1_summary.json` (backend), `phase_12a_3_summary.json` (security/performance/concurrency/regression). Canonical layout is defined in [EVIDENCE_COLLECTION_PLAN.md — Directory structure](EVIDENCE_COLLECTION_PLAN.md#directory-structure).
+
+4. **Layout only (no test run)**: To create the directory structure without running tests, use `./scripts/collect_test_evidence.sh` (date format `YYYYmmdd_HHMMSS`). Phase 12A scripts create the layout automatically when they run.
+
+5. **Git**: `test_reports_comprehensive/` is in `.gitignore`; report contents are not committed.
+
+6. **Canonical definition**: Run order, commands per step, and CI vs nightly/manual are defined in [FULL_TEST_SUITE_DEFINITION.md](FULL_TEST_SUITE_DEFINITION.md). Batched execution and full-suite commands are aligned with [GAP_FIX_AND_FULL_TEST_EXECUTION_PLAN.md](GAP_FIX_AND_FULL_TEST_EXECUTION_PLAN.md). Performance, regression, and concurrency are optional for the PR gate and run in **nightly** or **release** (see phase-12a-nightly.yml, phase-12a-release.yml); regression can also be the last batch in batched runs.
+
+7. **E2E journey strict mode** (Task 6.6.3): Set `E2E_STRICT_JOURNEY=1` to make all journey tests strict — missing endpoints (404/501) cause failures instead of skips. Use when validating that all core and optional endpoints exist:
+   ```bash
+   E2E_STRICT_JOURNEY=1 pytest tests/e2e/test_new_user_journeys_comprehensive.py -v
+   ```
+
+### UC/Journey/Persona E2E tests (Task 6.7)
+
+Run only UC-, journey-, and persona-tagged E2E tests (subset of `tests/e2e/`):
+
+```bash
+./scripts/run_uc_journey_persona_tests.sh
+```
+
+Or directly:
+```bash
+pytest tests/e2e/ -v -m uc_journey_persona
+```
+
+**Prerequisites**: Same as full E2E — test stack up (`docker compose -f docker-compose.test.yml --env-file .env.test up -d`), API at 8001.
+
+**Artifacts**: `test_reports_comprehensive/{date}/uc_journey_persona/` (JUnit XML, log).
+
+**Optional CI step**: Can be added as a separate job or step in CI; see [FULL_TEST_SUITE_DEFINITION.md](FULL_TEST_SUITE_DEFINITION.md) step 4b.
+
+### Use case and journey test coverage report (Phase 5.5)
+
+To report which use cases ([USE_CASES.md](USE_CASES.md)) and user journeys ([USER_JOURNEYS.md](USER_JOURNEYS.md)) have at least one test:
+
+```bash
+python scripts/report_uc_journey_test_coverage.py
+```
+
+Options: `--json` (output JSON), `--fail-if-zero` (exit 1 if any UC or journey has no tests), `--audit-traceability` (check [TEST_TRACEABILITY.md](TEST_TRACEABILITY.md) file paths exist and report broken links). Use in nightly or release to produce the report (e.g. artifact) or to fail the run when coverage is required (`--fail-if-zero`).
+
+**Traceability CI Gate** (openspec/changes/testsfix1): Use `--ci-mode` to run the gate: exit 0 only when no *critical* UC/journey has zero tests and coverage ≥ threshold. Critical IDs are in [CRITICAL_UC_JOURNEY_IDS.yaml](CRITICAL_UC_JOURNEY_IDS.yaml). Example:
+```bash
+python scripts/report_uc_journey_test_coverage.py --ci-mode --output traceability-report.json
+```
+See [TEST_EXECUTION_PLAN.md — Traceability CI Gate (phased rollout)](TEST_EXECUTION_PLAN.md#traceability-ci-gate-phased-rollout) for Phase 1 (report-only), Phase 2 (critical-list gate), Phase 3 (coverage threshold) and how to update the critical list.
+
+### Generate test summary report
+
+After the run, generate the report from evidence:
+
+```bash
+./scripts/generate_test_summary_report.sh YYYY-MM-DD
+```
+
+Or omit the date to use the latest date directory under `test_reports_comprehensive/`.
+
+### How to read the report
+
+The report includes test execution summary (date, suite, total/passed/failed/skipped, duration), results by category, and evidence links to the artifact subdirs. See [EVIDENCE_COLLECTION_PLAN.md](EVIDENCE_COLLECTION_PLAN.md) and [TEST_TRACEABILITY.md](TEST_TRACEABILITY.md#gap-implementation-plan-gapfix1--full-test-run-and-sign-off).
+
+---
+
+## Batch execution (Phase 12A path-based batches)
+
+**When to run**: Incremental full-suite validation per [GAP_FIX_AND_FULL_TEST_EXECUTION_PLAN.md](GAP_FIX_AND_FULL_TEST_EXECUTION_PLAN.md) — run batches in order, fix failures at root cause, then proceed. Target ≤200 tests per batch.
+
+### Start the test stack
+
+From repo root, using the test compose file:
+
+```bash
+docker compose -f docker-compose.test.yml --env-file .env.test up -d
+```
+
+Wait until core services (including `api-service-test`) are running and healthy. The batched script brings up the stack automatically if you run it without `--no-up`.
+
+### Missing test services (api-service-test, workflow-engine-service-test)
+
+If `docker compose -f docker-compose.test.yml ps` does not show `hub-test-api` or `hub-test-workflow-engine`, those containers may have exited. Both services use `restart: on-failure` so they will retry; check status and logs:
+
+1. **List all containers (including exited):**
+   ```bash
+   docker compose -f docker-compose.test.yml ps -a
+   ```
+
+2. **Start the missing services and follow logs:**
+   ```bash
+   docker compose -f docker-compose.test.yml --env-file .env.test up -d api-service-test workflow-engine-service-test
+   docker compose -f docker-compose.test.yml logs -f api-service-test workflow-engine-service-test
+   ```
+   Stop with Ctrl+C once you see the error.
+
+3. **Common causes:**
+   - **Database missing**: `FATAL: database "hub_test" does not exist` — the test Postgres volume may have been created without `POSTGRES_DB=hub_test`. An `ensure-test-db` service runs on each `up` and creates `hub_test` if the role exists. To fix an already-running stack: run the one-off once, then restart API and workflow-engine:
+     ```bash
+     docker compose -f docker-compose.test.yml run --rm ensure-test-db
+     docker compose -f docker-compose.test.yml restart api-service-test workflow-engine-service-test
+     ```
+   - **Role missing**: `FATAL: role "hub_test" does not exist` — the Postgres data volume was initialized with different env (e.g. another user). Recreate the test DB volume so init runs with `POSTGRES_USER=hub_test` and `POSTGRES_DB=hub_test`:
+     ```bash
+     docker compose -f docker-compose.test.yml down -v
+     docker compose -f docker-compose.test.yml --env-file .env.test up -d
+     ```
+     This removes all named volumes for the test stack (including `postgres-test-data`), then brings the stack up so Postgres initializes with `hub_test` user and `hub_test` database. Wait for `ensure-test-db` and core services to be up.
+   - **Postgres auth**: `FATAL: password authentication failed for user "hub_test"` — ensure the same env is used for postgres-test and API/workflow-engine. Use `--env-file .env.test` when bringing up the stack if you override `POSTGRES_USER`/`POSTGRES_PASSWORD` there. If postgres was created earlier with different credentials, either pass that same env when starting the stack or recreate the DB volume: `docker compose -f docker-compose.test.yml down`, remove the postgres-test volume, then `up -d` again.
+   - **`migrate-test-db is missing dependency ensure-test-db`**: Docker Compose dependency resolution can fail when many services start in parallel. Fix: run the one-offs first, then the full stack:
+     ```bash
+     docker compose -f docker-compose.test.yml --env-file .env.test up ensure-test-db migrate-test-db
+     docker compose -f docker-compose.test.yml --env-file .env.test up -d
+     ```
+     Or use `./scripts/clean-test-stack.sh` or `./scripts/bring-up-test-stack.sh`, which now run these one-offs first.
+   - **`dependency failed to start: container hub-test-api is unhealthy`** or **`relation "tenants" already exists`** or **`UniqueViolation: pg_type_typname_nsp_index`**: (1) **Concurrent migrations** — api-service-test and workflow-engine-service-test both run `migrate` on `hub_test`; if they start together, PostgreSQL's pg_type catalog conflicts. Fix: workflow-engine depends on api (service_healthy) so migrations run sequentially. (2) **Stale volume** — schema from partial rollback or different init. Fix: reset the test DB volume and start fresh:
+    ```bash
+    ./scripts/clean-test-stack.sh --volumes
+    # Or manually:
+    docker compose -f docker-compose.test.yml down -v --remove-orphans
+    docker compose -f docker-compose.test.yml --env-file .env.test up -d
+    ```
+    Wait 2–3 min for api-service-test to become healthy. Then run `./scripts/bring-up-test-stack.sh` if any services stay in Created.
+  - **`dependency failed to start: container hub-test-postgres is unhealthy`**: Postgres is performing crash recovery (e.g. after unclean shutdown); fsync can take 10–12 min on slow disk. Wait up to 15 min and retry, or run `docker compose -f docker-compose.test.yml logs postgres-test` to confirm "database system is ready to accept connections". If it never becomes ready, try `docker compose -f docker-compose.test.yml down -v` to remove volumes and start fresh (data loss for test DB).
+  - **`dependency failed to start: container hub-test-prefect-server is unhealthy`** or **`hub-test-prefect-db` Exited (1)**: (1) **Prefect DB init** (e.g. "pg_ctl: server does not shut down"): Fix init script — `infrastructure/prefect-db/02-pg-hba-host.sh` must not use `exit` or `set -e`. (2) **Prefect migrations** (e.g. `DuplicateTableError: relation "trgm_ix_block_type_name" already exists`): Stale Prefect DB from a prior run. Fix: `./scripts/clean-test-stack.sh --volumes` or `docker compose -f docker-compose.test.yml down -v`, then `up -d` again. (3) **TimeoutError during migrations**: DB under load or missing pgcrypto. Ensure `01-pgcrypto.sql` is mounted; increase `PREFECT_SERVER_DATABASE_SQLALCHEMY_POOL_TIMEOUT`; run `clean-test-stack.sh --volumes` and retry.
+   - **Migrations / startup error**: Check the traceback in the logs; fix the application or run migrations manually if needed.
+   - **DuplicateTable `scheduled_exports` (dev)**: If workflow-engine (or api-service) exits with `relation "scheduled_exports" already exists`, the table exists but Django’s migration record is missing. One-time fix: mark the migration as applied without running it, then restart. Use the same compose file you use for `up` (e.g. `docker-compose.dev.yml` or `docker-compose.yml`) and the service that runs migrate (e.g. api-service or workflow-engine-service):
+     ```bash
+     # With docker-compose.dev.yml (api-service runs migrate)
+     docker compose -f docker-compose.dev.yml run --rm api-service python manage.py migrate scheduled_export 0001_initial --fake
+     docker compose -f docker-compose.dev.yml up -d workflow-engine-service
+     ```
+     If you use plain `docker-compose.yml`, workflow-engine does not run migrate; use api-service to fake the migration if api-service is failing the same way.
+
+4. **Start full stack with explicit env (optional):**
+   ```bash
+   docker compose -f docker-compose.test.yml --env-file .env.test up -d
+   ```
+   Use this if you have `.env.test` with `POSTGRES_USER`/`POSTGRES_PASSWORD` so all services share the same credentials.
+
+### Run batches
+
+| Goal | Command |
+|------|--------|
+| **Run all batches** | `./scripts/run_phase_12a_batched.sh` |
+| **Run one batch** | `./scripts/run_phase_12a_batched.sh --batch=N` (e.g. `--batch=5`) |
+| **Run from batch N to end** | `./scripts/run_phase_12a_batched.sh --start-from=N` |
+| **List batch definitions** | `./scripts/run_phase_12a_batched.sh --list-batches` |
+
+All runs use `docker-compose.test.yml` and `api-service-test`; evidence is written under `test_reports_comprehensive/{DATE}/batches/`.
+
+### Where logs and JUnit are
+
+- **Base path**: `test_reports_comprehensive/YYYY-MM-DD/batches/`
+- **Per batch**: `batch_N/batch_N.log`, `batch_N/junit.xml`, `batch_N/summary.json` (and `coverage.xml` when coverage is enabled for that batch).
+- **Date**: Default is today (`YYYY-MM-DD`); override with `DATE=2026-02-12 ./scripts/run_phase_12a_batched.sh` if needed.
+- **Failed test names**: To fix failures by root cause, get the list from the batch log: `grep -E '^FAILED|^ERROR' test_reports_comprehensive/YYYY-MM-DD/batches/batch_N/batch_N.log`, or read the "short test summary info" at the end of the log (lines like `FAILED path/to/test_file.py::test_name`).
+
+### Database setup errors (transient Postgres unavailability)
+
+If a batch fails at **setup** with `OperationalError: server closed the connection unexpectedly`, `FATAL: the database system is shutting down`, `FATAL: the database system is starting up`, or `FATAL: the database system is in recovery mode`, the cause is usually Postgres becoming unavailable or still in recovery during test DB creation/migrations (e.g. container restarted, OOM, or stack not fully ready).
+
+- **api-service-test "health: starting" for a long time**: Migrations run in `migrate-test-db` (one-off); api starts runserver only and should become healthy within ~60s. If stuck, check `docker logs hub-test-migrate` for migration errors, or `docker logs hub-test-api` for runserver issues.
+- **Before batches run**: The batched scripts (`run_phase_12a_batched.sh`, `run_performance_tests_batched.sh`) wait for **Postgres to be ready** (via `pg_isready` in the postgres-test container, up to 10 minutes) after core services are up, so pytest does not start until the database accepts connections. `hub/conftest.py` also retries the session-start DB check on transient messages (`starting up`, `not yet accepting connections`, `refused`) so runs that start right after compose up succeed once Postgres is ready.
+- **Automatic retry**: `tests/conftest.py` retries `setup_databases` up to 3 times on these transient errors (with 5s, 10s, 15s backoff and connection close between attempts). Many runs will pass on retry.
+- **If errors persist**: Keep the test stack up for the full batch run; do not restart Postgres mid-run. Use `--reuse-db` when re-running so the first-run migration storm is avoided. See [Batch execution](#batch-execution-phase-12a-path-based-batches) start step.
+- **Infrastructure hardening**: `docker-compose.test.yml` configures `postgres-test` with **start_period 900s** (crash recovery + fsync can take 10–12 min on slow disk) and `prefect-db-test` with **start_period 600s** so initdb (first run) or recovery (restart) can finish before the healthcheck marks them unhealthy. `prefect-server-test` depends on `prefect-db-test` with **service_healthy** and has **restart: on-failure** and **start_period 240s** so migrations can complete and the server retries if startup fails (e.g. TimeoutError during migrations). If a batch log shows "database system is shutting down", "database system is starting up", a FATAL connection error, or **DNS resolution failure** ("could not translate host name", "Temporary failure in name resolution"), the batched script waits for Postgres to be healthy again (**600s** when "starting up", **120s** for DNS, **300s** otherwise), then **re-runs only the failed tests** once with `pytest --lf`. If the retry passes, the batch is reported as passed (root-cause fix for transient infra; no mocks).
+- **Postgres exit 137 (OOM)**: If `hub-test-postgres` exits with code 137, the container was killed (usually OOM). Reduce load (fewer concurrent services), increase Docker memory for the engine, or raise `postgres-test` `deploy.resources.limits.memory` in `docker-compose.test.yml` (e.g. 6G). Then bring the stack down, remove the volume if the data dir is corrupt (`docker compose -f docker-compose.test.yml down -v` for the named volume), and start again.
+
+### AWS integration optional tests (batch 52 / integrations)
+
+The AWS Data Exchange integration tests (`hub/apps/integrations/tests/test_aws_data_exchange_integration.py`) skip up to 6 tests when optional env is unset: `AWS_ROLE_ARN`, `AWS_SESSION_TOKEN`, or a test dataset ID (from `AWS_DATA_EXCHANGE_TEST_DATASET_ID` or from `list_listings(limit=1)`). To run with **zero skips**: set `AWS_ROLE_ARN`, `AWS_SESSION_TOKEN`, and `AWS_DATA_EXCHANGE_TEST_DATASET_ID` (or ensure the account has at least one listing). To run the integrations batch **without** those optional tests (and get zero skips when env is unset), the batched script would need to pass a marker filter; see the test file docstring for the exact `-m` expression.
+
+### GCP integration optional tests (batch 56 / integrations)
+
+The GCP Marketplace connector integration tests (`hub/apps/integrations/tests/test_gcp_marketplace_connector_integration.py`) skip when `GCP_SERVICE_ACCOUNT_JSON` is unset or invalid (e.g. malformed JSON or incomplete service account keys). To run with **zero skips**: set `GCP_SERVICE_ACCOUNT_JSON` to valid service account JSON (or use `GCP_CREDENTIALS_JSON_FILE` / `GCP_PROJECT_ID` + `GCP_USE_ADC=true` where supported). To run the batch **without** these optional tests: `-m "not requires_gcp_service_account"` (after adding the marker to the test class/module).
+
+### Audit batch sizes (≤200 per batch)
+
+To see current test count per batch and which exceed 200:
+
+```bash
+./scripts/audit_batch_sizes.sh
+```
+
+If you get "Permission denied", run `chmod +x scripts/audit_batch_sizes.sh` from the repo root. Use `--no-up` to skip bringing up the stack (stack must already be up). Output is a Markdown table; batches over 200 are marked **SPLIT**. To generate a batch list with every batch ≤200, run (with stack up; may take 30+ minutes):
+
+```bash
+python3 scripts/split_batches_to_cap.py --max 200 --output scripts/batch_definitions.txt
+```
+
+Then run the batched script as above; it will load `scripts/batch_definitions.txt` when present. When using a generated batch file, special handling (no-coverage for ODPS/ODCS/Files, Prefect wait for Scheduled, DQ/MinIO wait for Data Quality, STRIPE note for Billing) is applied by batch **name**, so split batches still get the correct behavior.
+
+### Batch status and fix cycle (Phase 3)
+
+After each batch (and at the end of a run), the script writes:
+
+- **`batches/batch_status.json`** — Machine-readable: date, generated_at, and per batch: batch_num, name, status (pass/fail/deferred/not_run), last_run, log path, junit path, optional deferred_reason.
+- **`batches/README.md`** — Table: Batch | Name | Status | Last run | Log | JUnit.
+
+**Fix cycle (no mocks/stubs):** When a batch fails, the script stops. Fix the root cause (application, test, or environment), then re-run from that batch:
+
+```bash
+./scripts/run_phase_12a_batched.sh --start-from N
+```
+
+**Defer and continue:** If you must defer a failure (e.g. external dependency, ticket created), mark the batch deferred and continue to the next:
+
+```bash
+./scripts/run_phase_12a_batched.sh --start-from N --defer=N --defer-reason=TICKET-123
+```
+
+The script writes `batches/batch_N/deferred` with the reason; `generate_batch_status.sh` then reports that batch as **deferred** in batch_status.json and README.md. Before sign-off, address or accept all deferred items (see GAP_FIX plan §6.3).
+
+To regenerate batch_status.json and README.md only (e.g. after editing deferred reasons):
+
+```bash
+./scripts/generate_batch_status.sh test_reports_comprehensive/YYYY-MM-DD/batches
+```
+
+### Batch 51 (Integrations & Mesh): failures and skips
+
+Batch 51 runs `hub/apps/integrations/tests/` and `hub/apps/mesh/tests/`. Common outcomes:
+
+- **9 failed, 1 error, 10 skipped**: Failures and the single error are test- or environment-specific; the log must be inspected to fix root cause.
+- **How to get failure/error details**: From repo root, after a run:
+  ```bash
+  grep -E 'FAILED|ERROR at |short test summary' "test_reports_comprehensive/$(date +%Y-%m-%d)/batches/batch_51/batch_51.log"
+  ```
+  Or open `test_reports_comprehensive/YYYY-MM-DD/batches/batch_51/batch_51.log` and search for `FAILED` or `ERROR`; copy the test name and traceback (or the "short test summary" block) to fix or share.
+- **Connection already closed**: If tests fail with `InterfaceError: connection already closed`, the test suite uses `connections.close_all()` and `connection.ensure_connection()` in e2e and framework setUp where needed. Ensure no test in the run calls `connection.close()` in tearDown without re-establishing connection for the next test (see [Database setup errors](#database-setup-errors-transient-postgres-unavailability)).
+- **10 skipped (expected when credentials not set)**:
+  - **6 Snowflake**: Set `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER`, and `SNOWFLAKE_TOKEN` in `.env.test` (or CI secrets) to run Snowflake integration tests; leave unset to keep these skipped.
+  - **4 GCP**: Set `GCP_CREDENTIALS_JSON_FILE` to a path to a service-account JSON file (recommended), or set `GCP_CREDENTIALS_JSON` with the whole value in **single quotes** in `.env.test` (e.g. `GCP_CREDENTIALS_JSON='{"type":"service_account",...}'`). See `.env.test.example` for variable names and notes.
+
+### References
+
+- [GAP_FIX_AND_FULL_TEST_EXECUTION_PLAN.md](GAP_FIX_AND_FULL_TEST_EXECUTION_PLAN.md) §5 (Batch strategy), §11 (splitting batches).
+- [TEST_EXECUTION_PLAN.md](TEST_EXECUTION_PLAN.md) (Phase 12A, evidence layout).
+
+---
+
+## Gap remediation validation
+
+**When to run**: After completing gap implementation phases (e.g. [gapfix1](../openspec/changes/gapfix1) or [testreview1](../openspec/changes/testreview1)); required for release when gap remediation applies. See [GAP_REMEDIATION_PLAN.md §11](../openspec/changes/testreview1/GAP_REMEDIATION_PLAN.md) and Phase 16 in [testreview1/tasks.md](../openspec/changes/testreview1/tasks.md).
+
+### Steps
+
+1. **Run full 12A suite**: Execute `./scripts/run_phase_12a_full_suites.sh` (or backend-only `./scripts/run_phase_12a_backend_suites.sh` if frontend/other suites are not needed). Ensure all critical suites are green; fix failures at root cause before proceeding.
+2. **Generate test summary report**: `./scripts/generate_test_summary_report.sh YYYY-MM-DD` (use the date of the run). Evidence is stored under `test_reports_comprehensive/{DATE}/`. Verify report contains execution summary and evidence links.
+3. **Sign-off**: Product/tech lead confirms documentation and implementation choices; gap items resolved or deferred as planned; record evidence and report location (e.g. in release notes or audit).
+
+Release MUST NOT proceed until sign-off is obtained when gap remediation applies.
+
+### Full suite sign-off record (Phase 4.3)
+
+When documenting a full suite run sign-off, record:
+
+| Field | Description |
+|-------|-------------|
+| **Date** | Date of the full run (YYYY-MM-DD). |
+| **Commit / branch** | Git commit hash and branch (e.g. `main` or `feature/xyz`). |
+| **Outcome** | "Full suite run passed" or "Passed with deferred failures" (see below). |
+| **Evidence path** | `test_reports_comprehensive/{DATE}/` (and summary report path if generated). |
+| **Deferred failures** | If any batch or suite was deferred: list batch/suite, reason, and ticket reference. |
+
+Optional: generate a sign-off snippet (date, branch, commit, evidence path, deferred from batch status) with:
+
+```bash
+./scripts/generate_sign_off_snippet.sh [YYYY-MM-DD]
+```
+
+Omit the date to use the latest date directory under `test_reports_comprehensive/`. The script reads `test_reports_comprehensive/{DATE}/batches/batch_status.json` for deferred batches when present.
+
+---
+
+## Security suite (Phase 12A.3)
+
+**When to run**: As part of the full Phase 12A run (nightly, release, or manual); or alone when validating security after changes. Security tests are **part of the full run and sign-off** per [TEST_EXECUTION_PLAN.md — Phase 12A.3](TEST_EXECUTION_PLAN.md#phase-12a3--security-performance-concurrency-regression-runnable) and gapfix1/testreview1.
+
+**Validation (29.7.2)**: Full security suite target <10 min. Includes `pytest tests/security/` plus ODPS ref resolver (`hub.apps.contracts.tests.security.test_ref_resolver_security`) and penetration tests (`tests.security.penetration_test_odps_ref_resolver`). **Service × vulnerability × test file matrix**: [SECURITY_TEST_COVERAGE.md](SECURITY_TEST_COVERAGE.md). Run: `./scripts/run_validation_29_7.sh --security` (runs all three; uses `.env.test` when present).
+
+### As part of full run
+
+The security suite runs automatically in **Phase 12A.3** when you execute:
+
+```bash
+./scripts/run_phase_12a_full_suites.sh
+```
+
+It runs after backend (12A.1) and frontend (12A.2), inside the `api-service` container. Artifacts: `test_reports_comprehensive/{date}/security/` (`security.log`, `junit.xml`). Exit code is recorded in `phase_12a_3_summary.json`; the script exits 1 if the security suite (or any 12A.3 suite) failed (no masking).
+
+### Run security suite alone
+
+With the stack up (`docker compose up -d` or equivalent):
+
+```bash
+docker compose exec -T api-service bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest tests/security/ -v --tb=short"
+```
+
+Or with JUnit XML for CI:
+
+```bash
+docker compose exec -T api-service bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest tests/security/ -v --junit-xml=/tmp/junit_security.xml --tb=short"
+```
+
+### Fixing failures
+
+- **Do not mask or skip**: Fix any failure at **root cause** (no mocks/stubs; no "skip if flaky").
+- Inspect `test_reports_comprehensive/{date}/security/security.log` and `junit.xml` for failures.
+- Re-run the security suite (or full Phase 12A) after fixes; ensure green before sign-off.
+
+**"relation tenants does not exist"**: Validation script uses `TEST_DB_SUFFIX=phase13` and `POSTGRES_DB=hub_test` (target DB: `hub_test_test_phase13`). Ensure `migrate-test-db` has run: `docker compose -f docker-compose.test.yml stop api-service-test worker-service-test && docker compose -f docker-compose.test.yml run --rm --no-deps migrate-test-db && docker compose -f docker-compose.test.yml start api-service-test worker-service-test`.
+
+**Port conflicts** (when main compose is running): `Bind for 0.0.0.0:6831 failed` or `Bind for 0.0.0.0:6380 failed` — add to `.env.test`: `JAEGER_UDP_TEST_PORT=6832`, `REDIS_CACHE_TEST_PORT=6479`, `REDIS_QUEUE_TEST_PORT=6470`, `REDIS_EVENTS_TEST_PORT=6471`, `REDIS_CHANNELS_TEST_PORT=6472`.
+
+### CI
+
+Security tests are included in **Phase 12A Nightly** (`phase-12a-nightly.yml`) and **Phase 12A Release** (`phase-12a-release.yml`). They run as step 12A.3.1 in the full suite; evidence is uploaded with the rest of `test_reports_comprehensive/`. Sign-off requires the full run (including security) to be green; see [Gap remediation validation](#gap-remediation-validation).
+
+---
+
+## Chaos tests (manual only)
+
+**When to run**: Pre-release (e.g. before a release candidate), after major orchestration or workflow changes, or during incident investigation when validating resilience (e.g. ODPS workflow behavior under failure).
+
+**Execution**: Chaos tests are **manual only**. They are **not** run in CI or in nightly workflows. Run them on demand using the runbook below. See [FULL_TEST_SUITE_DEFINITION.md — Chaos](FULL_TEST_SUITE_DEFINITION.md#optional--extended-suites-nightly-or-manual), [TEST_EXECUTION_PLAN.md — Chaos tests](TEST_EXECUTION_PLAN.md#chaos-tests-manual-only), and the standalone runbook [runbooks/RB-CHAOS-001.md](../runbooks/RB-CHAOS-001.md).
+
+### How to run
+
+From the repository root, with the test stack up:
+
+```bash
+pytest tests/chaos/ -v --tb=short
+```
+
+**Optional** (same environment as Phase 12A): use the test compose stack and run inside the API container:
+
+```bash
+docker compose -f docker-compose.test.yml --env-file .env.test up -d
+# Wait until api-service-test is healthy, then:
+docker compose -f docker-compose.test.yml exec -T api-service-test bash -c "cd /app && PYTHONPATH=/app DJANGO_SETTINGS_MODULE=hub.settings python -m pytest tests/chaos/ -v --tb=short"
+```
+
+Or from the host (with stack already up):
+
+```bash
+PYTHONPATH=. DJANGO_SETTINGS_MODULE=hub.settings pytest tests/chaos/ -v --tb=short
+```
+
+### Required environment
+
+- **Docker Compose**: Use `docker-compose.test.yml` (or `docker-compose.dev.yml`) so Postgres, Redis, and the API service are available. Chaos tests use real DB and services (no mocks/stubs).
+- **Services**: PostgreSQL (database), Redis (if tests use cache/queue), API service. See [TEST_EXECUTION_PLAN.md — Docker Compose and test runtime](TEST_EXECUTION_PLAN.md#docker-compose-and-test-runtime-integration-and-e2e) for minimal services.
+- **Settings**: `DJANGO_SETTINGS_MODULE=hub.settings`; test DB will be used when running under pytest.
+
+### What the suite covers
+
+- **ODPS workflow chaos** (`tests/chaos/test_odps_workflow_chaos.py`): resilience under service/network/DB failures, compensation logic, event replay. Uses [tests/chaos/framework.py](tests/chaos/framework.py) (ChaosEngine, ChaosScenario, FailureType).
+
+**Note:** The Phase 10.5 script `scripts/run_phase_10_5_tests.sh` includes the chaos suite as one of its suites (load/stress/chaos); that script is **manual only** and is not invoked from CI or nightly. Prefer `pytest tests/chaos/` for running chaos tests alone.
+
+### Artifacts (optional)
+
+To write JUnit XML under the Phase 12A layout:
+
+```bash
+mkdir -p test_reports_comprehensive/$(date +%Y-%m-%d)/chaos
+pytest tests/chaos/ -v --tb=short --junit-xml=test_reports_comprehensive/$(date +%Y-%m-%d)/chaos/junit.xml
+```
+
+### Fixing failures
+
+- Fix failures at **root cause** (no mocks/stubs, no skip-if-flaky). Chaos tests use real services; any failure indicates a real resilience or environment issue.
+- Re-run the suite after fixes to confirm green.
+
+### Not in CI or nightly
+
+Chaos tests are **excluded** from `ci.yml`, `phase-12a-nightly.yml`, and `phase-12a-release.yml`. They are run only when explicitly executed as above. This is intentional: chaos tests exercise failure injection and can be disruptive; they are for pre-release and incident investigation, not for every PR or nightly run.
+
+---
+
+## Dependency and vulnerability scans
+
+**When to use**: To understand or verify dependency and vulnerability scanning in CI; part of test/evidence and release posture (gapfix1 6.2.2).
+
+Dependency and vulnerability scans run in CI and are **kept in place**; results are uploaded as workflow artifacts. No mocks or stubs; scans run against real dependencies and code.
+
+### CI workflow: `security-scan.yml`
+
+The [security-scan.yml](../.github/workflows/security-scan.yml) workflow runs on push/PR to `main` and `develop`, weekly (Monday 00:00 UTC), and on `workflow_dispatch`:
+
+| Job | What runs | Artifacts | Retention |
+|-----|------------|-----------|-----------|
+| **dependency-scan** | [Safety](https://pyup.io/safety/) (Python vulns), [pip-audit](https://pypi.org/project/pip-audit/) (known vulns in installed packages) | `dependency-scan-results`: `safety-report.json`, `pip-audit-report.json` | 30 days |
+| **code-scan** | [Bandit](https://bandit.readthedocs.io/) (security issues in `hub/`, `services/`) with `.bandit` config | `bandit-report`: `bandit-report.json`, `bandit-report.txt` | 30 days |
+| **container-scan** | [Trivy](https://trivy.dev/) (container image vulns; CRITICAL/HIGH) | SARIF uploaded to GitHub Security tab | — |
+
+### Where to find results
+
+- **GitHub Actions**: Run the **Security Scan** workflow; open the run and download **Artifacts** (`dependency-scan-results`, `bandit-report`).
+- **Trivy**: Container scan results appear under the repository’s **Security** → **Code security and analysis** (SARIF).
+
+### Relation to test evidence and sign-off
+
+- Dependency and code scans are **separate** from Phase 12A test evidence (`test_reports_comprehensive/`). They are part of the project’s security posture and should be reviewed (e.g. before release or when adding dependencies).
+- Fix findings at **root cause** (upgrade or replace vulnerable deps; fix or suppress Bandit findings with justification). Document in runbooks or release notes if a finding is deferred.
+
+See also [.github/workflows/README.md](../.github/workflows/README.md) (Security Scan Workflow) and [DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md) (logging, observability).
+
+---
+
+## Deployment and rollback
+
+**When to use**: Before any staging or production deployment, and when a release fails and rollback is needed.
+
+### Release criteria (gate before release)
+
+The release gate is explicit: **Green Phase 12A + test summary report + sign-off**. Do not release (staging or production) until all three are satisfied.
+
+| Criterion | Description |
+|-----------|-------------|
+| **Green Phase 12A** | Full test suite run (`./scripts/run_phase_12a_full_suites.sh`) with all critical suites green. Fix any failure at root cause; re-run until green. |
+| **Test summary report** | Generate report from evidence: `./scripts/generate_test_summary_report.sh YYYY-MM-DD`. Evidence under `test_reports_comprehensive/{date}/`. |
+| **Sign-off** | When gap remediation applies: complete [Gap remediation validation](#gap-remediation-validation); product/tech lead sign-off; record evidence and report location. Release MUST NOT proceed until sign-off is obtained. |
+
+Canonical document: [RELEASE.md — Release criteria and gate](RELEASE.md).
+
+### Deploy only after green Phase 12A + sign-off
+
+- **Same suite**: Run Phase 12A full suite (`./scripts/run_phase_12a_full_suites.sh`) so "deploy after green tests" uses the same suite every time. See [Full test suite (Phase 12A-style)](#full-test-suite-phase-12a-style).
+- **Same evidence location**: Artifacts go to `test_reports_comprehensive/{date}/`; generate the test summary report with `./scripts/generate_test_summary_report.sh YYYY-MM-DD`. When gap remediation applies, complete [Gap remediation validation](#gap-remediation-validation) and obtain sign-off before release.
+- **Deployment steps**: Follow [DOCKER_COMPOSE_DEPLOYMENT.md](DOCKER_COMPOSE_DEPLOYMENT.md) (Docker Compose); for K8s-based flows (e.g. Prefect workers), see [DEPLOYMENT_ORDER_SCHEDULED_INGESTION.md](DEPLOYMENT_ORDER_SCHEDULED_INGESTION.md).
+
+### Rollback when a release fails
+
+If a release fails after deployment (e.g. critical errors, failed health checks, misconfiguration), roll back **application** (previous image/version) or **configuration** (restore previous config). No new tooling required.
+
+- **Procedures**: See [DOCKER_COMPOSE_DEPLOYMENT.md — Rollback Procedures](DOCKER_COMPOSE_DEPLOYMENT.md#rollback-procedures): Failed Deployment (Scenario 1), Database Migration Failure (Scenario 2), Configuration Error (Scenario 3), Partial Rollback (Scenario 4).
+- **After rollback**: Fix root cause, re-run Phase 12A, generate report, obtain sign-off again, then re-release.
+
+### Startup configuration validation
+
+**When to run**: Before starting the API server in staging or production (e.g. in container entrypoint or as a pre-start step). Ensures required env (database, Redis, ALLOWED_HOSTS, production secrets) are set and valid so misconfiguration fails fast with a clear error.
+
+- **Command**: From repo root (or container working directory `/app`): `python hub/manage.py validate_config`
+  - Exit 0: configuration valid.
+  - Exit 1: prints `ImproperlyConfigured` message; fix env or settings and re-run.
+- **Production entrypoint**: In production Docker Compose, the API service runs validation before gunicorn: `python hub/manage.py validate_config && exec gunicorn ...` (see `docker-compose.production.yml`). For custom entrypoints, run `validate_config` before starting the app server.
+- **Design and variables**: Required variables, format checks, and when validation runs are documented in [CONFIG_VALIDATION_DESIGN.md](CONFIG_VALIDATION_DESIGN.md). Production requires `SECRET_KEY`, `JWT_SECRET_KEY` (not dev defaults), non-empty `ALLOWED_HOSTS`, and valid Redis URL; database config is validated from `DATABASES['default']`.
+- **If validation fails**: Fix the reported variable (e.g. set `SECRET_KEY` in env, set `ALLOWED_HOSTS`, or fix Redis URL format). See docs/SECURITY.md for secret management and CONFIG_VALIDATION_DESIGN.md for all checks.
+
+---
+
+## Normalization Failures
+
+### Symptoms
+- Contracts fail to normalize
+- Normalization status is `NORMALIZATION_FAILED`
+- Normalization errors in contract record
+
+### Diagnosis
+
+1. **Check Normalization Errors**:
+```python
+from hub.apps.contracts.models import Contract
+
+contract = Contract.objects.get(id='<contract-id>')
+print(contract.normalization_errors)
+print(contract.normalization_warnings)
+```
+
+2. **Check Contract JSON Size**:
+```python
+import json
+
+size_bytes = len(json.dumps(contract.hub_contract_json).encode('utf-8'))
+print(f"Contract JSON size: {size_bytes} bytes")
+```
+
+3. **Check Prometheus Metrics**:
+```bash
+curl http://localhost:8000/metrics | grep normalization
+```
+
+### Common Issues
+
+#### Issue: Large Contract JSON Size (>1MB)
+**Symptoms**: Alert `LargeContractJSONSize` triggered
+**Resolution**:
+1. Review contract structure for unnecessary data
+2. Move large data to external storage
+3. Consider splitting contract into multiple contracts
+
+#### Issue: Missing Objects
+**Symptoms**: Alert `HighMissingObjectsRate` triggered
+**Resolution**:
+1. Check ODCS contract structure
+2. Verify normalization logic for missing objects
+3. Review normalization coverage metrics
+
+#### Issue: Broken Lineage Links
+**Symptoms**: Alert `BrokenLineageLinksDetected` triggered
+**Resolution**:
+1. Check referenced contracts exist
+2. Verify contract names/IDs in lineage references
+3. Review lineage reference resolution logic
+
+### Resolution Steps
+
+1. **Review Normalization Logs**:
+```bash
+docker-compose logs api-service | grep -i normalization
+```
+
+2. **Test Normalization Manually**:
+```python
+from hub.apps.contracts.normalization import normalize_contract
+
+result = normalize_contract(raw_contract, format='JSON')
+print(result)
+```
+
+3. **Fix Contract Data**:
+- Update ODCS contract to fix errors
+- Re-normalize contract
+- Verify normalization status
+
+---
+
+## Lineage Issues
+
+### Symptoms
+- Lineage queries timeout
+- Broken lineage links detected
+- Lineage visualization fails
+
+### Diagnosis
+
+1. **Check Lineage Query Performance**:
+```sql
+EXPLAIN ANALYZE
+SELECT id FROM contracts_contract
+WHERE hub_contract_json->'lineage' IS NOT NULL;
+```
+
+2. **Check Broken Links**:
+```python
+from hub.apps.contracts.lineage import LineageReference, resolve_lineage_reference
+
+ref = LineageReference(namespace='ns', name='contract1', model_name='model1')
+result = resolve_lineage_reference(ref)
+print(result)
+```
+
+3. **Check Lineage Indexes**:
+```sql
+SELECT indexname, idx_scan
+FROM pg_stat_user_indexes
+WHERE indexname LIKE '%lineage%';
+```
+
+### Common Issues
+
+#### Issue: Slow Lineage Queries
+**Symptoms**: Lineage queries take >1 second
+**Resolution**:
+1. Verify GIN indexes exist on lineage JSONB paths
+2. Run `VACUUM ANALYZE contracts_contract`
+3. Check for missing indexes (see `docs/DATABASE_INDEXES.md`)
+
+#### Issue: Broken Lineage Links
+**Symptoms**: Lineage references point to non-existent contracts
+**Resolution**:
+1. Identify broken links using `contract_broken_lineage_links_total` metric
+2. Update lineage references to point to existing contracts
+3. Re-normalize affected contracts
+
+### Resolution Steps
+
+1. **Rebuild Lineage Indexes**:
+```sql
+REINDEX INDEX contracts_hub_contract_json_lineage_gin;
+REINDEX INDEX contracts_hub_contract_json_models_lineage_gin;
+REINDEX INDEX contracts_hub_contract_json_models_fields_lineage_gin;
+```
+
+2. **Fix Broken Links**:
+```python
+# Update lineage references in contracts
+from hub.apps.contracts.models import Contract
+
+contract = Contract.objects.get(id='<contract-id>')
+# Update hub_contract_json['lineage'] references
+contract.save()
+```
+
+---
+
+## Scheduled Ingestion Failures [Post-MVP]
+
+### Symptoms
+- Scheduled ingestion runs fail
+- No datasets created
+- Prefect workflows fail
+
+### Diagnosis
+
+1. **Check Prefect UI**:
+- Navigate to `http://localhost:4200`
+- Check workflow runs for failures
+
+2. **Check Scheduled Ingestion Status**:
+```python
+from hub.apps.scheduled_ingestion.models import ScheduledIngestion, ScheduledIngestionRun
+
+ingestion = ScheduledIngestion.objects.get(id='<id>')
+runs = ScheduledIngestionRun.objects.filter(scheduled_ingestion=ingestion).order_by('-created_at')[:10]
+for run in runs:
+    print(f"{run.status}: {run.error_message}")
+```
+
+3. **Check Prometheus Metrics**:
+```bash
+curl http://localhost:8000/metrics | grep scheduled_ingestion
+```
+
+### Common Issues
+
+#### Issue: Prefect Server Connection Failure
+**Symptoms**: `PREFECT_API_URL` connection error
+**Resolution**:
+1. Verify Prefect Server is running: `docker-compose ps prefect-server`
+2. Check `PREFECT_API_URL` environment variable
+3. Verify network connectivity
+
+#### Issue: Source Connector Failure
+**Symptoms**: File discovery or download fails
+**Resolution**:
+1. Check source credentials
+2. Verify source path/URL is accessible
+3. Check network connectivity to source
+
+#### Worker API and config/secrets
+- **Internal Worker API**: Prefect worker calls hub at `/api/v1/scheduled-ingestions/internal/` (run lifecycle, process-file, config). See `docs/SCHEDULED_INGESTION_WORKER_API.md`.
+- **Auth**: Worker uses `HUB_WORKER_API_KEY` (env) or an API key with scope `scheduled_ingestion:internal`; must send `X-Tenant-ID` when using env key.
+- **Config response and logs MUST NOT contain raw credentials**: The config endpoint (`GET .../internal/config/{id}/`) returns masked `source_config` (credentials masked via CredentialManager). Hub MUST NOT log full config; worker MUST NOT log full config. Documented in runbooks and API doc.
+
+### Resolution Steps
+
+1. **Restart Prefect Integration Service**:
+```bash
+docker-compose restart prefect-integration-service
+```
+
+2. **Manually Trigger Ingestion**:
+```python
+from hub.apps.scheduled_ingestion.models import ScheduledIngestion
+
+ingestion = ScheduledIngestion.objects.get(id='<id>')
+# Trigger manually via API or Prefect UI
+```
+
+---
+
+## Prefect Server Issues [Post-MVP]
+
+### Symptoms
+- Prefect Server not responding
+- Workflows not executing
+- API connection errors
+
+### Diagnosis
+
+1. **Check Prefect Server Health**:
+```bash
+curl http://localhost:4200/api/health
+```
+
+2. **Check Prefect Server Logs**:
+```bash
+docker-compose logs prefect-server
+```
+
+3. **Check Database Connection**:
+```bash
+docker-compose exec prefect-server psql -U prefect -d prefect -c "SELECT 1;"
+```
+
+### Resolution Steps
+
+1. **Restart Prefect Server**:
+```bash
+docker-compose restart prefect-server
+```
+
+2. **Check Database**:
+```bash
+docker-compose exec postgres psql -U prefect -d prefect -c "\dt"
+```
+
+3. **Reset Prefect Server** (if needed):
+```bash
+docker-compose down prefect-server
+docker-compose up -d prefect-server
+```
+
+#### Test stack (batch 30): Prefect client/server version match
+If `test_prefect_full_flow_integration.py` skips with "Prefect client and server major versions must match", the test Prefect server image may have resolved to a 3.x build. **Fix**: In `docker-compose.test.yml`, pin `prefect-server-test` and `prefect-worker-test` to an explicit 2.x image, e.g. `prefecthq/prefect:2.16.9-python3.12`. Hub and prefect-integration use `prefect>=2.14.0,<3`; the test server and worker must be 2.x. After changing the image, rebuild or pull and restart: `docker compose -f docker-compose.test.yml --env-file .env.test up -d prefect-server-test prefect-worker-test`.
+
+#### Test stack: hub-test-prefect-server exited (0) / dependency failed to start
+If `hub-test-prefect-server` exits with code 0 and compose reports "dependency failed to start", the server process is stopping. Common causes: (1) **TimeoutError during migrations** — Prefect runs Alembic migrations on startup by default; if prefect-db was slow or not yet healthy, migrations can time out. The stack runs `prefect server database upgrade -y` before starting the server and sets `PREFECT_SERVER_DATABASE_MIGRATE_ON_START=false` so the server skips migrations in its lifespan. It also depends on `prefect-db-test` with **service_healthy**, **restart: on-failure**, and **start_period 240s**. (2) **Auth/connection** — the server uses `scripts/wait_for_prefect_db.py` to wait for an authenticated connection. **Fix**: (1) Check logs: `docker compose -f docker-compose.test.yml logs prefect-server-test prefect-db-test`. (2) Start Prefect services after the rest of the stack is up: `docker compose -f docker-compose.test.yml --env-file .env.test up -d prefect-server-test` (it will retry on failure). (3) Recreate the Prefect DB volume if needed: `docker compose -f docker-compose.test.yml stop prefect-server-test prefect-db-test`, remove volume `..._prefect-db-test-data` (or `down -v`), then `up -d` again.
+
+---
+
+## Prefect Workers Issues [Post-MVP]
+
+### Symptoms
+- Workers not processing jobs
+- Workflows stuck in "Running" state
+- Worker connection errors
+- Scheduled ingestion flows failing with hub API errors
+
+### Diagnosis
+
+1. **Check Worker Status**:
+```bash
+docker-compose ps prefect-worker
+```
+
+2. **Check Worker Logs**:
+```bash
+docker-compose logs prefect-worker
+```
+
+3. **Check Worker Connection**:
+```bash
+docker-compose exec prefect-worker prefect worker status
+```
+
+4. **Verify Hub API Configuration** (for scheduled ingestion):
+```bash
+# Check environment variables
+docker-compose exec prefect-worker env | grep HUB_
+
+# Expected:
+# HUB_BASE_URL=http://api-service:8000
+# HUB_WORKER_API_KEY=<api-key-value>
+```
+
+5. **Test Hub API Connectivity**:
+```bash
+# From prefect-worker container
+docker-compose exec prefect-worker curl -f http://api-service:8000/health
+```
+
+### Common Issues
+
+#### Issue: Hub API Connection Failure
+**Symptoms**:
+- `HUB_BASE_URL must be set` errors in worker logs
+- `HUB_WORKER_API_KEY must be set` errors
+- 401/403 errors when calling hub internal endpoints
+
+**Resolution**:
+1. Verify `HUB_BASE_URL` is set correctly:
+   - Docker Compose: `http://api-service:8000` (or `http://api-service-test:8000` for test)
+   - Kubernetes: `http://api-service.default.svc.cluster.local:8000` (adjust namespace if needed)
+2. Verify `HUB_WORKER_API_KEY` is set and valid:
+   - Generate API key: `python hub/manage.py create_api_key --scopes scheduled_ingestion:internal`
+   - Set in `.env.dev` / `.env.staging` / `.env.production` or Kubernetes secrets
+3. Verify network connectivity between prefect-worker and api-service
+4. Verify API key has correct scope (`scheduled_ingestion:internal`)
+
+#### Issue: Worker Cannot Reach Hub API
+**Symptoms**: Connection timeout or DNS resolution errors
+
+**Resolution**:
+1. Verify both services are on the same Docker network
+2. Check service names match (e.g., `api-service` vs `api-service-test`)
+3. Verify api-service is healthy: `docker-compose ps api-service`
+4. Test connectivity: `docker-compose exec prefect-worker ping api-service`
+
+### Resolution Steps
+
+1. **Restart Workers**:
+```bash
+docker-compose restart prefect-worker
+```
+
+2. **Scale Workers**:
+```bash
+docker-compose up -d --scale prefect-worker=3
+```
+
+3. **Update Hub API Configuration**:
+```bash
+# Update .env file with correct values
+HUB_BASE_URL=http://api-service:8000
+HUB_WORKER_API_KEY=<your-api-key>
+
+# Restart worker to pick up changes
+docker-compose restart prefect-worker
+```
+
+4. **Verify Configuration**:
+```bash
+# Check worker can reach hub API
+docker-compose exec prefect-worker curl -H "Authorization: ApiKey $HUB_WORKER_API_KEY" \
+  -H "X-Tenant-ID: <tenant-id>" \
+  http://api-service:8000/api/v1/scheduled-ingestions/internal/config/<scheduled-ingestion-id>/
+```
+
+---
+
+## Search Service Issues
+
+### Symptoms
+- Search queries fail
+- Search index not updating
+- Search results incorrect
+
+### Diagnosis
+
+1. **Check Search Index Status**:
+```python
+from hub.apps.search.models import SearchIndex
+
+indices = SearchIndex.objects.filter(tenant_id='<tenant-id>')[:10]
+for idx in indices:
+    print(f"{idx.resource_type} {idx.resource_id}: {idx.indexed_at}")
+```
+
+2. **Check Search Query Performance**:
+```sql
+EXPLAIN ANALYZE
+SELECT * FROM search_index
+WHERE tenant_id = '<tenant-id>' AND search_vector @@ to_tsquery('english', 'test');
+```
+
+### Resolution Steps
+
+1. **Rebuild Search Index**:
+```python
+from hub.apps.search.tasks import update_search_index
+
+update_search_index.delay(resource_type='CONTRACT', resource_id='<id>')
+```
+
+2. **Reindex All Resources**:
+```python
+from hub.apps.search.tasks import reindex_all_resources
+
+reindex_all_resources.delay()
+```
+
+---
+
+## Observability Service Issues
+
+### Symptoms
+- Observability metrics not updating
+- Dashboards show no data
+- Alerts not triggering
+
+### Diagnosis
+
+1. **Check Metrics Endpoint**:
+```bash
+curl http://localhost:8000/metrics | head -20
+```
+
+2. **Check Observability Models**:
+```python
+from hub.apps.observability.models import DataObservabilityMetric
+
+metrics = DataObservabilityMetric.objects.filter(tenant_id='<tenant-id>')[:10]
+for metric in metrics:
+    print(f"{metric.recorded_at}: {metric.is_stale}")
+```
+
+### Resolution Steps
+
+1. **Restart Observability Service**:
+```bash
+docker-compose restart observability-service
+```
+
+2. **Check Prometheus Scraping**:
+```bash
+curl http://localhost:9090/api/v1/targets
+```
+
+---
+
+## Webhook Service Issues
+
+### Symptoms
+- Webhooks not delivering
+- Webhook delivery failures
+- Webhook retries exhausted
+
+### Diagnosis
+
+1. **Check Webhook Deliveries**:
+```python
+from hub.apps.webhooks.models import Webhook, WebhookDelivery
+
+webhook = Webhook.objects.get(id='<id>')
+deliveries = WebhookDelivery.objects.filter(webhook=webhook).order_by('-created_at')[:10]
+for delivery in deliveries:
+    print(f"{delivery.status}: {delivery.error_message}")
+```
+
+2. **Check Webhook Service Logs**:
+```bash
+docker-compose logs webhook-service
+```
+
+### Resolution Steps
+
+1. **Retry Failed Deliveries**:
+```python
+from hub.apps.webhooks.tasks import retry_failed_deliveries
+
+retry_failed_deliveries.delay()
+```
+
+2. **Restart Webhook Service**:
+```bash
+docker-compose restart webhook-service
+```
+
+---
+
+## Marketplace Connector Pattern Violations
+
+### Symptoms
+
+- Connectors create assets directly instead of returning mappings
+- `sync_pull()` downloads data instead of mapping listings only
+- `sync_pull()` performs marketplace-specific operations (database creation, subscriptions, snapshots)
+- `map_to_hub_asset()` accesses external data sources instead of storing references
+- Assets are created during sync instead of being created by workflow
+- Slow sync performance (hours instead of seconds)
+- High storage usage during initial sync
+
+### Diagnosis
+
+#### 1. Check if Connector Creates Assets in `sync_pull()`
+
+```python
+from hub.apps.integrations.models import MarketplaceSyncJob
+from hub.apps.assets.models import Asset
+from django.utils import timezone
+from datetime import timedelta
+
+# Get recent sync job
+sync_job = MarketplaceSyncJob.objects.filter(
+    direction="PULL",
+    created_at__gte=timezone.now() - timedelta(hours=1)
+).first()
+
+if sync_job:
+    # Count assets created during sync window
+    assets_created_during_sync = Asset.objects.filter(
+        created_at__gte=sync_job.created_at,
+        created_at__lte=sync_job.completed_at if sync_job.completed_at else timezone.now()
+    ).count()
+
+    print(f"Assets created during sync: {assets_created_during_sync}")
+    print(f"Sync job successful items: {sync_job.successful_items}")
+
+    # If assets created > successful items, connector may be creating assets directly
+    if assets_created_during_sync > sync_job.successful_items:
+        print("⚠️  WARNING: Connector may be creating assets directly in sync_pull()")
+```
+
+#### 2. Check if `sync_pull()` Returns Mappings Only
+
+```python
+from hub.apps.integrations.factory import MarketplaceConnectorFactory
+from hub.apps.integrations.models import MarketplaceConnection
+
+# Get connector
+connection = MarketplaceConnection.objects.get(id="<connection-id>")
+connector = MarketplaceConnectorFactory.create_connector(connection)
+
+# Execute sync_pull
+result = connector.sync_pull(options={"limit": 10, "dry_run": True})
+
+# Verify result structure
+print(f"Result type: {type(result)}")
+print(f"Has metadata: {'metadata' in result.metadata if hasattr(result, 'metadata') else False}")
+print(f"Has mappings: {'mappings' in result.metadata if hasattr(result, 'metadata') else False}")
+
+if hasattr(result, 'metadata') and 'mappings' in result.metadata:
+    mappings = result.metadata['mappings']
+    print(f"Number of mappings: {len(mappings)}")
+    if mappings:
+        print(f"First mapping type: {type(mappings[0])}")
+        print(f"First mapping keys: {mappings[0].keys() if isinstance(mappings[0], dict) else 'Not a dict'}")
+
+    # Check for asset IDs (should NOT be present)
+    if 'asset_ids' in result.metadata:
+        print("❌ ERROR: sync_pull() returns asset_ids (should return mappings only)")
+
+    # Check for contract IDs (should NOT be present)
+    if 'contract_ids' in result.metadata:
+        print("❌ ERROR: sync_pull() returns contract_ids (should return mappings only)")
+else:
+    print("❌ ERROR: sync_pull() does not return mappings in metadata")
+```
+
+#### 3. Check if `sync_pull()` Downloads Data
+
+```python
+import os
+import tempfile
+from hub.apps.integrations.factory import MarketplaceConnectorFactory
+from hub.apps.integrations.models import MarketplaceConnection
+
+# Get connector
+connection = MarketplaceConnection.objects.get(id="<connection-id>")
+connector = MarketplaceConnectorFactory.create_connector(connection)
+
+# Track file creation during sync_pull
+initial_files = set()
+temp_dir = tempfile.gettempdir()
+for root, dirs, files in os.walk(temp_dir):
+    for file in files:
+        initial_files.add(os.path.join(root, file))
+
+# Execute sync_pull
+result = connector.sync_pull(options={"limit": 10, "dry_run": True})
+
+# Check for new files
+new_files = set()
+for root, dirs, files in os.walk(temp_dir):
+    for file in files:
+        file_path = os.path.join(root, file)
+        if file_path not in initial_files:
+            new_files.add(file_path)
+
+if new_files:
+    print(f"⚠️  WARNING: {len(new_files)} files created during sync_pull()")
+    print("Files created:")
+    for file_path in list(new_files)[:10]:  # Show first 10
+        print(f"  - {file_path}")
+    print("❌ ERROR: sync_pull() should not download data")
+else:
+    print("✅ OK: sync_pull() does not download data")
+```
+
+#### 4. Check if `map_to_hub_asset()` Accesses External Data Sources
+
+```python
+import httpx
+from unittest.mock import patch
+from hub.apps.integrations.factory import MarketplaceConnectorFactory
+from hub.apps.integrations.models import MarketplaceConnection, MarketplaceListing
+from hub.apps.integrations.base import MarketplaceType
+
+# Get connector
+connection = MarketplaceConnection.objects.get(id="<connection-id>")
+connector = MarketplaceConnectorFactory.create_connector(connection)
+
+# Create test listing
+listing = MarketplaceListing(
+    marketplace_id="test-listing",
+    marketplace_type=MarketplaceType.CKAN_INSTANCE,
+    title="Test Listing"
+)
+
+# Track HTTP requests
+http_requests = []
+
+def track_request(*args, **kwargs):
+    http_requests.append((args, kwargs))
+    return httpx.get(*args, **kwargs)
+
+# Execute map_to_hub_asset with HTTP tracking
+with patch('httpx.get', side_effect=track_request):
+    mapping = connector.map_to_hub_asset(listing)
+
+if http_requests:
+    print(f"⚠️  WARNING: {len(http_requests)} HTTP requests made during map_to_hub_asset()")
+    print("HTTP requests:")
+    for args, kwargs in http_requests[:5]:  # Show first 5
+        print(f"  - {args[0] if args else 'N/A'}")
+    print("❌ ERROR: map_to_hub_asset() should not access external data sources")
+else:
+    print("✅ OK: map_to_hub_asset() does not access external data sources")
+```
+
+#### 5. Run Pattern Verification Tests
+
+```bash
+# Run pattern verification tests for all connectors
+docker compose exec api-service python -m pytest \
+  hub/apps/integrations/tests/test_connector_pattern.py \
+  -v \
+  --tb=short
+
+# Run tests for specific connector
+docker compose exec api-service python -m pytest \
+  hub/apps/integrations/tests/test_connector_pattern.py::TestSyncPullDoesNotCreateAssets::test_ckan_sync_pull_does_not_create_assets \
+  -v \
+  --tb=short
+```
+
+### Common Issues
+
+#### Issue: Connector Creates Assets in `sync_pull()`
+
+**Symptoms**:
+- Assets are created during sync instead of after workflow execution
+- `sync_pull()` returns asset IDs instead of mappings
+- Sync performance is slow (assets created synchronously)
+
+**Root Cause**:
+Connector is calling `create_federated_asset_with_contracts()` or `Asset.objects.create()` directly in `sync_pull()`.
+
+**Resolution**:
+1. Refactor `sync_pull()` to return mappings only:
+   ```python
+   # Wrong
+   def sync_pull(self, ...):
+       for listing in listings:
+           asset = create_federated_asset_with_contracts(...)  # ❌
+
+   # Correct
+   def sync_pull(self, ...):
+       mappings = []
+       for listing in listings:
+           mapping = self.map_to_hub_asset(listing)  # ✅
+           mappings.append(mapping)
+       return SyncResult(metadata={"mappings": [m.__dict__ for m in mappings]})
+   ```
+
+2. Verify workflow handles asset creation:
+   - Check `hub/apps/orchestration/workflows/marketplace_sync.py`
+   - Verify `create_federated_assets_task` calls `create_federated_asset_with_contracts()`
+
+#### Issue: Connector Downloads Data in `sync_pull()`
+
+**Symptoms**:
+- Files are created during sync
+- High storage usage during initial sync
+- Slow sync performance (downloading data synchronously)
+
+**Root Cause**:
+Connector is calling `download_resource()` or file download methods in `sync_pull()`.
+
+**Resolution**:
+1. Remove data download logic from `sync_pull()`:
+   ```python
+   # Wrong
+   def sync_pull(self, ...):
+       for listing in listings:
+           for resource in listing.resources:
+               download_path = self.download_resource(resource.id, "/tmp/data.csv")  # ❌
+
+   # Correct
+   def sync_pull(self, ...):
+       mappings = []
+       for listing in listings:
+           mapping = self.map_to_hub_asset(listing)  # ✅ Maps resources with external references
+           mappings.append(mapping)
+       return SyncResult(metadata={"mappings": [m.__dict__ for m in mappings]})
+   ```
+
+2. Ensure `map_to_hub_asset()` includes external resource references:
+   ```python
+   def map_to_hub_asset(self, listing):
+       resources = [
+           MarketplaceResource(
+               resource_id=resource.id,
+               url=resource.external_url,  # ✅ Store reference
+               metadata={"external": True, "download_url": resource.external_url}
+           )
+           for resource in listing.resources
+       ]
+       return MarketplaceAssetMapping(resources=resources, ...)
+   ```
+
+#### Issue: Connector Performs Marketplace-Specific Operations in `sync_pull()`
+
+**Symptoms**:
+- Database creation happens during sync (Snowflake)
+- Subscriptions happen during sync (AWS Data Exchange)
+- Snapshots are triggered during sync (Azure Data Share)
+- Slow sync performance
+
+**Root Cause**:
+Connector is performing marketplace-specific operations in `sync_pull()` instead of deferring them to `download_resource()`.
+
+**Resolution**:
+1. Move marketplace-specific operations to `download_resource()`:
+   ```python
+   # Wrong (Snowflake example)
+   def sync_pull(self, ...):
+       for listing in listings:
+           self._create_database_from_listing(listing.id)  # ❌
+           schema = self._extract_schema_metadata(listing.database_name)  # ❌
+
+   # Correct
+   def sync_pull(self, ...):
+       mappings = []
+       for listing in listings:
+           mapping = self.map_to_hub_asset(listing)  # ✅ Maps only
+           mappings.append(mapping)
+       return SyncResult(metadata={"mappings": [m.__dict__ for m in mappings]})
+
+   def download_resource(self, resource_id, destination_path):
+       # ✅ Marketplace-specific operations happen here
+       if len(resource_id.split(".")) == 1:  # Listing ID
+           self._create_database_from_listing(resource_id)
+           schema = self._extract_schema_metadata(resource_id)
+           # ... download data
+   ```
+
+#### Issue: `map_to_hub_asset()` Accesses External Data Sources
+
+**Symptoms**:
+- HTTP requests are made during mapping
+- Schema extraction happens during mapping
+- Slow mapping performance
+
+**Root Cause**:
+Connector is accessing external data sources in `map_to_hub_asset()` instead of storing references.
+
+**Resolution**:
+1. Remove external data access from `map_to_hub_asset()`:
+   ```python
+   # Wrong
+   def map_to_hub_asset(self, listing):
+       data = httpx.get(listing.resource_url).content  # ❌
+       schema = extract_schema_from_data(data)  # ❌
+
+   # Correct
+   def map_to_hub_asset(self, listing):
+       resources = [
+           MarketplaceResource(
+               resource_id=resource.id,
+               url=resource.external_url,  # ✅ Store reference
+               metadata={"external": True, "download_url": resource.external_url}
+           )
+           for resource in listing.resources
+       ]
+       return MarketplaceAssetMapping(resources=resources, ...)
+   ```
+
+### Diagnostic Commands
+
+#### Verify Connector Pattern Compliance
+
+```bash
+# Run all pattern verification tests
+docker compose exec api-service python -m pytest \
+  hub/apps/integrations/tests/test_connector_pattern.py \
+  -v \
+  --tb=short
+
+# Check specific connector
+docker compose exec api-service python -m pytest \
+  hub/apps/integrations/tests/test_connector_pattern.py::TestSyncPullDoesNotCreateAssets::test_ckan_sync_pull_does_not_create_assets \
+  -v \
+  --tb=short
+```
+
+#### Check Sync Job Results
+
+```python
+from hub.apps.integrations.models import MarketplaceSyncJob
+from django.utils import timezone
+from datetime import timedelta
+
+# Get recent sync jobs
+sync_jobs = MarketplaceSyncJob.objects.filter(
+    direction="PULL",
+    created_at__gte=timezone.now() - timedelta(hours=24)
+).order_by('-created_at')[:10]
+
+for job in sync_jobs:
+    print(f"Sync Job: {job.id}")
+    print(f"  Status: {job.status}")
+    print(f"  Successful Items: {job.successful_items}")
+    print(f"  Failed Items: {job.failed_items}")
+    print(f"  Metadata Keys: {list(job.metadata.keys()) if job.metadata else 'None'}")
+    if job.metadata and 'mappings' in job.metadata:
+        print(f"  Mappings Count: {len(job.metadata['mappings'])}")
+    print()
+```
+
+#### Check Asset Creation Timing
+
+```python
+from hub.apps.assets.models import Asset
+from hub.apps.integrations.models import MarketplaceSyncJob
+from django.utils import timezone
+from datetime import timedelta
+
+# Get recent sync job
+sync_job = MarketplaceSyncJob.objects.filter(
+    direction="PULL",
+    created_at__gte=timezone.now() - timedelta(hours=1)
+).first()
+
+if sync_job:
+    # Count assets created during sync window
+    assets_created = Asset.objects.filter(
+        created_at__gte=sync_job.created_at,
+        created_at__lte=sync_job.completed_at if sync_job.completed_at else timezone.now(),
+        source_type="FEDERATED"
+    ).count()
+
+    print(f"Sync Job: {sync_job.id}")
+    print(f"  Created At: {sync_job.created_at}")
+    print(f"  Completed At: {sync_job.completed_at}")
+    print(f"  Successful Items: {sync_job.successful_items}")
+    print(f"  Assets Created During Sync: {assets_created}")
+
+    if assets_created > sync_job.successful_items:
+        print("⚠️  WARNING: More assets created than successful items (connector may be creating assets directly)")
+```
+
+### Resolution Steps
+
+1. **Identify the Violation**:
+   - Run pattern verification tests
+   - Check sync job results
+   - Review connector code
+
+2. **Refactor Connector**:
+   - Move asset creation logic out of `sync_pull()`
+   - Move data download logic to `download_resource()`
+   - Move marketplace-specific operations to `download_resource()`
+   - Ensure `map_to_hub_asset()` only stores references
+
+3. **Verify Fix**:
+   - Run pattern verification tests
+   - Test sync with dry_run=True
+   - Verify workflow handles asset creation
+
+4. **Monitor**:
+   - Check sync performance (should be fast for metadata-only)
+   - Check storage usage (should be low for metadata-only)
+   - Verify assets are created by workflow, not connector
+
+### Prevention
+
+- Always follow the metadata-first architecture pattern
+- Use pattern verification tests during development
+- Review connector code before deployment
+- Monitor sync performance and storage usage
+- See [Connector Development Guide](./connectors/DEVELOPMENT.md) for detailed implementation guidelines
+
+---
+
+## Disaster Recovery
+
+### Recovery Procedures
+
+1. **Database Recovery**:
+```bash
+# Restore from backup
+pg_restore -d hub_db backup.dump
+```
+
+2. **Service Recovery**:
+```bash
+# Restart all services
+docker-compose down
+docker-compose up -d
+```
+
+3. **Data Recovery**:
+```bash
+# Restore from S3/MinIO backup
+aws s3 cp s3://backup-bucket/backup.tar.gz .
+tar -xzf backup.tar.gz
+```
+
+---
+
+## Backup and Recovery
+
+### Backup Procedures
+
+1. **Database Backup**:
+```bash
+pg_dump -Fc hub_db > backup_$(date +%Y%m%d).dump
+```
+
+2. **File Storage Backup**:
+```bash
+# Backup MinIO data
+mc mirror minio/backup-bucket s3://backup-bucket/
+```
+
+3. **Configuration Backup**:
+```bash
+# Backup configuration files
+tar -czf config_backup_$(date +%Y%m%d).tar.gz config/
+```
+
+### Recovery Procedures
+
+1. **Database Recovery**:
+```bash
+pg_restore -d hub_db backup_20250115.dump
+```
+
+2. **File Storage Recovery**:
+```bash
+mc mirror s3://backup-bucket/ minio/backup-bucket/
+```
+
+---
+
+## CKAN Connector Issues
+
+### Symptoms
+- CKAN connector connection failures
+- Harvest operations failing
+- Circuit breaker open
+- API key authentication errors
+
+### Diagnosis
+
+1. **Check Connector Configuration**:
+```python
+from hub.apps.integrations.config.marketplace_instances import get_marketplace_instance_config
+
+config = get_marketplace_instance_config('dados.gov.br')
+print(f"Base URL: {config.base_url}")
+print(f"Connector Type: {config.connector_type}")  # "swagger" for dados.gov.br
+print(f"API Key Set: {config.get_api_key() is not None}")
+```
+
+2. **Test Connection**:
+```python
+from hub.apps.integrations.factory import MarketplaceConnectorFactory
+
+# Use new method name (recommended)
+connector = MarketplaceConnectorFactory.create_marketplace_connector_from_instance('dados.gov.br')
+# Or use backward-compatible method (deprecated):
+# connector = MarketplaceConnectorFactory.create_ckan_connector_from_instance('dados.gov.br')
+result = connector.test_connection()
+print(f"Connection test: {result}")
+```
+
+3. **Check Circuit Breaker State**:
+```bash
+docker compose exec api-service python -c "
+from hub.apps.core.services.redis import get_redis_client
+redis = get_redis_client()
+state = redis.get('circuit_breaker:ckan-connector:state')
+print(f'Circuit Breaker State: {state}')
+"
+```
+
+### Common Issues
+
+#### Issue: Connection Errors
+**Symptoms**: `ConnectionError` when accessing marketplace instances
+
+**Resolution**:
+1. Verify network connectivity:
+   - For Swagger API (dados.gov.br): `curl https://dados.gov.br/v3/api-docs`
+   - For CKAN API (demo.ckan.org, data.gov): `curl https://demo.ckan.org/api/3/action/status_show`
+2. Check firewall rules allow outbound HTTPS
+3. Verify DNS resolution
+4. Check marketplace instance status
+
+#### Issue: API Key Not Working
+**Symptoms**: Permission errors even with API key set
+
+**Resolution**:
+1. Verify API key format:
+   - For Swagger API (dados.gov.br): JWT Bearer token format (`eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...`)
+   - For CKAN API (demo.ckan.org, data.gov): Standard API key string
+2. Check environment variable name:
+   - For dados.gov.br: Use `DADOS_GOV_BR_API_KEY` (primary) or `CKAN_DADOS_GOV_BR_API_KEY` (deprecated)
+   - For CKAN instances: Use `CKAN_TEST_API_KEY`
+3. Check API key permissions in marketplace instance
+4. Regenerate API key if needed
+5. Verify environment variable is loaded correctly
+
+#### Issue: Circuit Breaker Open
+**Symptoms**: Requests fail immediately without attempting connection
+
+**Resolution**:
+1. Reset circuit breaker: Delete Redis key `circuit_breaker:ckan-connector:state`
+2. Wait for automatic recovery (60 seconds timeout)
+3. Check underlying connectivity issues
+4. Verify Redis is healthy
+
+### Resolution Steps
+
+1. **Check Logs**:
+```bash
+docker compose logs api-service | grep -i ckan
+```
+
+2. **Verify Environment Variables**:
+```bash
+# Check all marketplace-related environment variables
+docker compose exec api-service env | grep -E "DADOS_GOV_BR_API_KEY|CKAN"
+```
+
+3. **Test Connector**:
+```bash
+docker compose exec api-service python -m pytest \
+  hub/apps/integrations/tests/test_marketplace_instances_config.py \
+  -v
+```
+
+4. **Reset Circuit Breaker** (if needed):
+```bash
+docker compose exec api-service python -c "
+from hub.apps.core.services.redis import get_redis_client
+redis = get_redis_client()
+redis.delete('circuit_breaker:ckan-connector:state')
+print('Circuit breaker reset')
+"
+```
+
+For detailed troubleshooting, see [Marketplace Connector Deployment Runbook](./runbooks/marketplace-connector-deployment.md).
+
+---
+
+## BaaS Platform Troubleshooting [Post-MVP]
+
+### Symptoms
+- API key creation/validation failures
+- Rate limiting not working correctly
+- Usage tracking not recording requests
+- Developer portal endpoints returning errors
+- Quota exhaustion errors
+
+### Diagnosis
+
+1. **Check API Gateway Status**:
+```bash
+# Check API Gateway service health
+curl http://localhost:8000/health
+docker compose logs api-gateway | tail -50
+```
+
+2. **Check API Key Status**:
+```python
+from hub.apps.baas.models import APIKey
+
+# Check API keys
+api_keys = APIKey.objects.filter(tenant_id='...')
+for key in api_keys:
+    print(f"{key.name}: {key.tier}, revoked={key.is_revoked}, expired={key.is_expired()}")
+```
+
+3. **Check Usage Tracking**:
+```python
+from hub.apps.baas.models import APIUsage
+
+# Check usage records
+usage = APIUsage.objects.filter(api_key_id='...').order_by('-timestamp')[:10]
+for u in usage:
+    print(f"{u.endpoint}: {u.status_code}, {u.response_time_ms}ms")
+```
+
+4. **Check Rate Limiting**:
+```bash
+# Check Redis for rate limit counters
+docker compose exec redis redis-cli
+> KEYS rate_limit:*
+> GET rate_limit:api_key:*
+```
+
+### Common Issues
+
+#### Issue: API Key Validation Failures
+**Symptoms**: `BAAS_API_KEY_INVALID` errors, authentication failures
+**Resolution**:
+1. Verify API key exists: `APIKey.objects.get(id='...')`
+2. Check API key is not revoked: `api_key.is_revoked == False`
+3. Check API key is not expired: `api_key.is_expired() == False`
+4. Verify API key hash matches: Check hashing algorithm
+5. Review API Gateway logs for validation errors
+
+#### Issue: 429 Too Many Requests — BaaS quota vs rate limiting
+**Context**: 429 can come from two layers (see design [feat1 D3](../../openspec/changes/feat1/design.md)): (1) **Rate limiting** (`hub/apps/rate_limiting`) — generic throttling; (2) **BaaS quota** — tier-based hour/day/month limits in `BaaSUsageRecordingMiddleware`. Both use the same identity (`request.api_key_obj.id`).
+
+**BaaS quota 429** (feat1 1.4): When over tier limit, response is 429 with header `Retry-After` (seconds until reset) and JSON body `{"error": "quota_exceeded", "limit_type": "hour"|"day"|"month"}`. Keys without a BaaS tier are not subject to BaaS quota. If the body contains `limit_type`, the 429 is from BaaS quota.
+
+**Resolution**: For BaaS quota — increase tier limits (`APITierModel.rate_limit_per_hour/day`, `max_requests_per_month`) or upgrade tier; or wait until `Retry-After` seconds. For rate limiting — see rate limit config and Redis counters.
+
+#### Issue: Rate Limiting Not Working
+**Symptoms**: Requests not being rate limited, quota not enforced
+**Resolution**:
+1. Check API Gateway service is running: `docker compose ps api-gateway`
+2. Verify tier configuration: `APITier.objects.all()`
+3. Check Redis connectivity: `docker compose exec redis redis-cli ping`
+4. Review rate limiting middleware configuration
+5. Check rate limit counters in Redis: `KEYS rate_limit:*`
+
+#### Issue: Usage Tracking Not Recording
+**Symptoms**: Usage statistics not updating, missing usage records
+**Resolution**:
+1. Verify UsageTrackingService is called: Check middleware configuration
+2. Check database connectivity: `python manage.py dbshell`
+3. Review APIUsage model: `APIUsage.objects.count()`
+4. Check for database transaction issues
+5. Review usage tracking service logs
+
+#### Issue: Developer Portal Errors
+**Symptoms**: `/api/v1/baas/docs/` endpoints returning errors
+**Resolution**:
+1. Check DeveloperDocumentationViewSet: Verify view configuration
+2. Check OpenAPI schema generation: `python manage.py spectacular --file schema.yaml`
+3. Verify SDK download links: Check static file serving
+4. Review developer portal service logs
+
+### Resolution Steps
+
+1. **Restart API Gateway**:
+```bash
+docker compose restart api-gateway
+```
+
+2. **Clear Rate Limit Counters**:
+```bash
+docker compose exec redis redis-cli
+> KEYS rate_limit:*
+> DEL rate_limit:*
+```
+
+3. **Reset API Key**:
+```python
+from hub.apps.baas.models import APIKey
+
+api_key = APIKey.objects.get(id='...')
+# Regenerate API key (if needed)
+# Note: This invalidates the old key
+```
+
+4. **Recalculate Usage Statistics**:
+```python
+from hub.apps.baas.services import UsageTrackingService
+
+service = UsageTrackingService()
+stats = service.get_usage_statistics(api_key_id='...')
+```
+
+### Performance Tuning
+
+1. **Optimize Rate Limiting**: Use Redis for distributed rate limiting
+2. **Batch Usage Tracking**: Batch usage records for better performance
+3. **Cache Tier Information**: Cache tier limits to reduce database queries
+4. **Optimize Quota Checks**: Use Redis counters for quota tracking
+
+---
+
+## ODH Integration Troubleshooting
+
+### Symptoms
+- ML model operations failing
+- Training jobs not starting or completing
+- Inference predictions failing
+- ODH service connection errors
+- Model registry sync failures
+
+### Diagnosis
+
+1. **Check ODH Service Status**:
+```bash
+# Check ODH Model Registry
+curl http://odh-model-registry:8080/health
+
+# Check ODH Training Operator
+curl http://odh-training-operator:8080/health
+
+# Check ODH Inference Scheduler
+curl http://odh-inference-scheduler:8080/health
+```
+
+2. **Check ML Model Status**:
+```python
+from hub.apps.ml.models import MLModel, TrainingJob, InferenceDeployment
+
+# Check models
+models = MLModel.objects.filter(status='FAILED')
+for model in models:
+    print(f"{model.odh_model_id}: {model.status}")
+
+# Check training jobs
+jobs = TrainingJob.objects.filter(status='FAILED')
+for job in jobs:
+    print(f"{job.id}: {job.status}, {job.error_message}")
+
+# Check inference deployments
+deployments = InferenceDeployment.objects.filter(status='FAILED')
+for dep in deployments:
+    print(f"{dep.id}: {dep.status}, {dep.error_message}")
+```
+
+3. **Check ODH Client Configuration**:
+```python
+# Check ODH client availability
+from services.odh_integration.model_registry_client import ODHModelRegistryClient
+
+try:
+    client = ODHModelRegistryClient()
+    models = client.list_models()
+    print(f"ODH connection successful: {len(models)} models")
+except Exception as e:
+    print(f"ODH connection failed: {e}")
+```
+
+4. **Check Training Job Logs**:
+```bash
+# Get training job logs
+curl http://localhost:8000/api/v1/ml/training/jobs/{job_id}/logs/
+```
+
+### Common Issues
+
+#### Issue: ODH Service Connection Failed
+**Symptoms**: `ODH_CONNECTION_FAILED` errors, model operations timing out
+**Resolution**:
+1. Verify ODH services are running: `docker compose ps | grep odh`
+2. Check ODH service URLs: `ODH_MODEL_REGISTRY_URL` environment variable
+3. Test ODH service connectivity: `curl http://odh-service:8080/health`
+4. Review ODH client configuration: Check connection timeout settings
+5. Check network connectivity: Verify service-to-service communication
+
+#### Issue: Training Job Not Starting
+**Symptoms**: Training jobs stuck in `PENDING` or `RUNNING` status
+**Resolution**:
+1. Check training job configuration: Verify dataset and model IDs
+2. Verify dataset accessibility: Check dataset exists and is accessible
+3. Check DQ and compliance checks: Review validation results
+4. Review ODH Training Operator logs: `docker compose logs odh-training-operator`
+5. Check resource availability: Verify Kubernetes resources for training
+
+#### Issue: Training Job Failing
+**Symptoms**: Training jobs failing with errors, `ODH_TRAINING_JOB_FAILED`
+**Resolution**:
+1. Review training job logs: `GET /api/v1/ml/training/jobs/{id}/logs/`
+2. Check dataset validation: Verify dataset format and quality
+3. Review training configuration: Check epochs, batch_size, learning_rate
+4. Check ODH Training Operator status: Verify operator is healthy
+5. Review resource constraints: Check CPU/memory limits
+
+#### Issue: Inference Predictions Failing
+**Symptoms**: Inference requests returning errors, validation failures
+**Resolution**:
+1. Check inference deployment status: `InferenceDeployment.objects.get(id='...')`
+2. Verify input contract validation: Check input data format
+3. Check ODH Inference Scheduler: Verify scheduler is running
+4. Review inference logs: Check inference service logs
+5. Verify model is deployed: Check model status is `DEPLOYED`
+
+#### Issue: Model Registry Sync Failures
+**Symptoms**: Model metadata not syncing from ODH, sync errors
+**Resolution**:
+1. Check ODH Model Registry connection: Test client connectivity
+2. Verify model exists in ODH: `ODHModelRegistryClient().get_model('...')`
+3. Review sync workflow: Check ModelRegistryBridgeService logs
+4. Check tenant permissions: Verify tenant has access to ODH models
+5. Review sync error messages: Check model sync error logs
+
+### Resolution Steps
+
+1. **Restart ODH Services**:
+```bash
+docker compose restart odh-model-registry odh-training-operator odh-inference-scheduler
+```
+
+2. **Retry Failed Operations**:
+```python
+from hub.apps.ml.services import ModelRegistryBridgeService
+
+service = ModelRegistryBridgeService()
+# Retry model sync
+service.sync_from_odh(model_id='...')
+```
+
+3. **Cancel Stuck Training Jobs**:
+```bash
+curl -X POST http://localhost:8000/api/v1/ml/training/jobs/{job_id}/cancel/
+```
+
+4. **Redeploy Inference Deployment**:
+```bash
+# Undeploy
+curl -X DELETE http://localhost:8000/api/v1/ml/inference/deployments/{id}/
+
+# Redeploy
+curl -X POST http://localhost:8000/api/v1/ml/inference/deployments/ \
+  -H "Content-Type: application/json" \
+  -d '{"model_id": "...", "config": {...}}'
+```
+
+### Performance Tuning
+
+1. **Optimize Model Registry Queries**: Use database indexes for model lookups
+2. **Batch Training Job Submissions**: Batch multiple training jobs
+3. **Cache ODH Model Metadata**: Cache model metadata to reduce ODH API calls
+4. **Optimize Inference Latency**: Use model caching and request batching
+5. **Monitor Resource Usage**: Track CPU/memory usage for training and inference
+
+---
+
+## Frontend / SPA
+
+### Overview
+
+The frontend is a React + TypeScript Single Page Application (SPA) built with Vite and served via Nginx in production. It communicates with the backend API service through REST endpoints and WebSocket connections.
+
+**Architecture**:
+- **Development**: Vite dev server (port 5173) with hot module replacement
+- **Production**: Nginx serving static files built by Vite
+- **Container**: Docker multi-stage build (Node.js builder + Nginx runtime)
+- **Deployment**: Docker Compose (dev/staging) or Kubernetes (production)
+
+### Symptoms
+
+- Frontend not loading or showing blank page
+- API calls failing (CORS, 404, 502 errors)
+- WebSocket connections failing
+- Build failures
+- Environment variable issues
+- Health check failures
+
+### Diagnosis
+
+#### 1. Check Frontend Container Status
+
+```bash
+# Check container status
+docker compose ps frontend
+
+# Check container logs
+docker compose logs frontend --tail=100
+
+# Check container health
+docker inspect hub-frontend | grep -A 10 Health
+```
+
+#### 2. Check Frontend Health Endpoint
+
+```bash
+# Direct container check (from host)
+curl http://localhost:3000/
+
+# Health check (Nginx serves index.html)
+curl -I http://localhost:3000/
+
+# Check if Nginx is responding
+docker compose exec frontend wget -q -O /dev/null http://127.0.0.1/ && echo "✅ Nginx healthy"
+```
+
+#### 3. Check API Connectivity
+
+```bash
+# Check API proxy through frontend
+curl http://localhost:3000/api/v1/health/
+
+# Check direct API service
+curl http://localhost:8000/health/
+
+# Check WebSocket endpoint
+curl -i -N -H "Connection: Upgrade" -H "Upgrade: websocket" http://localhost:3000/ws/events/
+```
+
+#### 4. Check Environment Variables
+
+```bash
+# Check environment variables in container
+docker compose exec frontend env | grep VITE_
+
+# Verify build-time variables (check built files)
+docker compose exec frontend cat /usr/share/nginx/html/index.html | grep -o 'VITE_[^"]*' | head -5
+```
+
+#### 5. Check Build Output
+
+```bash
+# Check if build files exist
+docker compose exec frontend ls -la /usr/share/nginx/html/
+
+# Check build artifacts
+docker compose exec frontend ls -la /usr/share/nginx/html/assets/
+```
+
+### Common Issues
+
+#### Issue: Frontend Shows Blank Page
+
+**Symptoms**: Browser shows blank page, console errors about missing files or API errors
+
+**Root Causes**:
+1. Build failed or incomplete
+2. Environment variables not set correctly
+3. API base URL incorrect
+4. Nginx configuration issue
+
+**Resolution**:
+
+1. **Check Build Logs**:
+   ```bash
+   docker compose logs frontend | grep -i "build\|error\|failed"
+   ```
+
+2. **Rebuild Frontend**:
+   ```bash
+   docker compose build frontend --no-cache
+   docker compose up -d frontend
+   ```
+
+3. **Verify Environment Variables**:
+   ```bash
+   # Check docker-compose.yml
+   grep -A 10 "frontend:" docker-compose.yml | grep VITE_
+
+   # Verify in container
+   docker compose exec frontend env | grep VITE_API_BASE_URL
+   ```
+
+4. **Check Browser Console**:
+   - Open browser DevTools (F12)
+   - Check Console tab for JavaScript errors
+   - Check Network tab for failed API requests
+   - Verify `VITE_API_BASE_URL` is correctly set in built files
+
+5. **Verify API Service is Running**:
+   ```bash
+   docker compose ps api-service
+   curl http://localhost:8000/health/
+   ```
+
+#### Issue: API Calls Failing (CORS, 404, 502)
+
+**Symptoms**: Network errors in browser console, API requests returning errors
+
+**Root Causes**:
+1. API service not running or unhealthy
+2. Incorrect `VITE_API_BASE_URL` configuration
+3. Nginx proxy misconfiguration
+4. CORS issues (if using direct API access)
+
+**Resolution**:
+
+1. **Verify API Service Health**:
+   ```bash
+   docker compose ps api-service
+   docker compose logs api-service --tail=50
+   curl http://localhost:8000/health/
+   ```
+
+2. **Check API Base URL Configuration**:
+   ```bash
+   # Development (Vite dev server)
+   # Check .env file or environment
+   echo $VITE_API_BASE_URL
+
+   # Production (Nginx)
+   docker compose exec frontend env | grep VITE_API_BASE_URL
+   ```
+
+3. **Verify Nginx Proxy Configuration**:
+   ```bash
+   # Check nginx.conf
+   docker compose exec frontend cat /etc/nginx/conf.d/default.conf | grep -A 10 "location /api"
+
+   # Test proxy manually
+   curl -H "Host: localhost" http://localhost:3000/api/v1/health/
+   ```
+
+4. **Check CORS Configuration** (if accessing API directly):
+   ```bash
+   # Check Django CORS settings
+   docker compose exec api-service python -c "from django.conf import settings; print(settings.CORS_ALLOWED_ORIGINS)"
+   ```
+
+#### Issue: Frontend E2E — relation "users" does not exist
+
+**Symptoms**: Frontend E2E setup fails with `Registration failed: 500 - {"error":{"message":"relation \"users\" does not exist"...}}` when creating the test user via POST `/api/v1/auth/register/`.
+
+**Root Cause**: The test database (`hub_test_test_shared`) used by the API at port 8001 is not migrated or has inconsistent migration state. The API runs against the same DB as backend pytest; if `migrate-test-db` did not complete or the DB was reset, the `users` table may be missing.
+
+**Resolution**:
+
+1. **Ensure test stack is up with migrations**: `docker compose -f docker-compose.test.yml --env-file .env.test up -d` and wait until `migrate-test-db` completes (api-service-test depends on it). Check: `docker compose -f docker-compose.test.yml ps migrate-test-db` shows "exited (0)".
+
+2. **If DB was reset or corrupted**: `docker compose -f docker-compose.test.yml down -v` then `docker compose -f docker-compose.test.yml --env-file .env.test up -d` to recreate the DB and run migrations fresh. Wait for api-service-test to be healthy.
+
+3. **Run backend tests first** (creates DB and migrations via pytest): `./scripts/run_phase_12a_backend_suites.sh` or at least one pytest run with `--reuse-db`. Then run frontend E2E: `cd frontend && npm run test:e2e`.
+
+4. **Verify API health**: `curl -s http://localhost:8001/health/` should return 200. If registration still fails with "relation users does not exist", the API is using a DB without migrations.
+
+**References**: `docker-compose.test.yml` migrate-test-db service; api-service-test uses `POSTGRES_DB=hub_test_test_shared`; [Full test suite (Phase 12A-style)](#full-test-suite-phase-12a-style).
+
+---
+
+#### Issue: WebSocket Connections Failing
+
+**Symptoms**: WebSocket connection errors, real-time features not working
+
+**Root Causes**:
+1. WebSocket proxy misconfiguration
+2. API service WebSocket endpoint not available
+3. Network/firewall issues
+
+**Resolution**:
+
+1. **Check WebSocket Proxy Configuration**:
+   ```bash
+   docker compose exec frontend cat /etc/nginx/conf.d/default.conf | grep -A 10 "location /ws"
+   ```
+
+2. **Test WebSocket Endpoint**:
+   ```bash
+   # Test WebSocket connection
+   curl -i -N -H "Connection: Upgrade" -H "Upgrade: websocket" \
+     -H "Sec-WebSocket-Key: test" -H "Sec-WebSocket-Version: 13" \
+     http://localhost:3000/ws/events/
+   ```
+
+3. **Verify API Service WebSocket Support**:
+   ```bash
+   # Check Django channels/WebSocket configuration
+   docker compose logs api-service | grep -i "websocket\|channels"
+   ```
+
+#### Issue: Build Failures
+
+**Symptoms**: Docker build fails, TypeScript errors, missing dependencies
+
+**Root Causes**:
+1. TypeScript compilation errors
+2. Missing dependencies
+3. Node.js version mismatch
+4. Build cache issues
+
+**Resolution**:
+
+1. **Check Build Logs**:
+   ```bash
+   docker compose build frontend 2>&1 | tee build.log
+   grep -i "error\|failed" build.log
+   ```
+
+2. **Fix TypeScript Errors**:
+   ```bash
+   # Run typecheck locally
+   cd frontend
+   npm run typecheck
+   ```
+
+3. **Clear Build Cache**:
+   ```bash
+   docker compose build frontend --no-cache
+   ```
+
+4. **Verify Node.js Version**:
+   ```bash
+   # Check Dockerfile
+   grep "FROM node" frontend/Dockerfile
+
+   # Should match local Node.js version (if building locally)
+   node --version
+   ```
+
+#### Issue: Environment Variables Not Applied
+
+**Symptoms**: Frontend uses wrong API URL, features not working as expected
+
+**Root Causes**:
+1. Environment variables not set in docker-compose.yml
+2. Variables set at runtime instead of build time
+3. Vite build-time variables not included
+
+**Resolution**:
+
+1. **Check docker-compose.yml Configuration**:
+   ```bash
+   grep -A 15 "frontend:" docker-compose.yml | grep -E "VITE_|environment:"
+   ```
+
+2. **Verify Build-Time Variables**:
+   ```bash
+   # Vite variables must be prefixed with VITE_ and available at build time
+   # Check Dockerfile build stage
+   grep -A 5 "RUN npm run build" frontend/Dockerfile
+   ```
+
+3. **Rebuild with Correct Variables**:
+   ```bash
+   # Set variables before build
+   export VITE_API_BASE_URL=http://api-service:8000/api/v1
+   export VITE_WS_BASE_URL=ws://api-service:8000
+   docker compose build frontend
+   docker compose up -d frontend
+   ```
+
+### Deployment Procedures
+
+#### Development Deployment (Docker Compose)
+
+**Prerequisites**:
+- Docker and Docker Compose installed
+- Backend services (api-service, postgres, redis) running
+
+**Steps**:
+
+1. **Set Environment Variables**:
+   ```bash
+   # Create .env file or set in docker-compose.yml
+   export VITE_API_BASE_URL=http://api-service:8000/api/v1
+   export VITE_WS_BASE_URL=ws://api-service:8000
+   export VITE_ENV=development
+   ```
+
+2. **Build and Start Frontend**:
+   ```bash
+   # Build frontend image
+   docker compose build frontend
+
+   # Start frontend service
+   docker compose up -d frontend
+
+   # Check status
+   docker compose ps frontend
+   ```
+
+3. **Verify Deployment**:
+   ```bash
+   # Wait for health check
+   sleep 10
+
+   # Check health
+   curl http://localhost:3000/
+
+   # Check logs
+   docker compose logs frontend --tail=50
+   ```
+
+#### Production Deployment (Docker Compose)
+
+**Prerequisites**:
+- Production environment variables configured
+- Backend services healthy
+- SSL certificates (if using HTTPS)
+
+**Steps**:
+
+1. **Configure Production Environment**:
+   ```bash
+   # Set production variables
+   export VITE_API_BASE_URL=https://api.example.com/api/v1
+   export VITE_WS_BASE_URL=wss://api.example.com
+   export VITE_ENV=production
+   ```
+
+2. **Build Production Image**:
+   ```bash
+   docker compose -f docker-compose.production.yml build frontend
+   ```
+
+3. **Deploy**:
+   ```bash
+   # Start with production config
+   docker compose -f docker-compose.production.yml up -d frontend
+
+   # Verify
+   curl https://frontend.example.com/
+   ```
+
+#### Rollback Procedures
+
+**Rollback to Previous Version**:
+
+1. **Identify Previous Image**:
+   ```bash
+   # List available images
+   docker images | grep hub-frontend
+
+   # Tag of previous version (e.g., hub-frontend:20250129-120000)
+   ```
+
+2. **Stop Current Container**:
+   ```bash
+   docker compose stop frontend
+   ```
+
+3. **Start Previous Version**:
+   ```bash
+   # Update docker-compose.yml to use previous image tag
+   # Or pull and tag previous image
+   docker tag hub-frontend:previous-tag hub-frontend:latest
+   docker compose up -d frontend
+   ```
+
+4. **Verify Rollback**:
+   ```bash
+   # Check version in UI (if version endpoint exists)
+   curl http://localhost:3000/
+
+   # Check logs
+   docker compose logs frontend --tail=50
+   ```
+
+**Quick Rollback (Docker Compose)**:
+
+```bash
+# Stop and remove current container
+docker compose stop frontend
+docker compose rm -f frontend
+
+# Use previous image
+docker compose up -d frontend --no-build
+```
+
+### Health Checks
+
+#### Container Health Check
+
+The frontend container uses Nginx health check:
+
+```bash
+# Health check command (from docker-compose.yml)
+wget -q -O /dev/null http://127.0.0.1/ || exit 1
+
+# Manual health check
+docker compose exec frontend wget -q -O /dev/null http://127.0.0.1/ && echo "✅ Healthy"
+```
+
+#### Application Health Check
+
+**Check Frontend Accessibility**:
+```bash
+# Check HTTP response
+curl -I http://localhost:3000/
+
+# Check API proxy
+curl http://localhost:3000/api/v1/health/
+
+# Check WebSocket (if configured)
+curl -i -N -H "Connection: Upgrade" -H "Upgrade: websocket" http://localhost:3000/ws/events/
+```
+
+**Check Build Integrity**:
+```bash
+# Verify index.html exists
+docker compose exec frontend test -f /usr/share/nginx/html/index.html && echo "✅ index.html exists"
+
+# Verify assets directory
+docker compose exec frontend test -d /usr/share/nginx/html/assets && echo "✅ Assets directory exists"
+
+# Check for JavaScript files
+docker compose exec frontend ls -la /usr/share/nginx/html/assets/*.js | head -5
+```
+
+### Environment Variables
+
+#### Required Variables
+
+| Variable | Description | Default | Example |
+|----------|-------------|---------|---------|
+| `VITE_API_BASE_URL` | Backend API base URL | `http://localhost:8000/api/v1` | `http://api-service:8000/api/v1` |
+| `VITE_WS_BASE_URL` | WebSocket base URL | `ws://localhost:8000` | `ws://api-service:8000` |
+| `VITE_ENV` | Environment name | `development` | `production` |
+
+#### Optional Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `VITE_USE_TRAEFIK_ENTRYPOINT` | Use Traefik as entrypoint | unset/false |
+
+#### Configuration Notes
+
+- **Build-Time Variables**: All `VITE_*` variables are embedded at build time. Changes require rebuild.
+- **Runtime Variables**: Nginx proxy configuration can be adjusted without rebuild (via nginx.conf).
+- **Docker Compose**: Variables set in `docker-compose.yml` `environment:` section are available at build time if passed correctly.
+
+### Troubleshooting Commands
+
+```bash
+# Check frontend container status
+docker compose ps frontend
+
+# View logs
+docker compose logs frontend --tail=100 --follow
+
+# Check environment variables
+docker compose exec frontend env | grep VITE_
+
+# Test API connectivity from container
+docker compose exec frontend wget -q -O - http://api-service:8000/health/
+
+# Check Nginx configuration
+docker compose exec frontend cat /etc/nginx/conf.d/default.conf
+
+# Test Nginx configuration
+docker compose exec frontend nginx -t
+
+# Restart frontend
+docker compose restart frontend
+
+# Rebuild and restart
+docker compose build frontend && docker compose up -d frontend
+
+# Check build artifacts
+docker compose exec frontend ls -la /usr/share/nginx/html/
+
+# Check for JavaScript errors (browser console)
+# Open http://localhost:3000/ in browser and check DevTools Console
+```
+
+### Performance Tuning
+
+1. **Enable Gzip Compression**: Already configured in nginx.conf
+2. **Cache Static Assets**: Already configured (1 year cache for static files)
+3. **Optimize Build**: Use production build (`npm run build`)
+4. **CDN for Static Assets**: Consider CDN for production deployments
+
+### Monitoring
+
+- **Container Health**: Docker health check status
+- **Nginx Access Logs**: `docker compose logs frontend | grep "GET\|POST"`
+- **Error Logs**: `docker compose logs frontend | grep -i error`
+- **API Proxy Errors**: Check Nginx error logs for proxy failures
+
+---
+
+## References
+
+- [Database Indexes Documentation](./DATABASE_INDEXES.md)
+- [Monitoring & Observability](./MONITORING.md)
+- [Marketplace Connector Deployment Runbook](./runbooks/marketplace-connector-deployment.md)
+- [Marketplace Connector Development Guide](./connectors/DEVELOPMENT.md)
+- [Marketplace Test Documentation](../hub/apps/integrations/tests/README_MARKETPLACE_TESTS.md)
+- [BaaS Platform CLI Usage Guide](../cli/docs/BAAS_USAGE.md) - BaaS troubleshooting commands
+- [BaaS Platform SDK Usage Guide](../sdk/python/docs/BAAS_USAGE.md) - BaaS SDK error handling
+- [ODH Integration CLI Usage Guide](../cli/docs/ODH_USAGE.md) - ODH troubleshooting commands
+- [ODH Integration SDK Usage Guide](../sdk/python/docs/ODH_USAGE.md) - ODH SDK error handling
+- [Frontend Architecture Documentation](./UI/FRONTEND_ARCHITECTURE.md)
+- [Frontend Deployment Guide](./UI/DEPLOYMENT.md)
+

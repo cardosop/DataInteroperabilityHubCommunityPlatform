@@ -1,0 +1,96 @@
+{
+  "summary": {
+    "total_journeys": 1,
+    "completed": 0,
+    "failed": 1,
+    "in_progress": 0,
+    "average_completion_rate": 0.0,
+    "average_success_rate": 0.0,
+    "average_duration": 0.0
+  },
+  "journeys": [
+    {
+      "journey_id": "DC-001-7f0347c1",
+      "journey_name": "Discover and Purchase Marketplace Asset",
+      "persona": "Data Consumer / Buyer",
+      "status": "failed",
+      "start_time": 1765586776.2855127,
+      "end_time": 1765586777.9145286,
+      "duration": 1.6290159225463867,
+      "completion_rate": 80.0,
+      "success_rate": 80.0,
+      "error_message": "assert 404 == 200\n +  where 404 = <Response status_code=404, \"application/json\">.status_code",
+      "error_type": "AssertionError",
+      "steps": [
+        {
+          "step_name": "Provider Creates Asset",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765586776.2855225,
+          "end_time": 1765586777.8470497,
+          "duration": 1.5615272521972656,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "str"
+          }
+        },
+        {
+          "step_name": "Provider Creates Listing",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765586777.8470626,
+          "end_time": 1765586777.851466,
+          "duration": 0.004403352737426758,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "UUID"
+          }
+        },
+        {
+          "step_name": "Provider Publishes Listing",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765586777.851473,
+          "end_time": 1765586777.8542075,
+          "duration": 0.0027344226837158203,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "UUID"
+          }
+        },
+        {
+          "step_name": "Browse Marketplace",
+          "status": "StepStatus.COMPLETED",
+          "start_time": 1765586777.8542163,
+          "end_time": 1765586777.9002695,
+          "duration": 0.046053171157836914,
+          "error_message": null,
+          "error_type": null,
+          "retry_count": 0,
+          "metadata": {
+            "result_type": "ReturnList"
+          }
+        },
+        {
+          "step_name": "View Asset Details",
+          "status": "StepStatus.FAILED",
+          "start_time": 1765586777.9002771,
+          "end_time": 1765586777.9145238,
+          "duration": 0.014246702194213867,
+          "error_message": "assert 404 == 200\n +  where 404 = <Response status_code=404, \"application/json\">.status_code",
+          "error_type": "AssertionError",
+          "retry_count": 0,
+          "metadata": {
+            "args": "('37e4cba0-90a1-4de6-b0d5-26d0913914cb',)",
+            "kwargs": "{}"
+          }
+        }
+      ],
+      "metadata": {}
+    }
+  ],
+  "exported_at": "2025-12-13T00:46:17.914659"
+}

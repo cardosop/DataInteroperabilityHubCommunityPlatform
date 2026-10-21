@@ -1,0 +1,41 @@
+# 280.C.1.2 — French translations for backend error messages.
+# Generated 2026-05-15. Human review required before production.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Meshant Hub\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-05-15 00:00+0000\n"
+"PO-Revision-Date: 2026-05-15 00:00+0000\n"
+"Last-Translator: Machine seed <dev@meshant.com>\n"
+"Language-Team: French <dev@meshant.com>\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+#: hub/apps/core/error_handling/error_responses.py
+msgid "Invalid request"
+msgstr "Requête non valide"
+
+msgid "Authentication required"
+msgstr "Authentification requise"
+
+msgid "Permission denied"
+msgstr "Autorisation refusée"
+
+msgid "Resource not found"
+msgstr "Ressource introuvable"
+
+msgid "Resource conflict"
+msgstr "Conflit de ressource"
+
+msgid "Rate limit exceeded"
+msgstr "Limite de débit dépassée"
+
+msgid "Internal server error"
+msgstr "Erreur interne du serveur"
+
+msgid "An error occurred"
+msgstr "Une erreur s'est produite"
