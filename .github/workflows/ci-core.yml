@@ -93,6 +93,10 @@ jobs:
       # they reach a publish — no database required.
       - name: Boot smoke (core-only)
         run: |
+          # G12: no committed SECRET_KEY default — the runner-side
+          # management commands get an EPHEMERAL per-run key (the
+          # recreated public repo carries no secrets by design).
+          export SECRET_KEY="ci-ephemeral-$(openssl rand -hex 24)"
           HUB_CORE_ONLY=1 python scripts/core_boot_smoke.py
 
   test-core:
