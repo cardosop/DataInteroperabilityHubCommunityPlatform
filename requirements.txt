@@ -29,7 +29,7 @@ django-redis>=5.4.0,<6.0
 pyclamd>=0.4.0
 
 # GraphQL
-strawberry-graphql[django]==0.327.2
+strawberry-graphql[django]==0.336.0
 graphene-django==3.2.3
 
 # Authentication & Security
