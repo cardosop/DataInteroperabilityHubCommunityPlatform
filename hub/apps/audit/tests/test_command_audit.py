@@ -53,12 +53,18 @@ class _ExplodingCommand(AuditedCommand):
 
 class AuditedCommandTest(TestCase):
     def test_success_emits_executed_row(self):
+        before = AuditEvent.objects.filter(
+            resource_type=MANAGEMENT_COMMAND_RESOURCE_TYPE
+        ).count()
         call_command(_ProbeCommand(), secret_option="do-not-leak", verbosity=0)
 
+        # P3-1: count the DELTA — the shared DB accumulates residue rows
+        # from prior runs, so an absolute count assertion is residue-
+        # sensitive (the 59-vs-1 failure class).
         rows = list(
             AuditEvent.objects.filter(resource_type=MANAGEMENT_COMMAND_RESOURCE_TYPE)
         )
-        assert len(rows) == 1
+        assert len(rows) == before + 1
         row = rows[0]
         assert row.action == MANAGEMENT_COMMAND_EXECUTED
         assert row.result == "SUCCESS"
@@ -70,13 +76,17 @@ class AuditedCommandTest(TestCase):
         assert "secret_option" in row.details_json["options"]
 
     def test_failure_emits_failed_row_and_propagates(self):
+        before = AuditEvent.objects.filter(
+            resource_type=MANAGEMENT_COMMAND_RESOURCE_TYPE
+        ).count()
         with pytest.raises(RuntimeError, match="probe explosion"):
             call_command(_ExplodingCommand(), verbosity=0)
 
         rows = list(
             AuditEvent.objects.filter(resource_type=MANAGEMENT_COMMAND_RESOURCE_TYPE)
         )
-        assert len(rows) == 1
+        # P3-1: delta-counted (the shared-DB residue class).
+        assert len(rows) == before + 1
         assert rows[0].action == MANAGEMENT_COMMAND_FAILED
         assert rows[0].result == "FAILURE"
         assert rows[0].details_json["command"].endswith("_ExplodingCommand")

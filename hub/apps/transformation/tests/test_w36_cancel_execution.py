@@ -65,6 +65,26 @@ class TransformationCancelExecutionTest(TestCase):
             password="testpass123",
             tenant=self.tenant,
         )
+        # P3-1: the execution surface requires the transformation scopes
+        # (the viewset's HasScope contract; scopes resolve from the
+        # user's ROLES) — the pre-fix tests had no roles and every
+        # cancel returned 403 AUTH_FORBIDDEN before reaching the view
+        # body. Mirrors the canonical test_views.py setup.
+        from hub.apps.auth.models import APIKey
+        from hub.apps.users.models import Role
+
+        APIKey.objects.create(
+            tenant=self.tenant,
+            user=self.user,
+            name="w36-test-key",
+            scopes=["transformation:write", "transformation:read"],
+        )
+        data_provider_role, _ = Role.objects.get_or_create(
+            tenant=self.tenant,
+            name="DATA_PROVIDER",
+            defaults={"description": "Data Provider Role"},
+        )
+        self.user.user_roles.create(role=data_provider_role)
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
 

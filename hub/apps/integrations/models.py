@@ -415,7 +415,7 @@ class MarketplaceSyncJob(models.Model):
                 provided (Phase 77).
         """
         if not isinstance(error_message, str):
-            raise TypeError("Error message must be a string")
+            raise ValueError("Error message must be a string")
 
         if not error_message.strip():
             raise ValueError("Error message cannot be empty")

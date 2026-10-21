@@ -295,7 +295,10 @@ class MarketplaceConnectionViewSet(MarketplaceIntegrationMixin, viewsets.ModelVi
     filter_backends = (OrderingFilter, SearchFilter)
     ordering_fields = ("name", "marketplace_type", "is_active", "created_at", "updated_at")
     ordering = "-created_at"  # Default ordering
-    search_fields = "name"
+    # P3-1 (the W11.11 defect class): a bare-string search_fields makes
+    # DRF iterate the string's CHARACTERS as fields (FieldError "Cannot
+    # resolve keyword 'n'") — a list of field names is the contract.
+    search_fields = ["name"]
     pagination_class = MarketplaceIntegrationPagination
 
     def get_permissions(self):

@@ -16,6 +16,7 @@ boundary around the network call, not around our own code paths.
 from __future__ import annotations
 
 import json
+import tempfile
 from datetime import date, timedelta
 from io import StringIO
 from pathlib import Path
@@ -95,7 +96,8 @@ class NotifyCommandTests(TestCase):
     # Dry-run path (no email sent)
     # --------------------------------------------------------------
 
-    def test_dry_run_reports_per_tenant_dispatch_plan_without_sending(self, tmp_path: Path):
+    def test_dry_run_reports_per_tenant_dispatch_plan_without_sending(self):
+        tmp_path = Path(tempfile.mkdtemp(prefix="wave0-"))
         tmp_path / "audit-reports"
         try:
             t1 = _create_tenant("Acme")
@@ -123,7 +125,8 @@ class NotifyCommandTests(TestCase):
                 )
 
             output = out.getvalue()
-            assert "Acme" in output and "Globex" in output, output
+            assert "Acme" in output, output
+            assert "Globex" in output, output
             # Dry-run reports the planned per-tenant counts.
             assert "2" in output
             assert "1" in output
@@ -136,7 +139,8 @@ class NotifyCommandTests(TestCase):
     # Real dispatch path
     # --------------------------------------------------------------
 
-    def test_dispatch_calls_send_email_async_for_each_admin(self, tmp_path: Path):
+    def test_dispatch_calls_send_email_async_for_each_admin(self):
+        tmp_path = Path(tempfile.mkdtemp(prefix="wave0-"))
         tmp_path / "audit-reports"
         try:
             tenant = _create_tenant("Acme")
@@ -168,7 +172,8 @@ class NotifyCommandTests(TestCase):
         finally:
             self._cleanup(tmp_path)
 
-    def test_skips_tenant_with_no_admin_with_warning(self, tmp_path: Path):
+    def test_skips_tenant_with_no_admin_with_warning(self):
+        tmp_path = Path(tempfile.mkdtemp(prefix="wave0-"))
         tmp_path / "audit-reports"
         try:
             tenant_with_admin = _create_tenant("WithAdmin")
@@ -207,7 +212,8 @@ class NotifyCommandTests(TestCase):
     # Drift guard
     # --------------------------------------------------------------
 
-    def test_skips_contracts_no_longer_structureless(self, tmp_path: Path):
+    def test_skips_contracts_no_longer_structureless(self):
+        tmp_path = Path(tempfile.mkdtemp(prefix="wave0-"))
         """If a contract was structureless when the JSONL was captured
         but has since been remediated, the dispatcher must NOT include
         it in the per-tenant body — drift would mislead customers."""
@@ -258,7 +264,8 @@ class NotifyCommandTests(TestCase):
     # Audit trail
     # --------------------------------------------------------------
 
-    def test_writes_audit_trail_jsonl(self, tmp_path: Path):
+    def test_writes_audit_trail_jsonl(self):
+        tmp_path = Path(tempfile.mkdtemp(prefix="wave0-"))
         tmp_path / "audit-reports"
         try:
             tenant = _create_tenant("Acme")
@@ -297,7 +304,8 @@ class NotifyCommandTests(TestCase):
     # Tenant filter
     # --------------------------------------------------------------
 
-    def test_tenant_id_flag_scopes_dispatch(self, tmp_path: Path):
+    def test_tenant_id_flag_scopes_dispatch(self):
+        tmp_path = Path(tempfile.mkdtemp(prefix="wave0-"))
         tmp_path / "audit-reports"
         try:
             t1 = _create_tenant("Acme")
@@ -331,7 +339,8 @@ class NotifyCommandTests(TestCase):
     # Date validation
     # --------------------------------------------------------------
 
-    def test_rejects_invalid_deadline_format(self, tmp_path: Path):
+    def test_rejects_invalid_deadline_format(self):
+        tmp_path = Path(tempfile.mkdtemp(prefix="wave0-"))
         tmp_path / "audit-reports"
         try:
             artefact = _write_jsonl(tmp_path, [])
@@ -350,7 +359,8 @@ class NotifyCommandTests(TestCase):
         finally:
             self._cleanup(tmp_path)
 
-    def test_rejects_past_deadline(self, tmp_path: Path):
+    def test_rejects_past_deadline(self):
+        tmp_path = Path(tempfile.mkdtemp(prefix="wave0-"))
         """A T-14 notification with a deadline in the past is a runbook
         violation — the operator must use a future date."""
         tmp_path / "audit-reports"

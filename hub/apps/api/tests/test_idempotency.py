@@ -555,7 +555,9 @@ class TestIdempotencyMiddleware(TestCase):
         # Should return 400 error
         self.assertEqual(response.status_code, 400)
         response_data = json.loads(response.content)
-        self.assertIn("error", response_data)
+        # W12.5 canonical flat envelope
+        self.assertIn("detail", response_data)
+        self.assertIn("code", response_data)
 
     @override_settings(REDIS_URL="redis://invalid-host:6379/0")
     def test_middleware_handles_redis_connection_error(self):
@@ -707,9 +709,9 @@ class TestIdempotencyMiddleware(TestCase):
         # Should return 400 error
         self.assertEqual(response.status_code, 400)
         response_data = json.loads(response.content)
-        self.assertIn("error", response_data)
+        self.assertIn("detail", response_data)
         # Error should reference idempotency
-        self.assertIn("idempotency", response_data["error"]["message"].lower())
+        self.assertIn("idempotency", response_data["detail"].lower())
 
     @patch("hub.apps.api.middleware.idempotency.get_redis_client")
     @patch("hub.apps.api.middleware.idempotency.acquire_lock")
@@ -771,7 +773,7 @@ class TestIdempotencyMiddleware(TestCase):
 
         self.assertEqual(response.status_code, 410)
         response_data = json.loads(response.content)
-        self.assertEqual(response_data["error"]["code"], "IDEMPOTENCY_KEY_EXPIRED")
+        self.assertEqual(response_data["code"], "IDEMPOTENCY_KEY_EXPIRED")
 
     @patch("hub.apps.api.middleware.idempotency.get_redis_client")
     def test_get_request_body_uses_drf_data_attribute(self, mock_get_redis):

@@ -67,9 +67,10 @@ class TestIdempotencyErrorHandling(TestCase):
 
             self.assertEqual(response.status_code, 400, f"Failed for key: {invalid_key}")
             response_data = json.loads(response.content)
-            self.assertIn("error", response_data)
-            self.assertEqual(response_data["error"]["code"], "INVALID_IDEMPOTENCY_KEY")
-            self.assertEqual(response_data["error"]["http_status"], 400)
+            self.assertIn("detail", response_data)
+            self.assertIn("code", response_data)
+            self.assertEqual(response_data["code"], "INVALID_IDEMPOTENCY_KEY")
+            self.assertEqual(response.status_code, 400)
 
         # Test empty key separately — the middleware skips empty keys
         # (process_request returns None), then the request is processed
@@ -199,8 +200,8 @@ class TestIdempotencyErrorHandling(TestCase):
 
         self.assertEqual(response.status_code, 410)
         response_body = json.loads(response.content)
-        self.assertEqual(response_body["error"]["code"], "IDEMPOTENCY_KEY_EXPIRED")
-        self.assertEqual(response_body["error"]["http_status"], 410)
+        self.assertEqual(response_body["code"], "IDEMPOTENCY_KEY_EXPIRED")
+        self.assertEqual(response.status_code, 410)
 
     def test_idempotency_conflict_returns_409(self):
         """Test idempotency conflict (same key, different body) returns 409."""
@@ -236,9 +237,10 @@ class TestIdempotencyErrorHandling(TestCase):
         # Should return 409 Conflict
         self.assertEqual(response.status_code, 409)
         response_data = json.loads(response.content)
-        self.assertIn("error", response_data)
-        self.assertEqual(response_data["error"]["code"], "IDEMPOTENCY_CONFLICT")
-        self.assertEqual(response_data["error"]["http_status"], 409)
+        self.assertIn("detail", response_data)
+        self.assertIn("code", response_data)
+        self.assertEqual(response_data["code"], "IDEMPOTENCY_CONFLICT")
+        self.assertEqual(response.status_code, 409)
         self.assertIn("Idempotency-Key", response)
 
     def test_invalid_json_in_redis_record_handled_gracefully(self):

@@ -15,6 +15,7 @@ verify the artefact file shape end-to-end.
 from __future__ import annotations
 
 import json
+import tempfile
 from datetime import date
 from io import StringIO
 from pathlib import Path
@@ -53,7 +54,8 @@ def _create_contract(tenant, *, hub_contract_json=None, original_raw: str = ""):
 
 @pytest.mark.django_db(transaction=True)
 class CaptureCommandTests(TestCase):
-    def test_creates_audit_reports_directory_if_missing(self, tmp_path: Path):
+    def test_creates_audit_reports_directory_if_missing(self):
+        tmp_path = Path(tempfile.mkdtemp(prefix="wave0-"))
         tmp_path = tmp_path / "audit-reports"
         if tmp_path.exists():
             for p in tmp_path.iterdir():
@@ -78,7 +80,8 @@ class CaptureCommandTests(TestCase):
                     p.unlink()
                 tmp_path.rmdir()
 
-    def test_writes_jsonl_with_today_date_in_filename(self, tmp_path: Path):
+    def test_writes_jsonl_with_today_date_in_filename(self):
+        tmp_path = Path(tempfile.mkdtemp(prefix="wave0-"))
         tmp_path = tmp_path / "audit-reports"
         try:
             tenant = _create_tenant()
@@ -103,7 +106,8 @@ class CaptureCommandTests(TestCase):
                     p.unlink()
                 tmp_path.rmdir()
 
-    def test_jsonl_contains_one_row_per_structureless_contract(self, tmp_path: Path):
+    def test_jsonl_contains_one_row_per_structureless_contract(self):
+        tmp_path = Path(tempfile.mkdtemp(prefix="wave0-"))
         tmp_path = tmp_path / "audit-reports"
         try:
             tenant = _create_tenant()
@@ -146,7 +150,8 @@ class CaptureCommandTests(TestCase):
                     p.unlink()
                 tmp_path.rmdir()
 
-    def test_stdout_summary_includes_path_and_count(self, tmp_path: Path):
+    def test_stdout_summary_includes_path_and_count(self):
+        tmp_path = Path(tempfile.mkdtemp(prefix="wave0-"))
         tmp_path = tmp_path / "audit-reports"
         try:
             tenant = _create_tenant()
@@ -174,7 +179,8 @@ class CaptureCommandTests(TestCase):
                     p.unlink()
                 tmp_path.rmdir()
 
-    def test_idempotent_overwrite_warns_and_replaces(self, tmp_path: Path):
+    def test_idempotent_overwrite_warns_and_replaces(self):
+        tmp_path = Path(tempfile.mkdtemp(prefix="wave0-"))
         tmp_path = tmp_path / "audit-reports"
         try:
             tenant = _create_tenant()
@@ -202,7 +208,8 @@ class CaptureCommandTests(TestCase):
                     p.unlink()
                 tmp_path.rmdir()
 
-    def test_passes_tenant_id_through(self, tmp_path: Path):
+    def test_passes_tenant_id_through(self):
+        tmp_path = Path(tempfile.mkdtemp(prefix="wave0-"))
         tmp_path = tmp_path / "audit-reports"
         try:
             t1 = _create_tenant("Tenant A")

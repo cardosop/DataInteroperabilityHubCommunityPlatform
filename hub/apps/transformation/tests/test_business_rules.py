@@ -1336,12 +1336,17 @@ class TransformationBusinessRulesTest(TestCase):
             status=PipelineStatus.ACTIVE,
         )
 
-        # Set running jobs to exceed limit
+        # Set running jobs to exceed limit. P3-1: BOTH counters must be
+        # set — a missing queued key triggers the W2.8 DB reconciliation
+        # (the drift design), which rebuilds the counts from the Job
+        # table and silently zeroes the seeded running counter.
         limits = get_tenant_job_limits(str(self.tenant.id))
         max_concurrency = limits["max_job_concurrency"]
 
         running_key = f"job:tenant:{self.tenant.id}:running"
+        queued_key = f"job:tenant:{self.tenant.id}:queued"
         cache.set(running_key, max_concurrency, timeout=300)  # Set to limit
+        cache.set(queued_key, 0, timeout=300)
 
         business_rules = TransformationBusinessRules(tenant_id=str(self.tenant.id))
 
@@ -1350,6 +1355,7 @@ class TransformationBusinessRulesTest(TestCase):
 
         # Cleanup
         cache.delete(running_key)
+        cache.delete(queued_key)
 
     def test_validate_pipeline_execution_permission_success(self):
         """Test pipeline execution permission validation with allowed access"""

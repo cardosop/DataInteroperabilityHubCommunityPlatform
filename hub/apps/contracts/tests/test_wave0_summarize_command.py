@@ -17,6 +17,7 @@ assert markdown substrings + counts.
 from __future__ import annotations
 
 import json
+import tempfile
 from io import StringIO
 from pathlib import Path
 
@@ -88,7 +89,8 @@ def _row(contract, classification: str = "odcs_no_schema_block"):
 
 @pytest.mark.django_db(transaction=True)
 class SummarizeCommandTests(TestCase):
-    def test_summarizes_total_count(self, tmp_path: Path):
+    def test_summarizes_total_count(self):
+        tmp_path = Path(tempfile.mkdtemp(prefix="wave0-"))
         tmp_path / "audit-reports"
         try:
             tenant = _create_tenant()
@@ -109,7 +111,8 @@ class SummarizeCommandTests(TestCase):
         finally:
             self._cleanup(tmp_path)
 
-    def test_per_classification_breakdown(self, tmp_path: Path):
+    def test_per_classification_breakdown(self):
+        tmp_path = Path(tempfile.mkdtemp(prefix="wave0-"))
         tmp_path / "audit-reports"
         try:
             tenant = _create_tenant()
@@ -142,7 +145,8 @@ class SummarizeCommandTests(TestCase):
         finally:
             self._cleanup(tmp_path)
 
-    def test_per_tenant_breakdown_joins_tenant_name(self, tmp_path: Path):
+    def test_per_tenant_breakdown_joins_tenant_name(self):
+        tmp_path = Path(tempfile.mkdtemp(prefix="wave0-"))
         tmp_path / "audit-reports"
         try:
             t1 = _create_tenant("Acme Corp")
@@ -166,7 +170,8 @@ class SummarizeCommandTests(TestCase):
         finally:
             self._cleanup(tmp_path)
 
-    def test_handles_unknown_tenant_id_gracefully(self, tmp_path: Path):
+    def test_handles_unknown_tenant_id_gracefully(self):
+        tmp_path = Path(tempfile.mkdtemp(prefix="wave0-"))
         """A row with a tenant_id that no longer exists must surface as
         '(unknown tenant)' rather than crashing the summarizer."""
         tmp_path / "audit-reports"
@@ -200,7 +205,8 @@ class SummarizeCommandTests(TestCase):
         finally:
             self._cleanup(tmp_path)
 
-    def test_flags_tenants_without_admin(self, tmp_path: Path):
+    def test_flags_tenants_without_admin(self):
+        tmp_path = Path(tempfile.mkdtemp(prefix="wave0-"))
         tmp_path / "audit-reports"
         try:
             with_admin = _create_tenant("WithAdmin")
@@ -228,7 +234,8 @@ class SummarizeCommandTests(TestCase):
         finally:
             self._cleanup(tmp_path)
 
-    def test_writes_to_output_file_when_specified(self, tmp_path: Path):
+    def test_writes_to_output_file_when_specified(self):
+        tmp_path = Path(tempfile.mkdtemp(prefix="wave0-"))
         tmp_path / "audit-reports"
         try:
             tenant = _create_tenant()
@@ -249,7 +256,8 @@ class SummarizeCommandTests(TestCase):
         finally:
             self._cleanup(tmp_path)
 
-    def test_handles_empty_jsonl_with_clean_message(self, tmp_path: Path):
+    def test_handles_empty_jsonl_with_clean_message(self):
+        tmp_path = Path(tempfile.mkdtemp(prefix="wave0-"))
         tmp_path / "audit-reports"
         try:
             artefact = _write_jsonl(tmp_path, [])
@@ -267,7 +275,8 @@ class SummarizeCommandTests(TestCase):
         finally:
             self._cleanup(tmp_path)
 
-    def test_skips_malformed_lines_with_warning(self, tmp_path: Path):
+    def test_skips_malformed_lines_with_warning(self):
+        tmp_path = Path(tempfile.mkdtemp(prefix="wave0-"))
         tmp_path / "audit-reports"
         try:
             tmp_path.mkdir(parents=True, exist_ok=True)

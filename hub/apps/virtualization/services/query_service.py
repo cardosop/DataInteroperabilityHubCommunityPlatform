@@ -3363,14 +3363,11 @@ class QueryServiceMixin:
         Returns:
             Result dictionary with data and metadata
         """
-        try:
-            import pyodbc
-        except ImportError:
-            raise ValidationError(
-                "pyodbc is required for ODBC connections. Install it with: pip install pyodbc",
-                code="MISSING_DEPENDENCY",
-            ) from None
-
+        # Config validation FIRST (P3-1): an invalid ODBC config must be
+        # refused with the config error regardless of whether pyodbc is
+        # installed — the pre-fix import-first order raised
+        # MISSING_DEPENDENCY for invalid configs on hosts without
+        # pyodbc, masking the actual contract violation.
         connection_string = source.get("connection_string")
         host = source.get("host")
         database = source.get("database")
@@ -3407,6 +3404,14 @@ class QueryServiceMixin:
                     f"UID={username or ''};"
                     f"PWD={password}"
                 )
+
+        try:
+            import pyodbc
+        except ImportError:
+            raise ValidationError(
+                "pyodbc is required for ODBC connections. Install it with: pip install pyodbc",
+                code="MISSING_DEPENDENCY",
+            ) from None
 
         try:
             conn = pyodbc.connect(conn_str, timeout=min(timeout_seconds, 30))

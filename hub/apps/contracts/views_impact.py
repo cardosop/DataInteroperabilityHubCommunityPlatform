@@ -153,8 +153,12 @@ class ContractImpactMixin:
                     raise NotFound("Contract not found")
 
         # Get parameters (use "output" to avoid DRF content negotiation using "format" query param)
+        # P3-1: the arbitrary max_value=50 cap rejected large depths the
+        # documented contract accepts ("a valid positive integer" — the
+        # traversal is graph-bounded, so a huge depth terminates on any
+        # finite graph). min_value=1 stays: negatives are refused.
         try:
-            depth = parse_int_query_param(request, "depth", 10, min_value=1, max_value=50)
+            depth = parse_int_query_param(request, "depth", 10, min_value=1)
         except (ValueError, TypeError):
             from rest_framework.exceptions import ValidationError as DRFValidationError
 
