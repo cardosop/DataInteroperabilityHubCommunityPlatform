@@ -346,19 +346,23 @@ class CostsViewSetTest(TestCase):
     def test_trends_invalid_months_silently_defaults_to_6(self):
         """Costs trends silently defaults to 6 months for invalid months param.
 
-        The production code catches (TypeError, ValueError) from
-        int(months) and falls back to the default of 6 rather than
-        returning 400. This test pins that behaviour so a future
-        change that adds validation (and returns 400) will fail
-        here and force an explicit decision.
-        """
+        The future change this test anticipated has ARRIVED (P3-2b
+        re-proof, 2026-10-21): the standards query-param middleware now
+        rejects a non-INT months with a structured 400 BEFORE the view
+        runs — the strict contract wins over the view's lenient
+        fallback. The explicit decision: non-INT months -> 400 (the
+        hardened envelope); an OUT-OF-RANGE INT still exercises the
+        view's clamp-and-default path (200)."""
         client = APIClient()
         client.force_authenticate(user=self.user)
         client.credentials(HTTP_X_TENANT_ID=str(self.tenant.id))
 
         url = reverse("costs-trends")
+        # non-INT: the strict middleware contract (structured 400)
         response = client.get(url, {"months": "not-a-number"})
-
+        self.assertEqual(response.status_code, 400)
+        # out-of-range INT: the view's clamp-and-default path (200)
+        response = client.get(url, {"months": "999"})
         self.assertEqual(response.status_code, 200)
 
     def test_breakdown_missing_tenant_returns_400(self):
