@@ -51,7 +51,7 @@ jobs:
         # its real-file fixtures reference private-tree sites; it runs in
         # the private repo's quality-gates workflow.
       - name: gitleaks
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
