@@ -82,4 +82,4 @@ prefect>=3.6.15,<4.0
 # Event Bus POC (Kafka/RabbitMQ) — test dependencies for proof-of-concept implementations
 # Used by tests/integration/test_kafka_rabbitmq_poc.py
 kafka-python>=2.0.2
-pika>=1.3.2
+pika>=1.4.4
