@@ -58,7 +58,7 @@ class TestAPIValidationMiddleware(TestCase):
         self.assertIsInstance(response, JsonResponse)
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         data = json.loads(response.content)
-        self.assertEqual(data["error"]["code"], StandardErrorCodes.INVALID_FORMAT)
+        self.assertEqual(data["code"], StandardErrorCodes.INVALID_FORMAT)
 
     def test_process_request_post_with_invalid_json(self):
         """Test middleware rejects POST with invalid JSON."""
@@ -74,7 +74,7 @@ class TestAPIValidationMiddleware(TestCase):
         self.assertIsInstance(response, JsonResponse)
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         data = json.loads(response.content)
-        self.assertEqual(data["error"]["code"], StandardErrorCodes.INVALID_FORMAT)
+        self.assertEqual(data["code"], StandardErrorCodes.INVALID_FORMAT)
 
     def test_process_request_post_with_empty_body(self):
         """Test middleware allows POST with empty body."""
@@ -102,7 +102,7 @@ class TestAPIValidationMiddleware(TestCase):
         self.assertIsInstance(response, JsonResponse)
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         data = json.loads(response.content)
-        self.assertEqual(data["error"]["code"], StandardErrorCodes.VALIDATION_ERROR)
+        self.assertEqual(data["code"], StandardErrorCodes.VALIDATION_ERROR)
 
     def test_validate_query_params_invalid_page_non_integer(self):
         """Test validating invalid non-integer page parameter."""
@@ -114,7 +114,7 @@ class TestAPIValidationMiddleware(TestCase):
         self.assertIsInstance(response, JsonResponse)
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         data = json.loads(response.content)
-        self.assertEqual(data["error"]["code"], StandardErrorCodes.VALIDATION_ERROR)
+        self.assertEqual(data["code"], StandardErrorCodes.VALIDATION_ERROR)
 
     def test_validate_query_params_valid_page_size(self):
         """Test validating valid page_size parameter."""
@@ -134,7 +134,7 @@ class TestAPIValidationMiddleware(TestCase):
         self.assertIsInstance(response, JsonResponse)
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         data = json.loads(response.content)
-        self.assertEqual(data["error"]["code"], StandardErrorCodes.VALIDATION_ERROR)
+        self.assertEqual(data["code"], StandardErrorCodes.VALIDATION_ERROR)
 
     def test_validate_query_params_invalid_page_size_too_large(self):
         """Test validating invalid page_size parameter (too large)."""
@@ -146,7 +146,7 @@ class TestAPIValidationMiddleware(TestCase):
         self.assertIsInstance(response, JsonResponse)
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         data = json.loads(response.content)
-        self.assertEqual(data["error"]["code"], StandardErrorCodes.VALIDATION_ERROR)
+        self.assertEqual(data["code"], StandardErrorCodes.VALIDATION_ERROR)
 
     def test_validate_query_params_invalid_page_size_non_integer(self):
         """Test validating invalid non-integer page_size parameter."""
@@ -158,7 +158,7 @@ class TestAPIValidationMiddleware(TestCase):
         self.assertIsInstance(response, JsonResponse)
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         data = json.loads(response.content)
-        self.assertEqual(data["error"]["code"], StandardErrorCodes.VALIDATION_ERROR)
+        self.assertEqual(data["code"], StandardErrorCodes.VALIDATION_ERROR)
 
     def test_validate_query_params_valid_ordering(self):
         """Test validating valid ordering parameter."""
@@ -178,7 +178,7 @@ class TestAPIValidationMiddleware(TestCase):
         self.assertIsInstance(response, JsonResponse)
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         data = json.loads(response.content)
-        self.assertEqual(data["error"]["code"], StandardErrorCodes.VALIDATION_ERROR)
+        self.assertEqual(data["code"], StandardErrorCodes.VALIDATION_ERROR)
 
     def test_process_request_w3c_ldn_inbox_skips_validation(self):
         """Test that POST to W3C LDN inbox is exempt from validation.
