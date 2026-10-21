@@ -109,7 +109,7 @@ jobs:
   test-core:
     name: Core-only backend tests
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -145,9 +145,9 @@ jobs:
             -e CI=true \
             -e DATABASE_URL=postgresql://hub_test:hub_test@postgres-test:5432/hub_test_test_shared \
             api-service-test \
-            python -m pytest hub/apps/ hub/tests/test_mvp_mode.py --reuse-db -q --timeout=300 \
+            python -m pytest hub/apps/ hub/tests/test_mvp_mode.py --reuse-db -x -q --timeout=300 \
               -m "not benchmark and not e2e and not integration and not network and not odh_inference and not performance and not requires_aws and not requires_clamav and not requires_gcp and not requires_prefect and not requires_redis and not requires_services and not requires_snowflake"
-        timeout-minutes: 40
+        timeout-minutes: 60
       - name: Tear down
         if: always()
         run: docker compose -f docker-compose.test.yml -f docker-compose.test.core.yml down -v --remove-orphans

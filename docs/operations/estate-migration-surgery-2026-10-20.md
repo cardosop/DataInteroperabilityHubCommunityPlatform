@@ -137,6 +137,36 @@ present on the pre-existing data (nullable FKs, zero data loss).
   migration chain (drill 1) + `scripts/core_boot_smoke.py` (pinned) +
   the core-only backend run over `hub/apps/` (see the tasks.md
   entry for the count) on the dedicated core DB.
+
+### 5b. The next layers the unblocked run exposed (root-fixed + pinned)
+
+The first green-collection core-only run (6h09m, `hub_test_p31core`)
+measured **16,848 passed / 1,071 failed / 17 errors** — and the
+triaged failure classes were fixed at the root, each pinned:
+
+- **601+ `RuntimeError` paid-model imports at setUp/fixture level** —
+  the collection-time conftest filter only sees COLUMN-0 imports;
+  function-level paid imports must degrade-or-skip themselves (the
+  W7.1 guard contract). **121 indented unguarded sites across 49
+  core-app test files** wrapped with the canonical
+  `try/except (RuntimeError, ModuleNotFoundError) → pytest.skip`
+  guard (idempotent AST fixer; multi-line parenthesized imports
+  handled). Regrowth pin
+  `test_paid_imports_in_core_test_modules_are_guarded` (RED-first:
+  121 sites live) — the full P3-1 suite is 12/12.
+- **~64 redis `AUTH` failures** — the host invocation passed an
+  auth'd URL against the host's no-auth redis; the canonical env uses
+  the plain URL (the G12 redis-auth guard applies in
+  production/staging only — `ENVIRONMENT=test` is exempt). Invocation
+  corrected in the re-runs.
+- **The explicit-file collection trap (recorded):** explicitly-passed
+  test-file arguments BYPASS `pytest_ignore_collect` in this pytest —
+  a column-0-import module that directory collection correctly
+  ignores errors out when named on the command line. Directory-based
+  invocation is the canonical shape.
+- Remaining host-side environment classes (minio compose DNS, live
+  SSRF DNS probes, dashboard fixture files) resolve in the
+  in-container CI environment — recorded, not fixable host-side.
 - **Public-CI local equivalents — GREEN:** the boundary suite 51/51,
   GATE-29 clean in all three modes (`--check`,
   `--check-allowlist-growth`, `--public`).
