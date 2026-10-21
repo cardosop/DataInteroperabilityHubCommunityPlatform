@@ -43,15 +43,19 @@ def test_tenant_sparql_view_roundtrip():
         _restore()
 
 
-def test_entitlement_fails_open_without_provider():
-    """OSS core-only: no paywall — returns without touching the arguments."""
+def test_entitlement_fails_closed_without_provider():
+    """OSS core-only: cross-tenant reads are DENIED without a registered
+    entitlement provider — the fail-closed tenant-isolation contract
+    (P3-1: the old fail-open default let any authenticated user read
+    any asset/dataset by id in the public tree)."""
     _restore()
-    result = commercial_hooks.check_entitlement(
-        consumer_tenant_id="consumer",
-        asset_id="asset",
-        provider_tenant_id="provider",
-    )
-    assert result is None
+    with pytest.raises(commercial_hooks.PermissionDenied) as excinfo:
+        commercial_hooks.check_entitlement(
+            consumer_tenant_id="consumer",
+            asset_id="asset",
+            provider_tenant_id="provider",
+        )
+    assert excinfo.value.args[0].get("code") == "ENTITLEMENT_REQUIRED"
 
 
 def test_entitlement_delegates_to_registered_provider():

@@ -334,7 +334,7 @@ class DatasetViewSet(viewsets.ModelViewSet):
             if asset_id:
                 from hub.apps.assets.caching import invalidate_asset_detail_cache
 
-                invalidate_asset_detail_cache(str(asset_id))
+                invalidate_asset_detail_cache(str(asset_id), str(tenant.id))
         except Exception as e:
             import logging
 

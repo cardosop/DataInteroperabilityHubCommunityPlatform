@@ -6,7 +6,7 @@ hub/apps/api/views.py:593:Phase 313.2 long-tail inversion (lazy import → hook/
 hub/apps/assets/business_rules.py:703:Phase 313.2 long-tail inversion (lazy import → hook/registry/event-bus) — audited 2026-10-06 (W0.4b drill GATE-29 re-baseline)
 hub/apps/assets/services.py:965:Phase 313.2 long-tail inversion (lazy import → hook/registry/event-bus)
 hub/apps/assets/views.py:1652:Phase 313.2 long-tail inversion (lazy import -> hook/registry/event-bus)
-hub/apps/assets/views.py:2543:Phase 313.2 long-tail inversion (lazy import -> hook/registry/event-bus)
+hub/apps/assets/views.py:2551:Phase 313.2 long-tail inversion (lazy import -> hook/registry/event-bus)
 hub/apps/contracts/cache_invalidation.py:160:Phase 313.2 long-tail inversion (lazy import → hook/registry/event-bus)
 hub/apps/core/caching/warming.py:261:Phase 313.2 long-tail inversion (lazy import → hook/registry/event-bus)
 hub/apps/core/caching/warming.py:262:Phase 313.2 long-tail inversion (lazy import → hook/registry/event-bus)

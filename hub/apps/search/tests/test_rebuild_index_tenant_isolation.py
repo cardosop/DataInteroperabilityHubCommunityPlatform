@@ -9,8 +9,6 @@ from django.test import TestCase
 from django.urls import reverse
 from rest_framework.test import APIClient
 
-from hub.apps.audit import event_types
-from hub.apps.audit.models import AuditEvent
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import Role, UserRole, UserStatus
@@ -75,65 +73,36 @@ class RebuildIndexTenantIsolationTests(TestCase):
             return 0.0
         return float(value.get())
 
-    def test_auditor_cannot_trigger_cross_tenant_rebuild(self) -> None:
-        before_audit = AuditEvent.objects.filter(
-            tenant=self.tenant_a,
-            action=event_types.CROSS_TENANT_DENIED,
-        ).count()
-        before_counter = self._counter_value()
+    def _assert_sunset(self, response: Any) -> None:
+        """P3-1 (sunset 2026-08-10): the rebuild-index action died with
+        the deprecated search surface — APIVersionMiddleware 410s it
+        BEFORE any view code (the pre-sunset tenant-isolation behaviors
+        are dead with the surface; the rebuild capability's migration
+        to the live surface is recorded for the search owning lane)."""
+        self.assertEqual(response.status_code, 410, response.content)
+        body = response.json()
+        self.assertEqual(body.get("code"), "ENDPOINT_SUNSET", response.content)
+        self.assertEqual(
+            body.get("details", {}).get("replacement"), "/api/search/",
+            response.content,
+        )
 
+    def test_rebuild_sunset_contract(self) -> None:
+        response: Any = self.api_client.post(self.url, {}, format="json")
+        self._assert_sunset(response)
+
+    def test_rebuild_sunset_contract_with_body(self) -> None:
         response: Any = self.api_client.post(
             self.url,
             {"tenant_id": str(self.tenant_b.id)},
             format="json",
         )
+        self._assert_sunset(response)
 
-        self.assertEqual(response.status_code, 403, response.content)
-        self.assertEqual(
-            response.json(),
-            {
-                "code": "CROSS_TENANT_FORBIDDEN",
-                "detail": "tenant_id must not be set in request body",
-            },
-        )
-
-        after_audit = AuditEvent.objects.filter(
-            tenant=self.tenant_a,
-            action=event_types.CROSS_TENANT_DENIED,
-        ).count()
-        self.assertEqual(after_audit - before_audit, 1)
-
-        latest = AuditEvent.objects.filter(
-            tenant=self.tenant_a,
-            action=event_types.CROSS_TENANT_DENIED,
-        ).latest("timestamp")
-        self.assertEqual(latest.result, "FAILURE")
-        self.assertEqual(
-            latest.details_json.get("requested_tenant_id"),
-            str(self.tenant_b.id),
-        )
-        self.assertEqual(
-            latest.details_json.get("actual_tenant_id"),
-            str(self.tenant_a.id),
-        )
-
-        after_counter = self._counter_value()
-        self.assertGreaterEqual(after_counter - before_counter, 1.0)
-
-    def test_auditor_can_rebuild_own_tenant(self) -> None:
-        response: Any = self.api_client.post(self.url, {}, format="json")
-        self.assertEqual(response.status_code, 200, response.content)
-        body = response.json()
-        self.assertEqual(body.get("status"), "index rebuild started")
-        self.assertTrue(body.get("success"), "Response must include 'success' key")
-
-    def test_matching_body_tenant_id_is_transitionally_accepted(self) -> None:
+    def test_rebuild_sunset_contract_for_matching_tenant(self) -> None:
         response: Any = self.api_client.post(
             self.url,
             {"tenant_id": str(self.tenant_a.id)},
             format="json",
         )
-        self.assertEqual(response.status_code, 200, response.content)
-        body = response.json()
-        self.assertEqual(body.get("status"), "index rebuild started")
-        self.assertTrue(body.get("success"), "Response must include 'success' key")
+        self._assert_sunset(response)

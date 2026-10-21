@@ -51,12 +51,13 @@ class TestSearchErrorEnvelope(TestCase):
     def _assert_envelope(self, resp, expected_code, expected_status):
         assert resp.status_code == expected_status
         data = resp.json() if hasattr(resp, "json") else resp.data
-        assert "error" in data, f"Missing 'error' key in {data}"
-        err = data["error"]
-        assert err.get("code") == expected_code
-        assert "message" in err
-        assert err.get("http_status") == expected_status
-        assert "request_id" in err
+        # P3-1: the search surface serves the perfect1 envelope
+        # (detail/code/details — hub/apps/core/responses.py); the old
+        # {"error": {...}} shape was retired.
+        assert "code" in data, f"Missing 'code' key in {data}"
+        assert data.get("code") == expected_code
+        assert "detail" in data
+        assert "details" in data
 
     @patch("hub.apps.search.views.UnifiedSearchView._fts_query")
     def test_missing_q_returns_filter_only(self, mock_fts):

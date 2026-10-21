@@ -88,17 +88,24 @@ def get_asset_list_cache_key(tenant_id: str, filters_hash: str) -> str:
     return f"{CACHE_PREFIX_ASSET_LIST}:{tenant_id}:{filters_hash}"
 
 
-def get_asset_detail_cache_key(asset_id: str) -> str:
+def get_asset_detail_cache_key(asset_id: str, tenant_id: str) -> str:
     """
     Generate cache key for asset detail.
 
+    P3-1 (the cross-tenant 200 leak): the key is TENANT-SCOPED — the
+    previous ``asset:detail:<id>`` shape served a cached asset detail
+    to any authenticated caller regardless of tenant (the retrieve
+    cache-hit path performed no tenant check). A tenant's read of
+    another tenant's asset id is a guaranteed MISS.
+
     Args:
         asset_id: Asset UUID string
+        tenant_id: Owning tenant UUID string
 
     Returns:
         Cache key string
     """
-    return f"{CACHE_PREFIX_ASSET_DETAIL}:{asset_id}"
+    return f"{CACHE_PREFIX_ASSET_DETAIL}:{tenant_id}:{asset_id}"
 
 
 def cache_asset_list(
@@ -231,17 +238,28 @@ def cache_asset_detail(asset_id: str, asset_data: dict[str, Any], ttl: int | Non
     """
     Cache asset detail data.
 
+    The cache key is tenant-scoped (P3-1): the owning tenant comes from
+    the serialized payload's ``tenant`` field — a payload without a
+    tenant is never cached (fail-safe).
+
     Args:
         asset_id: Asset UUID string
-        asset_data: Asset data dictionary
+        asset_data: Asset data dictionary (must carry ``tenant``)
         ttl: Time-to-live in seconds (default: CACHE_TTL_ASSET_DETAIL)
     """
     # Validate asset_id is not None or empty
     if not asset_id:
         logger.warning("cache_asset_detail_skipped", reason="Invalid asset_id")
         return
+    tenant_id = (asset_data or {}).get("tenant")
+    if not tenant_id:
+        logger.warning(
+            "cache_asset_detail_skipped",
+            reason="Missing tenant in asset data — the detail cache is tenant-scoped",
+        )
+        return
 
-    cache_key = get_asset_detail_cache_key(asset_id)
+    cache_key = get_asset_detail_cache_key(asset_id, str(tenant_id))
     ttl = ttl or CACHE_TTL_ASSET_DETAIL
 
     try:
@@ -264,17 +282,21 @@ def cache_asset_detail(asset_id: str, asset_data: dict[str, Any], ttl: int | Non
         )
 
 
-def get_cached_asset_detail(asset_id: str) -> dict[str, Any] | None:
+def get_cached_asset_detail(asset_id: str, tenant_id: str | None) -> dict[str, Any] | None:
     """
-    Get cached asset detail data.
+    Get cached asset detail data (tenant-scoped — P3-1).
 
     Args:
         asset_id: Asset UUID string
+        tenant_id: The CALLER's tenant UUID — another tenant's read is
+            a guaranteed miss
 
     Returns:
         Cached asset data dictionary or None
     """
-    cache_key = get_asset_detail_cache_key(asset_id)
+    if not asset_id or not tenant_id:
+        return None
+    cache_key = get_asset_detail_cache_key(asset_id, tenant_id)
 
     try:
         cached_data = cache.get(cache_key)
@@ -371,15 +393,18 @@ def invalidate_asset_list_cache(tenant_id: str | None = None) -> None:
         )
 
 
-def invalidate_asset_detail_cache(asset_id: str) -> None:
+def invalidate_asset_detail_cache(asset_id: str, tenant_id: str | None) -> None:
     """
-    Invalidate asset detail cache.
+    Invalidate asset detail cache (tenant-scoped key — P3-1).
 
     Args:
         asset_id: Asset UUID string
+        tenant_id: The asset's tenant UUID
     """
     try:
-        cache_key = get_asset_detail_cache_key(asset_id)
+        if not asset_id or not tenant_id:
+            return
+        cache_key = get_asset_detail_cache_key(asset_id, tenant_id)
         cache.delete(cache_key)
 
         logger.debug("asset_detail_cache_invalidated", asset_id=asset_id)
@@ -405,10 +430,11 @@ def invalidate_asset_caches(asset_id: str, tenant_id: str | None = None) -> None
 
     Args:
         asset_id: Asset UUID string
-        tenant_id: Optional tenant UUID string (for list cache invalidation)
+        tenant_id: Optional tenant UUID string (for detail-key scoping
+            and list cache invalidation)
     """
     # Invalidate detail cache
-    invalidate_asset_detail_cache(asset_id)
+    invalidate_asset_detail_cache(asset_id, tenant_id)
 
     # Invalidate list cache (all queries for this tenant)
     if tenant_id:

@@ -4,9 +4,11 @@ Core owns the call sites; the paid layer registers providers from its
 ``AppConfig.ready()``. Every hook has a no-op default so core-only mode is
 well-defined:
 
-- entitlement check → **fail open** (OSS deployments have no paywall);
-  the paid marketplace registers ``require_entitlement`` and its
-  ``PermissionDenied`` semantics propagate unchanged;
+- entitlement check → **fail closed** (P3-1 — cross-tenant reads are
+  denied without a provider; the paywall gates monetization, not
+  tenant isolation); the paid marketplace registers
+  ``require_entitlement`` and its ``PermissionDenied`` semantics
+  propagate unchanged;
 - tenant SPARQL endpoint routes → absent (semantic registers the view);
 - ontology-based query expansion → no expansion (semantic registers the
   graph builder; search returns no bridges when no provider exists);
@@ -33,6 +35,8 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, cast
+
+from rest_framework.exceptions import PermissionDenied
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -214,16 +218,21 @@ def set_entitlement_provider(provider: Callable[..., Any]) -> None:
 def check_entitlement(*, consumer_tenant_id: str, asset_id: str, provider_tenant_id: str) -> Any:
     """Enforce marketplace entitlement for cross-tenant asset access.
 
-    Fail-open contract: with no provider registered (OSS core-only), this
-    returns None and access proceeds — the OSS build has no paywall. With a
-    provider, it delegates and any exception (``PermissionDenied`` incl.
-    ``ENTITLEMENT_REQUIRED``/revoked/expired codes) propagates to the caller,
-    preserving the exact pre-split behaviour. The provider's return value
-    passes through unchanged.
+    Fail-closed contract (P3-1): with no provider registered (OSS
+    core-only), this raises ``PermissionDenied`` with the
+    ``ENTITLEMENT_REQUIRED`` code — a cross-tenant read is DENIED, never
+    allowed. The old fail-open default let any authenticated user read
+    any asset/dataset by id in the public tree (the paywall gates
+    monetization, not tenant isolation — the fail-closed tenant-scoping
+    contract applies in every build). With a provider, it delegates and
+    any exception (``PermissionDenied`` incl. ``ENTITLEMENT_REQUIRED`` /
+    revoked/expired codes) propagates to the caller, preserving the
+    exact pre-split behaviour. The provider's return value passes
+    through unchanged.
     """
     provider = _HOOKS.get("entitlement_provider")
     if provider is None:
-        return None
+        raise PermissionDenied({"code": "ENTITLEMENT_REQUIRED"})
     return provider(
         consumer_tenant_id=consumer_tenant_id,
         asset_id=asset_id,
@@ -470,9 +479,10 @@ def check_cross_tenant_entitlement(
 def get_entitlement_provider() -> Callable[..., Any] | None:
     """Return the registered entitlement enforcement provider, or None.
 
-    Call sites that must FAIL CLOSED when the marketplace is absent
-    (instead of the fail-open ``check_entitlement`` default) use this
-    to distinguish "no paid layer" from "no paywall".
+    ``check_entitlement`` itself fails CLOSED when no provider is
+    registered (P3-1 — the ``ENTITLEMENT_REQUIRED`` refusal). Call
+    sites that need to distinguish "no paid layer" from "no paywall"
+    use this getter instead.
     """
     return _HOOKS.get("entitlement_provider")
 

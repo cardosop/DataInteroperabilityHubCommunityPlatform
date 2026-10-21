@@ -100,10 +100,12 @@ class CrossTenantDatasetEntitlementTests(TestCase):
         resolved = self._resolve(self._consumer_request())
         assert resolved is None
 
-    def test_core_only_fails_open(self):
-        """Core-only: no paywall — the hook returns without raising."""
+    def test_core_only_fails_closed(self):
+        """Core-only (P3-1): cross-tenant reads are DENIED without a
+        registered provider — the fail-closed tenant-isolation
+        contract (the old fail-open default leaked any asset/dataset
+        by id to any authenticated user in the public tree)."""
         with commercial_hooks.hooks_snapshot():
             commercial_hooks.reset_hooks()
             resolved = self._resolve(self._consumer_request())
-        assert resolved is not None
-        assert resolved.id == self.dataset.id
+        assert resolved is None

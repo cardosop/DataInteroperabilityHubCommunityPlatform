@@ -97,8 +97,10 @@ class SearchSecurityRegressionTests(TestCase):
         resp = self.client.get("/api/search/", {"q": "x" * 10000})
         self.assertEqual(resp.status_code, 400)
         data = resp.json() if hasattr(resp, "json") else resp.data
-        self.assertIn("error", data)
-        self.assertEqual(data.get("error", {}).get("code"), "QUERY_TOO_LONG")
+        # P3-1: the perfect1 envelope (detail/code/details) — the old
+        # {"error": {...}} shape was retired.
+        self.assertIn("code", data)
+        self.assertEqual(data.get("code"), "QUERY_TOO_LONG")
 
     @pytest.mark.integration
     def test_unicode_normalization(self):
@@ -116,5 +118,7 @@ class SearchSecurityRegressionTests(TestCase):
             resp.status_code, 400, "NUL byte injection must return 400, not crash with 500"
         )
         data = resp.json() if hasattr(resp, "json") else resp.data
-        self.assertIn("error", data)
-        self.assertEqual(data.get("error", {}).get("code"), "INVALID_INPUT")
+        # P3-1: the perfect1 envelope (detail/code/details) — the old
+        # {"error": {...}} shape was retired.
+        self.assertIn("code", data)
+        self.assertEqual(data.get("code"), "INVALID_INPUT")

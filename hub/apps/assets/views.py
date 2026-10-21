@@ -516,7 +516,7 @@ class AssetViewSet(viewsets.ModelViewSet):
         # will expire naturally even if this invalidation fails).
         try:
             invalidate_asset_list_cache(tenant_id_str)
-            invalidate_asset_detail_cache(str(asset.id))
+            invalidate_asset_detail_cache(str(asset.id), str(asset.tenant_id))
         except (ConnectionError, TimeoutError, OSError) as e:
             logging.getLogger(__name__).warning(
                 "asset_create_cache_invalidation_failed",
@@ -1075,7 +1075,7 @@ class AssetViewSet(viewsets.ModelViewSet):
 
         try:
             invalidate_asset_list_cache(str(tenant.id))
-            invalidate_asset_detail_cache(str(asset_id))
+            invalidate_asset_detail_cache(str(asset_id), str(tenant.id))
         except (ConnectionError, TimeoutError, OSError) as e:
             import logging
 
@@ -1524,7 +1524,7 @@ class AssetViewSet(viewsets.ModelViewSet):
 
         # Invalidate asset detail cache so dataset_id is included in next request
         try:
-            invalidate_asset_detail_cache(str(asset.id))
+            invalidate_asset_detail_cache(str(asset.id), str(asset.tenant_id))
             invalidate_asset_list_cache(str(asset.tenant.id))
         except (ConnectionError, TimeoutError, OSError) as e:
             import logging
@@ -1693,7 +1693,7 @@ class AssetViewSet(viewsets.ModelViewSet):
 
         # Invalidate asset detail cache so contract_id is included in next request
         try:
-            invalidate_asset_detail_cache(str(asset.id))
+            invalidate_asset_detail_cache(str(asset.id), str(asset.tenant_id))
             invalidate_asset_list_cache(str(asset.tenant.id))
         except (ConnectionError, TimeoutError, OSError) as e:
             import logging
@@ -1898,7 +1898,7 @@ class AssetViewSet(viewsets.ModelViewSet):
                 if need_save:
                     asset.save(update_fields=["dq_status", "compliance_status"])
             try:
-                invalidate_asset_detail_cache(str(asset.id))
+                invalidate_asset_detail_cache(str(asset.id), str(asset.tenant_id))
                 invalidate_asset_list_cache(str(tenant.id))
             except Exception as e:
                 import logging
@@ -1910,7 +1910,7 @@ class AssetViewSet(viewsets.ModelViewSet):
                 )
             _e2e_unblock_latest_compliance_run(asset)
             try:
-                invalidate_asset_detail_cache(str(asset.id))
+                invalidate_asset_detail_cache(str(asset.id), str(asset.tenant_id))
                 invalidate_asset_list_cache(str(tenant.id))
             except Exception as e:
                 import logging
@@ -1997,7 +1997,7 @@ class AssetViewSet(viewsets.ModelViewSet):
             asset.save(update_fields=["dq_status", "compliance_status"])
 
         try:
-            invalidate_asset_detail_cache(str(asset.id))
+            invalidate_asset_detail_cache(str(asset.id), str(asset.tenant_id))
             invalidate_asset_list_cache(str(tenant.id))
         except Exception as e:
             import logging
@@ -2009,7 +2009,7 @@ class AssetViewSet(viewsets.ModelViewSet):
 
         _e2e_unblock_latest_compliance_run(asset)
         try:
-            invalidate_asset_detail_cache(str(asset.id))
+            invalidate_asset_detail_cache(str(asset.id), str(asset.tenant_id))
             invalidate_asset_list_cache(str(tenant.id))
         except Exception as e:
             import logging
@@ -2176,11 +2176,17 @@ class AssetViewSet(viewsets.ModelViewSet):
         # returned without any risk of stale DRAFT/ACTIVE mismatch in E2E assertions.
         e2e_mode = getattr(_settings, "RATE_LIMIT_E2E_RELAX", False)
 
+        # P3-1: the cache key is TENANT-SCOPED — resolve the caller's
+        # tenant first; a cross-tenant read is a guaranteed miss (the
+        # pre-fix unscoped key served cached detail to any tenant).
+        caller_tenant_id = get_request_tenant_id(request) or ""
+
         if not e2e_mode:
-            # Try to get from cache (only for same-tenant hits; cross-tenant
-            # entitlement-based access serves a different audience and may
-            # have different serialisation, so skip the cache for it).
-            cached_data = get_cached_asset_detail(asset_id)
+            # Try to get from cache (tenant-scoped: only same-tenant hits;
+            # cross-tenant entitlement-based access serves a different
+            # audience and may have different serialisation, so skip the
+            # cache for it).
+            cached_data = get_cached_asset_detail(asset_id, caller_tenant_id)
             if cached_data is not None:
                 return Response(cached_data)
 
@@ -2207,8 +2213,10 @@ class AssetViewSet(viewsets.ModelViewSet):
             response = super().retrieve(request, *args, **kwargs)
 
         # Cache the result (skip in E2E mode — fresh DB reads are preferred;
-        # also skip cross-tenant hits to avoid caching under the wrong key).
-        if response.status_code == 200 and not e2e_mode:
+        # also skip cross-tenant hits to avoid caching under the wrong key
+        # — P3-1: the key is tenant-scoped, and a cross-tenant response
+        # belongs to the PROVIDER tenant, not the caller's).
+        if response.status_code == 200 and not e2e_mode and not cross_tenant:
             try:
                 asset_data = response.data
                 cache_asset_detail(asset_id, asset_data)

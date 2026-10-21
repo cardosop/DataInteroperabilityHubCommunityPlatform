@@ -27,15 +27,19 @@ class TestErrorResponseContract(TestCase):
             details=details,
         )
         data = resp.data
-        assert "error" in data, f"Missing 'error' key in {data}"
-        err = data["error"]
-        assert err["code"] == code
-        assert err["message"] == message
-        assert err["http_status"] == http_status
-        assert "request_id" in err
-        assert "timestamp" in err
+        # W12.5 — the ONE envelope is the canonical FLAT wire shape
+        # {"detail", "code", "details"}; the nested {"error": {...}} shape
+        # was the second, divergent envelope. (P3-2b finding: the
+        # exception HANDLER still emits the nested shape — its tests
+        # below pin the handler's current output; the consolidation
+        # follow-up moves the handler onto api_error_response.)
+        assert "detail" in data, f"Missing 'detail' key in {data}"
+        assert "code" in data, f"Missing 'code' key in {data}"
+        assert data["code"] == code
+        assert data["detail"] == message
+        assert resp.status_code == http_status
         if details:
-            assert err.get("details") == details
+            assert data.get("details") == details
 
     def test_compliance_threshold_exceeded_shape(self):
         self._assert_envelope(
@@ -62,9 +66,11 @@ class TestErrorResponseContract(TestCase):
         )
 
     def test_request_id_is_unique(self):
-        r1 = format_error_response("CODE1", "msg", 400)
-        r2 = format_error_response("CODE2", "msg", 400)
-        assert r1.data["error"]["request_id"] != r2.data["error"]["request_id"]
+        # the request id travels in the X-Request-ID header (W12.5)
+        r1 = format_error_response("CODE1", "msg", 400, request_id="req-a")
+        r2 = format_error_response("CODE2", "msg", 400, request_id="req-b")
+        assert r1["X-Request-ID"] != r2["X-Request-ID"]
+        assert r1["X-Request-ID"] == "req-a"
 
 
 class TestExceptionHandlerNoLeak(TestCase):

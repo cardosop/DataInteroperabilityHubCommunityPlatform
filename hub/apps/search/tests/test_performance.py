@@ -104,88 +104,51 @@ class SearchPerformanceTest(TestCase):
             "max_queries": max(query_counts) if query_counts else 0,
         }
 
-    def test_search_performance(self):
-        """Test GET /api/v1/search/search/ performance - Target: < 200ms p95"""
-        results = self.measure_endpoint_performance(
-            method="GET", url="/api/v1/search/search/?q=test", iterations=50
+    def _assert_sunset(self, response):
+        """P3-1 (sunset 2026-08-10): the deprecated /api/v1/search/
+        surface 410s via APIVersionMiddleware BEFORE any view code —
+        the pre-sunset performance/caching targets are dead with the
+        surface. These tests pin the sunset contract; the live-surface
+        performance pin (GET /api/search/) is recorded for the search
+        owning lane."""
+        self.assertEqual(response.status_code, 410, response.content)
+        body = response.json()
+        self.assertEqual(body.get("code"), "ENDPOINT_SUNSET", response.content)
+        self.assertEqual(
+            body.get("details", {}).get("replacement"), "/api/search/",
+            response.content,
         )
 
-        # Assert performance targets
-        self.assertLess(
-            results["p95"],
-            200,
-            f"P95 response time ({results['p95']:.2f}ms) exceeds target (200ms)",
-        )
+    def test_search_sunset(self):
+        """GET /api/v1/search/search/ — sunset contract (the perf
+        target migrates to /api/search/ per the search lane)."""
+        response = self.client.get("/api/v1/search/search/?q=test", format="json")
+        self._assert_sunset(response)
 
-        # Log results via logging instead of print for clean CI output.
-        import logging
-
-        _log = logging.getLogger(__name__)
-        _log.debug(
-            "Search performance: P50=%.2fms P95=%.2fms P99=%.2fms avg_queries=%.2f max_queries=%d",
-            results["p50"],
-            results["p95"],
-            results["p99"],
-            results["avg_queries"],
-            results["max_queries"],
-        )
-
-    def test_search_query_count(self):
-        """Test that search uses optimized queries"""
+    def test_search_query_count_sunset(self):
+        """The sunset 410 fires before any query work — zero DB queries."""
         reset_queries()
         start_queries = len(connection.queries)
 
         response = self.client.get("/api/v1/search/search/?q=test", format="json")
 
-        end_queries = len(connection.queries)
-        query_count = end_queries - start_queries
+        query_count = len(connection.queries) - start_queries
+        self._assert_sunset(response)
+        self.assertEqual(query_count, 0)
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-
-        # Search should use optimized queries
-        # Target: < 5 queries (1 for search, 1 for count, 0-3 for analytics)
-        self.assertLess(
-            query_count, 5, f"Search uses too many queries: {query_count} (target: < 5)"
-        )
-
-    def test_search_caching(self):
-        """Test that search results are cached"""
-        # First request (cache miss)
+    def test_search_caching_sunset(self):
+        """Two requests both 410 — the surface is gone for everyone."""
         response1 = self.client.get("/api/v1/search/search/?q=test", format="json")
-        self.assertEqual(response1.status_code, status.HTTP_200_OK)
-
-        # Second request (cache hit)
-        reset_queries()
-        start_queries = len(connection.queries)
-        start_time = time.perf_counter()
-
+        self._assert_sunset(response1)
         response2 = self.client.get("/api/v1/search/search/?q=test", format="json")
+        self._assert_sunset(response2)
 
-        end_time = time.perf_counter()
-        end_queries = len(connection.queries)
-        query_count = end_queries - start_queries
-        execution_time = (end_time - start_time) * 1000
-
-        self.assertEqual(response2.status_code, status.HTTP_200_OK)
-
-        # Cached request should be faster and use fewer queries
-        self.assertLess(
-            execution_time,
-            100,  # Cached requests should be < 100ms
-            f"Cached search request too slow: {execution_time:.2f}ms",
-        )
-        self.assertLess(
-            query_count,
-            3,  # Cached requests should use fewer queries
-            f"Cached search uses too many queries: {query_count}",
-        )
-
-    def test_search_unauthenticated_returns_401(self):
-        """Error handling: unauthenticated request to search returns 401."""
+    def test_search_unauthenticated_sunset(self):
+        """The 410 fires BEFORE authentication — same refusal unauthenticated."""
         self.client.force_authenticate(user=None)
         self.client.credentials()
         response = self.client.get("/api/v1/search/search/?q=test", format="json")
-        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self._assert_sunset(response)
 
     def test_search_empty_query_returns_200_filter_only(self):
         """Edge case: search with empty q (filter_only) returns 200 and structure."""
@@ -195,12 +158,7 @@ class SearchPerformanceTest(TestCase):
         self.assertIn("results", data)
         self.assertIsInstance(data["results"], list)
 
-    def test_search_performance_tdd_assert_status_and_structure(self):
-        """TDD: Performance test asserts response status and required keys."""
+    def test_search_performance_tdd_sunset(self):
+        """TDD: the sunset refusal carries the standard envelope."""
         response = self.client.get("/api/v1/search/search/?q=test", format="json")
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn("results", response.data)
-        self.assertIn("total", response.data)
-        self.assertIn("limit", response.data)
-        self.assertIn("offset", response.data)
-        self.assertIn("query", response.data)
+        self._assert_sunset(response)

@@ -17,7 +17,6 @@ import redis
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 from django.urls import reverse
-from rest_framework import status
 from rest_framework.test import APIClient
 
 from hub.apps.assets.models import AssetStatus
@@ -27,7 +26,6 @@ from hub.apps.contracts.models import (
     OriginalFormat,
     OriginalSpecType,
 )
-from hub.apps.core.events.models import Event
 from hub.apps.datasets.models import Dataset
 from hub.apps.files.models import File, FileStatus
 from hub.apps.search.indexing import SearchIndexer
@@ -168,239 +166,70 @@ class SearchViewsEventPublishingE2ETest(TestCase):
         SearchIndexer.index_dataset(self.dataset)
         SearchIndexer.index_contract(self.contract)
 
+    def _assert_sunset(self, response):
+        """P3-1 (sunset 2026-08-10): the deprecated search
+        surface 410s via APIVersionMiddleware BEFORE any view or
+        event code — the endpoint-to-event contracts these tests
+        pinned died with the surface. The live-surface event
+        contracts (SEARCH_PERFORMED on /api/search/) are covered by
+        test_audit_emission.py / test_metrics_emission.py; the
+        search.query/search.index.rebuilt event-bus migration is
+        recorded for the search owning lane."""
+        self.assertEqual(response.status_code, 410, response.content)
+        body = response.json()
+        self.assertEqual(body.get("code"), "ENDPOINT_SUNSET", response.content)
+        self.assertEqual(
+            body.get("details", {}).get("replacement"), "/api/search/",
+            response.content,
+        )
+
     def test_e2e_search_endpoint_publishes_search_query_event(self):
         """Test that search endpoint publishes search.query event."""
-        # Get initial event count
-        initial_count = Event.objects.filter(
-            event_type="search.query", tenant_id=self.tenant.id
-        ).count()
-
-        # Perform search via API endpoint
         url = reverse("search-search")
         response = self.client.get(url, {"q": "test"})
-
-        # Verify API response
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn("results", response.data)
-        self.assertIn("total", response.data)
-        self.assertGreaterEqual(response.data["total"], 0)
-
-        # Verify search.query event was published
-        events = Event.objects.filter(event_type="search.query", tenant_id=self.tenant.id).order_by(
-            "-created_at"
-        )
-        self.assertGreaterEqual(events.count(), initial_count + 1)
-
-        event = events.first()
-        self.assertIsNotNone(event)
-        self.assertEqual(event.event_type, "search.query")
-        self.assertEqual(event.tenant_id, self.tenant.id)
-        self.assertEqual(str(event.user_id), str(self.user.id))
-
-        # Verify event data
-        event_data = event.data
-        self.assertEqual(event_data.get("query"), "test")
-        self.assertEqual(event_data.get("query_type"), "full_text")
-        self.assertIsNotNone(event_data.get("result_count"))
-        self.assertIsNotNone(event_data.get("execution_time_ms"))
-        self.assertIn("search", event.metadata.get("tags", []))
-        self.assertIn("query", event.metadata.get("tags", []))
-
+        self._assert_sunset(response)
     def test_e2e_search_endpoint_with_filters_publishes_event(self):
         """Test that search endpoint with filters publishes search.query event with filters."""
-        # Perform search with filters via API endpoint
         url = reverse("search-search")
-        response = self.client.get(url, {"q": "test", "type": "ASSET", "tags": "test,example"})
-
-        # Verify API response
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-
-        # Verify search.query event was published with filters
-        event = (
-            Event.objects.filter(event_type="search.query", tenant_id=self.tenant.id)
-            .order_by("-created_at")
-            .first()
-        )
-        self.assertIsNotNone(event)
-
-        event_data = event.data
-        filters = event_data.get("filters", {})
-        self.assertEqual(filters.get("resource_type"), "ASSET")
-        self.assertIsNotNone(filters.get("tags"))
-
+        response = self.client.get(url, {"q": "test"})
+        self._assert_sunset(response)
     def test_e2e_search_endpoint_no_results_publishes_event(self):
         """Test that search endpoint with no results publishes search.query event with no_results=True."""
-        # Perform search with query that won't match anything
         url = reverse("search-search")
-        response = self.client.get(url, {"q": "nonexistent_query_xyz123"})
-
-        # Verify API response
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["total"], 0)
-
-        # Verify search.query event was published with no_results=True
-        event = (
-            Event.objects.filter(event_type="search.query", tenant_id=self.tenant.id)
-            .order_by("-created_at")
-            .first()
-        )
-        self.assertIsNotNone(event)
-
-        event_data = event.data
-        self.assertEqual(event_data.get("no_results"), True)
-        self.assertEqual(event_data.get("result_count"), 0)
-
+        response = self.client.get(url, {"q": "test"})
+        self._assert_sunset(response)
     def test_e2e_rebuild_index_endpoint_publishes_index_rebuilt_event(self):
         """Test that rebuild_index endpoint publishes search.index.rebuilt event."""
-        # Get initial event count
-        initial_count = Event.objects.filter(
-            event_type="search.index.rebuilt", tenant_id=self.tenant.id
-        ).count()
-
-        # Rebuild index via API endpoint
         url = reverse("search-rebuild-index")
         response = self.client.post(url, {"tenant_id": str(self.tenant.id)}, format="json")
-
-        # Verify API response
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn("status", response.data)
-        self.assertEqual(response.data["status"], "index rebuild started")
-        self.assertIn("resource_count", response.data)
-        self.assertIn("duration_ms", response.data)
-        self.assertIn("success", response.data)
-        self.assertIn("resource_types", response.data)
-
-        # Verify search.index.rebuilt event was published
-        events = Event.objects.filter(
-            event_type="search.index.rebuilt", tenant_id=self.tenant.id
-        ).order_by("-created_at")
-        self.assertGreaterEqual(events.count(), initial_count + 1)
-
-        event = events.first()
-        self.assertIsNotNone(event)
-        self.assertEqual(event.event_type, "search.index.rebuilt")
-        self.assertEqual(event.tenant_id, self.tenant.id)
-        self.assertEqual(str(event.user_id), str(self.user.id))
-
-        # Verify event data
-        event_data = event.data
-        self.assertEqual(event_data.get("tenant_id"), str(self.tenant.id))
-        self.assertGreaterEqual(
-            event_data.get("resource_count"), 3
-        )  # At least asset, dataset, contract
-        self.assertGreater(event_data.get("duration_ms"), 0)
-        self.assertEqual(event_data.get("success"), True)
-        self.assertIsInstance(event_data.get("resource_types"), list)
-        self.assertIn("search", event.metadata.get("tags", []))
-        self.assertIn("index", event.metadata.get("tags", []))
-
+        self._assert_sunset(response)
     def test_e2e_search_endpoint_cached_results_still_publishes_event(self):
         """Test that search endpoint publishes event even when results are cached."""
-        # Clear cache first to ensure fresh start
-        from django.core.cache import cache
-
-        cache.clear()
-
-        # Perform first search (will cache results)
         url = reverse("search-search")
-        response1 = self.client.get(url, {"q": "test"})
-        self.assertEqual(response1.status_code, status.HTTP_200_OK)
-
-        # Get event count after first search
-        first_search_count = Event.objects.filter(
-            event_type="search.query", tenant_id=self.tenant.id
-        ).count()
-        self.assertGreaterEqual(first_search_count, 1)
-
-        # Perform second search with same query (should use cache)
-        response2 = self.client.get(url, {"q": "test"})
-        self.assertEqual(response2.status_code, status.HTTP_200_OK)
-
-        # Verify second search also published event (even though results were cached)
-        # Note: Events may be deduplicated if Redis is available, but in test environment
-        # Redis is not available, so events should still be published
-        second_search_count = Event.objects.filter(
-            event_type="search.query", tenant_id=self.tenant.id
-        ).count()
-        # At least one event should exist (may be same event if deduplicated, or new event)
-        self.assertGreaterEqual(second_search_count, 1)
-
+        response = self.client.get(url, {"q": "test"})
+        self._assert_sunset(response)
     def test_e2e_search_endpoint_multiple_searches_publish_multiple_events(self):
         """Test that multiple searches publish multiple events."""
         url = reverse("search-search")
-
-        # Perform multiple searches
-        initial_count = Event.objects.filter(
-            event_type="search.query", tenant_id=self.tenant.id
-        ).count()
-
-        self.client.get(url, {"q": "test"})
-        self.client.get(url, {"q": "asset"})
-        self.client.get(url, {"q": "contract"})
-
-        # Verify multiple events were published
-        final_count = Event.objects.filter(
-            event_type="search.query", tenant_id=self.tenant.id
-        ).count()
-        self.assertGreaterEqual(final_count, initial_count + 3)
-
-        # Verify each event has correct query
-        events = Event.objects.filter(event_type="search.query", tenant_id=self.tenant.id).order_by(
-            "-created_at"
-        )[:3]
-        queries = [event.data.get("query") for event in events]
-        self.assertIn("test", queries)
-        self.assertIn("asset", queries)
-        self.assertIn("contract", queries)
-
+        response = self.client.get(url, {"q": "test"})
+        self._assert_sunset(response)
     def test_e2e_search_endpoint_event_includes_user_context(self):
         """Test that search.query event includes correct user context."""
         url = reverse("search-search")
         response = self.client.get(url, {"q": "test"})
-
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-
-        # Verify event has correct user context
-        event = (
-            Event.objects.filter(event_type="search.query", tenant_id=self.tenant.id)
-            .order_by("-created_at")
-            .first()
-        )
-        self.assertIsNotNone(event)
-        self.assertEqual(str(event.user_id), str(self.user.id))
-        self.assertEqual(event.tenant_id, self.tenant.id)
-        self.assertEqual(event.source_service, "search_service")
-
+        self._assert_sunset(response)
     def test_e2e_rebuild_index_endpoint_event_includes_rebuild_metadata(self):
         """Test that search.index.rebuilt event includes rebuild metadata."""
         url = reverse("search-rebuild-index")
         response = self.client.post(url, {"tenant_id": str(self.tenant.id)}, format="json")
-
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-
-        # Verify event includes rebuild metadata
-        event = (
-            Event.objects.filter(event_type="search.index.rebuilt", tenant_id=self.tenant.id)
-            .order_by("-created_at")
-            .first()
-        )
-        self.assertIsNotNone(event)
-
-        event_data = event.data
-        # Verify response data matches event data
-        self.assertEqual(response.data["resource_count"], event_data.get("resource_count"))
-        self.assertEqual(response.data["success"], event_data.get("success"))
-
+        self._assert_sunset(response)
     def test_e2e_search_unauthenticated_returns_401_no_event(self):
         """Error handling: unauthenticated search returns 401 and no search.query event published."""
         self.client.force_authenticate(user=None)
         self.client.credentials()
         url = reverse("search-search")
-        count_before = Event.objects.filter(event_type="search.query").count()
         response = self.client.get(url, {"q": "test"})
-        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
-        count_after = Event.objects.filter(event_type="search.query").count()
-        self.assertEqual(count_before, count_after)
+        self._assert_sunset(response)
 
     def tearDown(self):
         """Reconnect signals and reset event bus after test."""

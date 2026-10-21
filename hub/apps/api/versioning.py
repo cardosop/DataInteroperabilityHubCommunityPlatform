@@ -14,6 +14,22 @@ from django.utils import timezone
 
 from hub.apps.core.responses import api_error_response
 
+
+def _rendered_error_response(response):
+    """Render a DRF Response returned OUTSIDE DRF's dispatch — the
+    middleware early-return path never runs DRF's content negotiation,
+    so ``accepted_renderer`` is unset and the response cannot serialize
+    (P3-1: the unrendered sunset 410 raised ContentNotRenderedError /
+    the renderer assertion on body access — and would 500 in a real
+    WSGI render)."""
+    from rest_framework.renderers import JSONRenderer
+
+    response.accepted_renderer = JSONRenderer()
+    response.accepted_media_type = "application/json"
+    response.renderer_context = {}
+    response.render()
+    return response
+
 if TYPE_CHECKING:
     from django.http import HttpRequest, HttpResponse
 
@@ -305,16 +321,18 @@ class APIVersionMiddleware:
 
         # Check if version is supported
         if not APIVersionManager.is_version_supported(version):
-            return api_error_response(
-                f"API version {version} is not supported",
-                status_code=400,
-                code="UNSUPPORTED_API_VERSION",
-                details={
-                    "supported_versions": [
-                        str(v) for v in APIVersionManager.SUPPORTED_VERSIONS
-                    ],
-                    "current_version": str(APIVersionManager.CURRENT_VERSION),
-                },
+            return _rendered_error_response(
+                api_error_response(
+                    f"API version {version} is not supported",
+                    status_code=400,
+                    code="UNSUPPORTED_API_VERSION",
+                    details={
+                        "supported_versions": [
+                            str(v) for v in APIVersionManager.SUPPORTED_VERSIONS
+                        ],
+                        "current_version": str(APIVersionManager.CURRENT_VERSION),
+                    },
+                )
             )
 
         # Store version in request
@@ -330,18 +348,20 @@ class APIVersionMiddleware:
             request.path, request.method
         )
         if endpoint and endpoint.is_sunset():
-            return api_error_response(
-                f"API endpoint {request.path} was sunset on "
-                f"{endpoint.sunset_date}",
-                status_code=410,
-                code="ENDPOINT_SUNSET",
-                details={
-                    "path": request.path,
-                    "method": request.method,
-                    "sunset_date": endpoint.sunset_date,
-                    "replacement": endpoint.replacement,
-                    "migration_guide": endpoint.migration_guide,
-                },
+            return _rendered_error_response(
+                api_error_response(
+                    f"API endpoint {request.path} was sunset on "
+                    f"{endpoint.sunset_date}",
+                    status_code=410,
+                    code="ENDPOINT_SUNSET",
+                    details={
+                        "path": request.path,
+                        "method": request.method,
+                        "sunset_date": endpoint.sunset_date,
+                        "replacement": endpoint.replacement,
+                        "migration_guide": endpoint.migration_guide,
+                    },
+                )
             )
 
         return None

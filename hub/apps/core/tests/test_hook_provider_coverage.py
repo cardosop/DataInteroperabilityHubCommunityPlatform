@@ -6,10 +6,12 @@ no-op/fail-open default, and 14 boundary modules prove it. The inverse
 direction — "in a full paid process, is every hook slot actually populated
 by the paid provider?" — had exactly ONE assertion repo-wide
 (virtualization's SPARQL factory check). A ``set_*`` call deleted from any
-paid ``AppConfig.ready()`` was caught by nothing, and three fallbacks are
-fail-open (``check_entitlement`` → allow, ``has_active_billing_setup`` →
-True, ``validate_plan_downgrade`` → valid), so a dropped registration
-silently removes the paywall in production.
+paid ``AppConfig.ready()`` was caught by nothing, and two fallbacks are
+fail-open (``has_active_billing_setup`` → True,
+``validate_plan_downgrade`` → valid), so a dropped registration
+silently removes the paywall in production. (``check_entitlement``
+fails CLOSED since P3-1 — cross-tenant reads are denied without a
+provider.)
 
 This module pins the full-mode shape:
 

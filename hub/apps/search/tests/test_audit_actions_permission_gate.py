@@ -17,11 +17,12 @@ This suite pins the enforced contract + the mechanism it depends on:
 1.  The ROUTE carries the action kwargs in its initkwargs (a regression
     that re-registers these actions manually — the onboarding-class bug —
     must fail here BEFORE it opens the surface).
-2.  Unauthenticated → 401 on both actions.
-3.  Authenticated NON-auditor → 403 with the platform's DRF 3.16
-    ``error.code=AUTH_FORBIDDEN`` envelope on both actions.
-4.  AUDITOR → the actions keep working (analytics 200 + the documented
-    dashboard keys; rebuild 200 + "index rebuild started").
+2.  P3-1 (sunset 2026-08-10): the deprecated search surface 410s via
+    APIVersionMiddleware BEFORE any permission/view code — the
+    pre-sunset 401/403/200 enforcement behaviors are dead with the
+    surface; the remaining tests pin the SUNSET contract itself (the
+    behavioral migration to /api/search/ is recorded for the search
+    owning lane).
 """
 
 from __future__ import annotations
@@ -32,7 +33,7 @@ from typing import Any
 import pytest
 from django.contrib.auth import get_user_model
 from django.urls import reverse
-from rest_framework import permissions, status
+from rest_framework import permissions
 from rest_framework.test import APIClient
 
 from hub.apps.tenants.models import KYCStatus, Tenant
@@ -129,33 +130,33 @@ class TestAuditActionPermissionEnforcement:
         client.force_authenticate(user=auditor)
         return client
 
-    def test_unauthenticated_analytics_returns_401(self):
+    def _assert_sunset(self, resp: Any, replacement: str) -> None:
+        """P3-1 (the sunset cleanup): the deprecated search surface
+        (sunset 2026-08-10) 410s via APIVersionMiddleware BEFORE any
+        permission/view code — the enforcement tests below now pin the
+        SUNSET contract itself (the pre-sunset 401/403/200 behaviors
+        are dead with the surface). The behavioral migration to
+        ``/api/search/`` (UnifiedSearchView) is recorded for the search
+        owning lane."""
+        assert resp.status_code == 410, resp.content
+        body = resp.json()
+        assert body.get("code") == "ENDPOINT_SUNSET", resp.content
+        assert body.get("details", {}).get("replacement") == replacement, resp.content
+
+    def test_analytics_sunset_contract(self):
         resp: Any = self._make_unauth_client().get(_analytics_url())
-        assert resp.status_code == status.HTTP_401_UNAUTHORIZED, resp.content
+        self._assert_sunset(resp, "/api/search/")
 
-    def test_unauthenticated_rebuild_returns_401(self):
+    def test_rebuild_sunset_contract(self):
         resp: Any = self._make_unauth_client().post(_rebuild_url(), {}, format="json")
-        assert resp.status_code == status.HTTP_401_UNAUTHORIZED, resp.content
+        self._assert_sunset(resp, "/api/search/")
 
-    def test_non_auditor_analytics_returns_403(self):
-        resp: Any = self._make_non_auditor_client().get(_analytics_url())
-        assert resp.status_code == status.HTTP_403_FORBIDDEN, resp.content
-        assert resp.json().get("error", {}).get("code") == "AUTH_FORBIDDEN", resp.content
-
-    def test_non_auditor_rebuild_returns_403(self):
-        resp: Any = self._make_non_auditor_client().post(_rebuild_url(), {}, format="json")
-        assert resp.status_code == status.HTTP_403_FORBIDDEN, resp.content
-        assert resp.json().get("error", {}).get("code") == "AUTH_FORBIDDEN", resp.content
-
-    def test_auditor_analytics_returns_200_with_dashboard_keys(self):
+    def test_analytics_sunset_contract_regardless_of_auth(self):
+        """The 410 fires BEFORE permissions — an AUDITOR gets the same
+        sunset refusal (the surface is gone for everyone)."""
         resp: Any = self._make_auditor_client().get(_analytics_url())
-        assert resp.status_code == status.HTTP_200_OK, resp.content
-        body = resp.json()
-        for key in ("search_trends", "no_result_queries", "click_through_rate", "total_searches"):
-            assert key in body, f"analytics response missing {key!r}"
+        self._assert_sunset(resp, "/api/search/")
 
-    def test_auditor_rebuild_returns_200_and_starts(self):
+    def test_rebuild_sunset_contract_regardless_of_auth(self):
         resp: Any = self._make_auditor_client().post(_rebuild_url(), {}, format="json")
-        assert resp.status_code == status.HTTP_200_OK, resp.content
-        body = resp.json()
-        assert body.get("status") == "index rebuild started", body
+        self._assert_sunset(resp, "/api/search/")
