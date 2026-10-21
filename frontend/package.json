@@ -30,7 +30,7 @@
     "chromatic": "chromatic --build-script-name=build-storybook --exit-zero-on-changes",
     "test": "NODE_OPTIONS='--no-webstorage' vitest",
     "test:run": "NODE_OPTIONS='--no-webstorage --max-old-space-size=8192' node scripts/test-shards.cjs",
-    "test:run:ci": "NODE_OPTIONS='--no-webstorage --max-old-space-size=8192' node scripts/test-shards.cjs",
+    "test:run:ci": "NODE_OPTIONS='--max-old-space-size=8192' node scripts/test-shards.cjs",
     "test:ui": "vitest --ui",
     "test:coverage": "NODE_OPTIONS='--no-webstorage' vitest --coverage",
     "test:component": "NODE_OPTIONS='--no-webstorage --max-old-space-size=8192' vitest run src/features/ && NODE_OPTIONS='--no-webstorage --max-old-space-size=8192' vitest run src/shared/api/ src/shared/utils/ src/shared/hooks/",

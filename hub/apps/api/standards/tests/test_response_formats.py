@@ -111,11 +111,11 @@ class TestStandardResponseFormatter(TestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(response.data["error"]["code"], "VALIDATION_ERROR")
-        self.assertEqual(response.data["error"]["message"], "Invalid input")
-        self.assertEqual(response.data["error"]["http_status"], 400)
-        self.assertIn("request_id", response.data["error"])
-        self.assertIn("timestamp", response.data["error"])
+        # W12.5 — the ONE error envelope: the canonical flat wire shape
+        # {"detail", "code", "details"} (the nested {"error": {...}} shape
+        # was the second, divergent envelope and is gone).
+        self.assertEqual(response.data["code"], "VALIDATION_ERROR")
+        self.assertEqual(response.data["detail"], "Invalid input")
 
     def test_format_error_with_details(self):
         """Test formatting error response with details."""
@@ -128,7 +128,7 @@ class TestStandardResponseFormatter(TestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(response.data["error"]["details"], details)
+        self.assertEqual(response.data["details"], details)
 
     def test_format_error_with_request_id(self):
         """Test formatting error response with custom request ID."""
@@ -140,7 +140,8 @@ class TestStandardResponseFormatter(TestCase):
             request_id=request_id,
         )
 
-        self.assertEqual(response.data["error"]["request_id"], request_id)
+        # the request id travels in the X-Request-ID header, not the body
+        self.assertEqual(response["X-Request-ID"], request_id)
 
     def test_format_created_basic(self):
         """Test formatting 201 Created response (basic)."""
@@ -203,4 +204,4 @@ class TestConvenienceFunctions(TestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(response.data["error"]["code"], "VALIDATION_ERROR")
+        self.assertEqual(response.data["code"], "VALIDATION_ERROR")
