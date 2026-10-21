@@ -361,9 +361,11 @@ class CostsViewSetTest(TestCase):
         # non-INT: the strict middleware contract (structured 400)
         response = client.get(url, {"months": "not-a-number"})
         self.assertEqual(response.status_code, 400)
-        # out-of-range INT: the view's clamp-and-default path (200)
+        # out-of-range INT: the middleware validates the range too, so
+        # the strict 400 is the TOTAL contract (the view's clamp is
+        # defense-in-depth behind the middleware, not a reachable path)
         response = client.get(url, {"months": "999"})
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 400)
 
     def test_breakdown_missing_tenant_returns_400(self):
         """Costs breakdown returns 400 without tenant context.
