@@ -87,6 +87,17 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r requirements-core.txt
+      # G12: no committed defaults — the runner-side management commands
+      # get EPHEMERAL per-run keys + the HS256 shared-secret mode (the
+      # settings default is RS256, whose empty pair raises at import).
+      # The recreated public repo carries no secrets by design, so the
+      # workflow generates everything itself.
+      - name: Ephemeral runner config (G12)
+        run: |
+          echo "SECRET_KEY=ci-ephemeral-$(openssl rand -hex 24)" >> "$GITHUB_ENV"
+          echo "JWT_SECRET_KEY=ci-ephemeral-$(openssl rand -hex 24)" >> "$GITHUB_ENV"
+          echo "ENCRYPTION_KEY=ci-ephemeral-$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+          echo "JWT_ALGORITHM=HS256" >> "$GITHUB_ENV"
       # H.2.5 recipe automated: HUB_CORE_ONLY=1 manage.py check + help +
       # sampled command --help imports. Catches import-time regressions
       # (e.g. an unguarded paid import in a management command) BEFORE
@@ -118,6 +129,15 @@ jobs:
         # The frontend image builds FROM SCRATCH on fresh runners (no
         # layer cache) — observed 10+ min (the 2026-10-14 timeout).
         timeout-minutes: 20
+      - name: Diagnose stack failure
+        if: failure()
+        run: |
+          # SERVICE names, not container names (`docker compose logs`
+          # resolves services — the first diagnose step asked for the
+          # container name and got "no such service").
+          docker compose -f docker-compose.test.yml -f docker-compose.test.core.yml ps -a || true
+          docker compose -f docker-compose.test.yml -f docker-compose.test.core.yml logs migrate-test-db --tail 80 || true
+          docker compose -f docker-compose.test.yml -f docker-compose.test.core.yml logs api-service-test --tail 120 || true
       - name: Run core-only tests
         run: |
           docker compose -f docker-compose.test.yml -f docker-compose.test.core.yml exec -T \
