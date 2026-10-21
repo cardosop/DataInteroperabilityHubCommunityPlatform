@@ -70,7 +70,10 @@ def _setup_subscription(tenant):
 def _semantic_service_available() -> bool:
     """Check if SemanticService (and thus Fuseki) is available for SPARQL."""
     try:
-        from hub.apps.semantic.service_client import SemanticServiceClient
+        try:
+            from hub.apps.semantic.service_client import SemanticServiceClient
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
 
         client = SemanticServiceClient()
         is_healthy, _ = client.health_check()

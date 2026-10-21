@@ -174,7 +174,10 @@ class ServiceCoordinationTest(ServiceIntegrationValidationTestBase):
         if is_healthy:
             # If semantic service is available, test mapping
             try:
-                from hub.apps.semantic.utils import map_odps_contract_to_semantic_via_service
+                try:
+                    from hub.apps.semantic.utils import map_odps_contract_to_semantic_via_service
+                except (RuntimeError, ModuleNotFoundError):
+                    pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
 
                 result = map_odps_contract_to_semantic_via_service(
                     contract_id=str(odps_contract.id), tenant_id=str(self.tenant.id)

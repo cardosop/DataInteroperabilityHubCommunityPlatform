@@ -15,6 +15,7 @@ from django.conf import settings
 from django.test import TestCase, override_settings
 from rest_framework import status
 
+from envpolicy import skip_or_fail
 from hub.apps.audit.models import AuditEvent
 from hub.apps.files.models import File, FileScanStatus, FileStatus
 from hub.apps.files.scanner import EICAR_STANDARD_TEST_BYTES, ClamAVScanner
@@ -67,7 +68,7 @@ class ClamAVScannerLiveTest(TestCase):
         if _clamav_probe_scanner() is None:
             host = getattr(settings, "CLAMAV_HOST", "127.0.0.1")
             port = int(getattr(settings, "CLAMAV_PORT", 3310))
-            raise pytest.skip(
+            raise skip_or_fail(
                 f"ClamAV daemon unreachable at {host}:{port} — "
                 "start the clamav-test profile or publish port 3310"
             )

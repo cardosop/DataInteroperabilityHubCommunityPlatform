@@ -1,3 +1,5 @@
+import pytest
+
 """
 Phase 121E — Transformation Plan Limit Tests
 
@@ -145,7 +147,10 @@ class TestTransformationPlanLimits(TestCase):
     def test_limit_key_registered_in_registry(self):
         """max_transformation_pipelines is registered in limit_registry."""
         try:
-            from hub.apps.billing.limit_registry import RESOURCE_COUNTERS
+            try:
+                from hub.apps.billing.limit_registry import RESOURCE_COUNTERS
+            except (RuntimeError, ModuleNotFoundError):
+                pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
 
             self.assertIn("max_transformation_pipelines", RESOURCE_COUNTERS)
         except ImportError:

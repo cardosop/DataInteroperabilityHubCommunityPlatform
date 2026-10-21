@@ -272,16 +272,25 @@ class TestDbtDatabricksAcceptance:
     ``django_db`` mark provides the transactional DB.)"""
 
     def _setup(self):
-        from hub.apps.databricks_admin.tests._fixtures import require_dns
+        try:
+            from hub.apps.databricks_admin.tests._fixtures import require_dns
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
 
         require_dns()
         from tests.factories import TenantFactory
 
         self.tenant = TenantFactory.create_tenant()
-        from hub.apps.databricks_admin.tests.test_views import _activate_billing
+        try:
+            from hub.apps.databricks_admin.tests.test_views import _activate_billing
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
 
         _activate_billing(self.tenant)
-        from hub.apps.databricks_admin.tests.test_uc_sync import _make_workspace
+        try:
+            from hub.apps.databricks_admin.tests.test_uc_sync import _make_workspace
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
 
         self.workspace = _make_workspace(self.tenant, name=f"ws-acc-{uuid.uuid4().hex[:8]}")
 
@@ -475,7 +484,10 @@ class TestDbtDatabricksAcceptance:
         )
 
         # ── the terminal chokepoint: results → lineage → ONE ledger row
-        from hub.apps.databricks_admin.models import DatabricksCostLedger
+        try:
+            from hub.apps.databricks_admin.models import DatabricksCostLedger
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
         from hub.apps.transformation.databricks_cost import record_dbt_run_cost
 
         record_dbt_run_cost(

@@ -82,7 +82,10 @@ class TestJobRunFailedWebhookDelivery(TestCase):
         )
 
     def test_a_subscribed_webhook_receives_the_run_failed_delivery(self):
-        from hub.apps.databricks_admin.job_webhooks import notify_job_run_failed
+        try:
+            from hub.apps.databricks_admin.job_webhooks import notify_job_run_failed
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
 
         with TestWebhookServer(response_status=200) as server:
             webhook = self._make_webhook(["databricks.job.run.failed"], server.get_url())
@@ -122,7 +125,10 @@ class TestJobRunFailedWebhookDelivery(TestCase):
             assert data.get("error_message") == "cluster lost"
 
     def test_an_unsubscribed_webhook_gets_zero_deliveries(self):
-        from hub.apps.databricks_admin.job_webhooks import notify_job_run_failed
+        try:
+            from hub.apps.databricks_admin.job_webhooks import notify_job_run_failed
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
 
         with TestWebhookServer(response_status=200) as server:
             webhook = self._make_webhook(["asset.created"], server.get_url())
@@ -151,7 +157,10 @@ class TestJobRunFailedWebhookDelivery(TestCase):
         # transition — a malformed tenant id (a real caller bug) makes
         # the delivery service raise a real DB-layer error; the seam
         # swallows it and reports zero triggered, never a raise.
-        from hub.apps.databricks_admin.job_webhooks import notify_job_run_failed
+        try:
+            from hub.apps.databricks_admin.job_webhooks import notify_job_run_failed
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
 
         result = notify_job_run_failed(
             tenant_id="not-a-uuid",

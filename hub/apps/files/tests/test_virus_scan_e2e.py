@@ -24,6 +24,7 @@ from django.test import TransactionTestCase, override_settings
 from rest_framework import status
 from rest_framework.test import APIClient
 
+from envpolicy import skip_or_fail
 from hub.apps.files.models import File, FileScanStatus, FileStatus
 from hub.apps.files.scanner import EICAR_STANDARD_TEST_BYTES, ClamAVScanner
 from hub.apps.files.storage import S3StorageClient
@@ -89,7 +90,7 @@ class FileVirusScanE2ETest(TransactionTestCase):
         super().setUpClass()
         reason = _clamav_and_storage_skip_reason()
         if reason is not None:
-            raise pytest.skip(reason)
+            raise skip_or_fail(reason)
 
     def setUp(self):
         super().setUp()

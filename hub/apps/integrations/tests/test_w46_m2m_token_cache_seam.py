@@ -41,7 +41,10 @@ class DictTokenCache:
 
 
 def _restore_estate_factory():
-    from hub.apps.databricks_admin.token_cache import M2MTokenCache
+    try:
+        from hub.apps.databricks_admin.token_cache import M2MTokenCache
+    except (RuntimeError, ModuleNotFoundError):
+        pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
 
     register_m2m_token_cache_factory(M2MTokenCache)
 
@@ -50,7 +53,10 @@ class TestM2MTokenCacheSeam:
     def test_ready_wiring_registers_the_estate_factory(self):
         """After Django app population, the default cache resolves to the
         REAL estate M2MTokenCache — the inversion works end-to-end."""
-        from hub.apps.databricks_admin.token_cache import M2MTokenCache
+        try:
+            from hub.apps.databricks_admin.token_cache import M2MTokenCache
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
 
         cache = default_m2m_token_cache()
         assert cache is not None

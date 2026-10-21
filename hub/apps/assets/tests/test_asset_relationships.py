@@ -786,7 +786,10 @@ class AssetRelationshipsTest(TestCase):
 
         Uses real semantic service client to verify integration. Skips gracefully if service unavailable.
         """
-        from hub.apps.semantic.models import ResourceType, SemanticResource
+        try:
+            from hub.apps.semantic.models import ResourceType, SemanticResource
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
 
         # Skip if semantic service not available
         if not check_semantic_service_available():

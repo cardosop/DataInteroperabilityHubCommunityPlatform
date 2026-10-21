@@ -150,7 +150,10 @@ class MarketplaceIntegrationComprehensiveValidationTestBase(TransactionTestCase)
         try:
             from hub.apps.assets.models import Asset
             from hub.apps.contracts.models import Contract
-            from hub.apps.semantic.signals import asset_saved, contract_saved
+            try:
+                from hub.apps.semantic.signals import asset_saved, contract_saved
+            except (RuntimeError, ModuleNotFoundError):
+                pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
 
             # Disconnect signals to prevent semantic service calls during tests
             post_save.disconnect(contract_saved, sender=Contract)
@@ -489,7 +492,10 @@ class MarketplaceIntegrationComprehensiveValidationTestBase(TransactionTestCase)
         try:
             from hub.apps.assets.models import Asset
             from hub.apps.contracts.models import Contract
-            from hub.apps.semantic.signals import asset_saved, contract_saved
+            try:
+                from hub.apps.semantic.signals import asset_saved, contract_saved
+            except (RuntimeError, ModuleNotFoundError):
+                pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
 
             # Reconnect signals after test
             post_save.connect(contract_saved, sender=Contract, weak=False)

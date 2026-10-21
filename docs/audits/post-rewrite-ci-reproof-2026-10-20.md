@@ -121,3 +121,32 @@ a user-level prerequisite, not an engineering gap.
 - The p09 ordering pin and the p24 live-leg pin were updated to the
   post-P2-5 contracts (the sync extraction and the replaced remote's
   tag state) — the pins track the honest state, never the stale one.
+
+## The long tail (rounds 5-8) — stale tests the fresh CI flushed
+
+Once the stack booted, the suite itself ran and each round surfaced a
+stale-test class, all root-fixed in the private tree and re-shipped:
+
+- Round 5: `hub/apps/audit/command_audit.py` + its event-type additions
+  were uncommitted (the P0-17 lane gap — same class as above; commits
+  3c46c3e78 + the event-types commit).
+- Round 6: the W12.5 canonical error envelope — the standards tests
+  still asserted the retired nested `{"error": {...}}` shape (8 sites
+  in test_response_formats.py + 8 in test_validation_middleware.py;
+  flattened to the canonical `{"detail", "code", "details"}` wire
+  shape — the formatter/middleware delegate to api_error_response).
+  Plus the frontend unit job's `NODE_OPTIONS='--no-webstorage …'`
+  (2026-02 cargo, rejected by the Node 20 security releases) — removed.
+- Round 7: the analytics months contract — the test's own docstring
+  had anticipated "a future change that adds validation (and returns
+  400) will fail here and force an explicit decision"; the standards
+  middleware is that change. The test now pins BOTH paths: non-INT
+  months -> structured 400, out-of-range INT -> the view's
+  clamp-and-default 200.
+- Round 8 (diagnostic): `-x` dropped for ONE round so the full suite
+  enumerates the complete remaining set instead of one failure per
+  ~15-minute round; the fail-fast contract returns afterwards.
+
+Every failure so far is a stale test or a missing-commit gap — the
+public CI has found zero product-code defects; it has found (and the
+lane fixed) real repo-integrity + contract-drift debt.

@@ -276,6 +276,66 @@ def test_conftest_paid_regex_covers_manifest_paid_modules():
     )
 
 
+def test_paid_imports_in_core_test_modules_are_guarded():
+    """Every INDENTED paid-layer import inside a core-app test module
+    must sit in a try whose except catches RuntimeError /
+    ModuleNotFoundError (the W7.1 guard contract). The unblocked
+    core-only run exposed 601+ RuntimeErrors from unguarded
+    semantic/billing/databricks_admin imports at setUp/fixture level —
+    the collection-time conftest filter only sees COLUMN-0 imports,
+    so function-level imports must degrade-or-skip themselves."""
+    paid = (
+        "hub.apps.semantic", "hub.apps.billing",
+        "hub.apps.databricks_admin", "hub.apps.marketplace",
+        "hub.apps.baas", "hub.apps.rate_limiting", "hub.apps.ai",
+        "hub.apps.ml", "hub.apps.social", "hub.apps.graphql",
+        "hub.apps.graphql_ld", "hub.apps.graphql_graphene",
+    )
+    paid_test_dirs = {module.split(".")[-1] for module in paid}
+    violations: list[str] = []
+    for path in sorted((ROOT / "hub/apps").rglob("tests/test_*.py")):
+        if set(path.parts) & paid_test_dirs:
+            continue
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except (SyntaxError, UnicodeDecodeError):
+            continue
+        for node in ast.walk(tree):
+            if (
+                not isinstance(node, ast.ImportFrom)
+                or node.module is None
+                or not any(node.module.startswith(p) for p in paid)
+                or node.col_offset == 0
+            ):
+                continue
+            if _guarded_import(tree, node):
+                continue
+            violations.append(
+                f"{path.relative_to(ROOT)}:{node.lineno} {node.module}"
+            )
+    assert not violations, (
+        f"unguarded paid imports in core test modules: {violations} — "
+        "they raise RuntimeError at setUp/fixture time in core-only mode"
+    )
+
+
+def _guarded_import(tree: ast.AST, node: ast.AST) -> bool:
+    for parent in ast.walk(tree):
+        if not isinstance(parent, ast.Try):
+            continue
+        for handler in parent.handlers:
+            if handler.type is None:
+                continue
+            names = {
+                n.id for n in ast.walk(handler.type) if isinstance(n, ast.Name)
+            }
+            if names & {"RuntimeError", "ModuleNotFoundError"}:
+                for child in ast.walk(parent):
+                    if child is node:
+                        return True
+    return False
+
+
 def test_by_name_estate_command_calls_are_installed_guarded():
     """Every ``call_command("seed_e2e_uc_mirror", ...)`` OUTSIDE the
     estate app must sit behind an ``apps.is_installed(

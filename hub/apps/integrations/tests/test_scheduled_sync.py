@@ -48,7 +48,10 @@ def _disconnect_semantic_signals():
     try:
         from hub.apps.assets.models import Asset as _Asset
         from hub.apps.contracts.models import Contract as _Contract
-        from hub.apps.semantic.signals import asset_saved, contract_saved
+        try:
+            from hub.apps.semantic.signals import asset_saved, contract_saved
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
 
         _ps.disconnect(contract_saved, sender=_Contract)
         _ps.disconnect(asset_saved, sender=_Asset)
@@ -69,7 +72,10 @@ def _reconnect_semantic_signals():
     try:
         from hub.apps.assets.models import Asset as _Asset
         from hub.apps.contracts.models import Contract as _Contract
-        from hub.apps.semantic.signals import asset_saved, contract_saved
+        try:
+            from hub.apps.semantic.signals import asset_saved, contract_saved
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
 
         _ps.connect(contract_saved, sender=_Contract, weak=False)
         _ps.connect(asset_saved, sender=_Asset, weak=False)

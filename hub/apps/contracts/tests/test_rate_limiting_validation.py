@@ -1,3 +1,5 @@
+import pytest
+
 """
 Comprehensive Rate Limiting Validation Test Suite (Task 10.1.16.1)
 
@@ -87,8 +89,14 @@ class RateLimitingValidationTest(ContractsAPITestBase):
 
     def test_per_tenant_rate_limits_for_odps_creation(self):
         """Test per-tenant rate limits for ODPS creation"""
-        from hub.apps.rate_limiting.config import get_tenant_rate_limit
-        from hub.apps.rate_limiting.utils import generate_rate_limit_key, sliding_window_check
+        try:
+            from hub.apps.rate_limiting.config import get_tenant_rate_limit
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
+        try:
+            from hub.apps.rate_limiting.utils import generate_rate_limit_key, sliding_window_check
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
 
         # Get tenant rate limit for contract creation
         tenant_limit = get_tenant_rate_limit(
@@ -121,8 +129,14 @@ class RateLimitingValidationTest(ContractsAPITestBase):
 
     def test_per_user_rate_limits_for_odps_creation(self):
         """Test per-user rate limits for ODPS creation"""
-        from hub.apps.rate_limiting.config import get_user_rate_limit
-        from hub.apps.rate_limiting.utils import generate_rate_limit_key, sliding_window_check
+        try:
+            from hub.apps.rate_limiting.config import get_user_rate_limit
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
+        try:
+            from hub.apps.rate_limiting.utils import generate_rate_limit_key, sliding_window_check
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
 
         # Get user rate limit for contract creation
         user_limit = get_user_rate_limit(
@@ -178,7 +192,10 @@ class RateLimitingValidationTest(ContractsAPITestBase):
         """Test rate limit violation responses (429 Too Many Requests)"""
         from django.test import RequestFactory
 
-        from hub.apps.rate_limiting.middleware import RateLimitMiddleware
+        try:
+            from hub.apps.rate_limiting.middleware import RateLimitMiddleware
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
 
         # Create middleware
         def get_response(request):
@@ -210,7 +227,10 @@ class RateLimitingValidationTest(ContractsAPITestBase):
 
     def test_rate_limit_reset_behavior(self):
         """Test rate limit reset behavior"""
-        from hub.apps.rate_limiting.utils import generate_rate_limit_key, sliding_window_check
+        try:
+            from hub.apps.rate_limiting.utils import generate_rate_limit_key, sliding_window_check
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
 
         # Generate a test key
         key = generate_rate_limit_key(
@@ -220,7 +240,10 @@ class RateLimitingValidationTest(ContractsAPITestBase):
         )
 
         # Get limit
-        from hub.apps.rate_limiting.config import get_tenant_rate_limit
+        try:
+            from hub.apps.rate_limiting.config import get_tenant_rate_limit
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
 
         limit = get_tenant_rate_limit(
             str(self.tenant.id), EndpointCategory.CONTRACT, TimeWindow.SUSTAINED
@@ -274,7 +297,10 @@ class RateLimitingValidationTest(ContractsAPITestBase):
 
     def test_rate_limit_with_different_windows(self):
         """Test rate limiting with different time windows"""
-        from hub.apps.rate_limiting.utils import generate_rate_limit_key, sliding_window_check
+        try:
+            from hub.apps.rate_limiting.utils import generate_rate_limit_key, sliding_window_check
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
 
         windows = [TimeWindow.BURST, TimeWindow.SUSTAINED]
 
@@ -295,7 +321,10 @@ class RateLimitingValidationTest(ContractsAPITestBase):
 
     def test_rate_limit_with_different_endpoint_categories(self):
         """Test rate limiting with different endpoint categories"""
-        from hub.apps.rate_limiting.utils import generate_rate_limit_key
+        try:
+            from hub.apps.rate_limiting.utils import generate_rate_limit_key
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
 
         categories = [
             EndpointCategory.CONTRACT,
@@ -316,7 +345,10 @@ class RateLimitingValidationTest(ContractsAPITestBase):
 
     def test_rate_limit_exceeded_returns_proper_error(self):
         """Test rate limit exceeded returns proper error structure"""
-        from hub.apps.rate_limiting.utils import generate_rate_limit_key, sliding_window_check
+        try:
+            from hub.apps.rate_limiting.utils import generate_rate_limit_key, sliding_window_check
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
 
         # Create key with very low limit
         key = generate_rate_limit_key(
@@ -338,7 +370,10 @@ class RateLimitingValidationTest(ContractsAPITestBase):
 
     def test_rate_limit_reset_time_calculation(self):
         """Test rate limit reset time calculation"""
-        from hub.apps.rate_limiting.utils import generate_rate_limit_key, sliding_window_check
+        try:
+            from hub.apps.rate_limiting.utils import generate_rate_limit_key, sliding_window_check
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
 
         key = generate_rate_limit_key(
             tenant_id=str(self.tenant.id),
@@ -359,7 +394,10 @@ class RateLimitingValidationTest(ContractsAPITestBase):
 
     def test_rate_limit_cross_tenant_isolation(self):
         """Test rate limit isolation between tenants"""
-        from hub.apps.rate_limiting.utils import generate_rate_limit_key
+        try:
+            from hub.apps.rate_limiting.utils import generate_rate_limit_key
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
 
         # Create another tenant
         other_tenant = Tenant.objects.create(
@@ -386,7 +424,10 @@ class RateLimitingValidationTest(ContractsAPITestBase):
 
     def test_rate_limit_cross_user_isolation(self):
         """Test rate limit isolation between users"""
-        from hub.apps.rate_limiting.utils import generate_rate_limit_key
+        try:
+            from hub.apps.rate_limiting.utils import generate_rate_limit_key
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
 
         # Generate keys for both users
         key1 = generate_rate_limit_key(

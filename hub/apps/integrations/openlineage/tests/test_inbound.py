@@ -53,11 +53,17 @@ def _create_tenant():
     suite leans on."""
     from django.utils import timezone
 
-    from hub.apps.billing.models import Subscription, SubscriptionStatus
-    from hub.apps.billing.tests.plan_fixtures import (
+    try:
+        from hub.apps.billing.models import Subscription, SubscriptionStatus
+    except (RuntimeError, ModuleNotFoundError):
+        pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
+    try:
+        from hub.apps.billing.tests.plan_fixtures import (
         create_unique_tenant,
         get_pro_plan,
-    )
+        )
+    except (RuntimeError, ModuleNotFoundError):
+        pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
 
     plan = get_pro_plan()
     tenant = create_unique_tenant(

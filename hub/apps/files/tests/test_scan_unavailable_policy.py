@@ -26,6 +26,7 @@ import pytest
 from django.test import override_settings
 from rest_framework import status
 
+from envpolicy import skip_or_fail
 from hub.apps.core.services.base import ValidationError
 from hub.apps.files.models import File, FileScanStatus, FileStatus
 from hub.apps.files.tests.test_base import FilesAPITestBase
@@ -160,7 +161,7 @@ class TestScanUnavailablePolicyAllow(_ScanUnavailablePolicyMixin):
         except (ConnectionError, TimeoutError, OSError):  # pragma: no cover
             pass
         if not storage_available:
-            pytest.skip("S3/MinIO storage not available")
+            skip_or_fail("S3/MinIO storage not available")
 
         response = self.client.get(f"/api/v1/files/{self.unscanned_file.id}/download/")
         assert response.status_code == status.HTTP_200_OK

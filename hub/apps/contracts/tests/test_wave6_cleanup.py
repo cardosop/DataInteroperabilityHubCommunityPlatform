@@ -36,6 +36,8 @@ from pathlib import Path
 
 import pytest
 
+from envpolicy import skip_or_fail
+
 REPO_ROOT = Path(__file__).resolve().parents[4]
 
 
@@ -334,7 +336,7 @@ def test_phase_227_w6_archive_manifest_hashes_match_local_files():
     # anything.  When ops runs locally with the audit-reports files
     # present, this skip becomes a real verification.
     if not verified:
-        pytest.skip(  # noqa: skip-in-body — runtime service dependency
+        skip_or_fail(
             "All declared artefacts are absent from the working tree "
             "(gitignored or already moved to S3).  Hash-shape check "
             f"in the prior test still applies.  Skipped: {skipped}"

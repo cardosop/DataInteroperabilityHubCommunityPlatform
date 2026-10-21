@@ -38,7 +38,10 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 
 def _client(port, tenant_id):
-    from hub.apps.databricks_admin.client import DatabricksApiClient
+    try:
+        from hub.apps.databricks_admin.client import DatabricksApiClient
+    except (RuntimeError, ModuleNotFoundError):
+        pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
 
     return DatabricksApiClient(
         base_url=f"http://127.0.0.1:{port}",
@@ -67,7 +70,10 @@ class TestApiPathPins:
         """The staging surface rides the pinned map — the volume CRUD
         pins (P3) + the NEW fs.files.upload pin (11.4's additive
         volume-write surface), all version-pinned."""
-        from hub.apps.databricks_admin import api_paths
+        try:
+            from hub.apps.databricks_admin import api_paths
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
 
         assert api_paths.API_PATHS["uc.volumes.create"] == "/api/2.1/unity-catalog/volumes"
         assert (
@@ -206,7 +212,10 @@ class TestDbtRunLedger(TestCase):
         )
 
     def test_the_source_tag_is_in_the_vocabulary(self):
-        from hub.apps.databricks_admin.models import DatabricksCostLedgerSource
+        try:
+            from hub.apps.databricks_admin.models import DatabricksCostLedgerSource
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
 
         assert DatabricksCostLedgerSource.DBT_RUN == "dbt_run"
 
@@ -218,7 +227,10 @@ class TestDbtRunLedger(TestCase):
         assert metrics["estimated_cost"] == pytest.approx(1.1)  # 1h x 0.55 x 2.0
 
     def test_a_completed_run_records_exactly_one_ledger_row(self):
-        from hub.apps.databricks_admin.models import DatabricksCostLedger
+        try:
+            from hub.apps.databricks_admin.models import DatabricksCostLedger
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
         from hub.apps.transformation.databricks_cost import record_dbt_run_cost
 
         record_dbt_run_cost(
@@ -238,7 +250,10 @@ class TestDbtRunLedger(TestCase):
         assert rows[0].meta["run_id"] == str(self.execution.id)
 
     def test_a_second_record_is_a_noop(self):
-        from hub.apps.databricks_admin.models import DatabricksCostLedger
+        try:
+            from hub.apps.databricks_admin.models import DatabricksCostLedger
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
         from hub.apps.transformation.databricks_cost import record_dbt_run_cost
 
         record_dbt_run_cost(

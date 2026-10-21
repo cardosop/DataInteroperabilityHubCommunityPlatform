@@ -17,6 +17,7 @@ import pytest
 from django.core.management import call_command
 from django.test import TestCase
 
+from envpolicy import skip_or_fail
 from hub.apps.assets.models import Asset, AssetStatus
 
 # Marketplace is the paid layer — guarded for both core-only absence
@@ -66,7 +67,7 @@ class SeedSmokeFixturesTest(TestCase):
 
     def test_seeds_listings_and_is_idempotent(self):
         if Listing is None:
-            pytest.skip("marketplace (paid layer) not installed in core-only mode")
+            skip_or_fail("marketplace (paid layer) not installed in core-only mode")
         self._run()
         self._run()
         assert Listing.objects.filter(id=CRITICAL_LISTING_ID).count() == 1
@@ -78,7 +79,7 @@ class SeedSmokeFixturesTest(TestCase):
 
     def test_heals_drifted_critical_asset_status(self):
         if Listing is None:
-            pytest.skip("marketplace (paid layer) not installed in core-only mode")
+            skip_or_fail("marketplace (paid layer) not installed in core-only mode")
         """A peer session flipped the CRITICAL asset to DRAFT — the seeder
         must heal it before the listing row is touched, or full_clean
         aborts the whole bring-up (the 3.4 live incident)."""
@@ -99,7 +100,7 @@ class SeedSmokeFixturesTest(TestCase):
 
     def test_heals_drifted_source_asset_status(self):
         if Listing is None:
-            pytest.skip("marketplace (paid layer) not installed in core-only mode")
+            skip_or_fail("marketplace (paid layer) not installed in core-only mode")
         """The federated source's PUBLISHED listing has the same
         ACTIVE-asset constraint — drift there aborts the bring-up too."""
         from hub.apps.tenants.management.commands.seed_smoke_fixtures import (

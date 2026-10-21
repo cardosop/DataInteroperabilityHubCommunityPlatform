@@ -912,7 +912,10 @@ class VirtualizationViewsIntegrationTest(TestCase):
 
     def test_rate_limit_exhausted_returns_429(self):
         """Test that exhausted rate limit returns 429 Too Many Requests"""
-        from hub.apps.rate_limiting.service import check_rate_limit
+        try:
+            from hub.apps.rate_limiting.service import check_rate_limit
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
 
         self.client.force_authenticate(user=self.data_provider_user)
         request = HttpRequest()

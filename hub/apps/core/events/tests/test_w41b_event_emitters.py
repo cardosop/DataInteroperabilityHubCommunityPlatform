@@ -35,10 +35,12 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
+from envpolicy import skip_or_fail
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.contracts.models import ContractStatus
 from hub.apps.contracts.services import ContractService
 from hub.apps.core.events.models import Event
+
 # marketplace is the paid layer — guarded for both core-only absence
 # forms (W7.1); tests that need it skip when absent.
 try:
@@ -158,7 +160,7 @@ class TestContractLifecycleEmitters(TestCase):
 
 def _marketplace_fixtures():
     if Listing is None:
-        pytest.skip("marketplace (paid layer) not installed in core-only mode")
+        skip_or_fail("marketplace (paid layer) not installed in core-only mode")
     """Provider/consumer tenants + users + ACTIVE asset (order-flow fixtures)."""
     uid = uuid.uuid4().hex[:6]
     provider = Tenant.objects.create(

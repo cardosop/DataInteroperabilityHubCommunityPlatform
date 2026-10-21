@@ -19,6 +19,8 @@ from pathlib import Path
 
 import pytest
 
+from envpolicy import skip_or_fail
+
 REPO_ROOT = Path(__file__).resolve().parents[4]
 DEPLOY_YML = REPO_ROOT / ".github" / "workflows" / "deploy.yml"
 
@@ -26,7 +28,7 @@ DEPLOY_YML = REPO_ROOT / ".github" / "workflows" / "deploy.yml"
 @pytest.fixture(scope="module")
 def deploy_yml_text() -> str:
     if not DEPLOY_YML.exists():
-        pytest.skip(f"deploy.yml not found at {DEPLOY_YML} — repo layout drift?")
+        skip_or_fail(f"deploy.yml not found at {DEPLOY_YML} — repo layout drift?")
     return DEPLOY_YML.read_text(encoding="utf-8")
 
 

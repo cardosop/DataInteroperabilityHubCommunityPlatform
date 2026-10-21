@@ -52,7 +52,10 @@ class ODPSAuditComprehensiveValidationBase(TestCase):
         try:
             from hub.apps.assets.models import Asset
             from hub.apps.contracts.models import Contract
-            from hub.apps.semantic.signals import asset_saved, contract_saved
+            try:
+                from hub.apps.semantic.signals import asset_saved, contract_saved
+            except (RuntimeError, ModuleNotFoundError):
+                pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
 
             post_save.disconnect(contract_saved, sender=Contract)
             post_save.disconnect(asset_saved, sender=Asset)
@@ -2736,7 +2739,10 @@ class AuditLogRetentionTest(ODPSAuditComprehensiveValidationBase):
         try:
             from hub.apps.assets.models import Asset
             from hub.apps.contracts.models import Contract
-            from hub.apps.semantic.signals import asset_saved, contract_saved
+            try:
+                from hub.apps.semantic.signals import asset_saved, contract_saved
+            except (RuntimeError, ModuleNotFoundError):
+                pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
 
             post_save.connect(contract_saved, sender=Contract, weak=False)
             post_save.connect(asset_saved, sender=Asset, weak=False)

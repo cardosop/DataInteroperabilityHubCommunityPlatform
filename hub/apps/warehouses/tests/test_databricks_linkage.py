@@ -310,7 +310,10 @@ class DeriveFromSqlWarehouseTests(TestCase):
         # The producer of the form (the linkage) and the consumer (the SQL
         # executor's resolve_warehouse_id) must agree on the canonical
         # /sql/1.0/warehouses/{id} shape — a drift here breaks queries.
-        from hub.apps.databricks_admin.sql_statements import SqlStatementExecutor
+        try:
+            from hub.apps.databricks_admin.sql_statements import SqlStatementExecutor
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
 
         conn = WarehouseConnection.derive_from_sql_warehouse(
             self.workspace, self.credential, self.sql_warehouse

@@ -26,6 +26,7 @@ from pathlib import Path
 
 import pytest
 
+from envpolicy import skip_or_fail
 from hub.apps.databricks_admin.tests._fixtures import REAL_HOST, require_dns
 from hub.apps.warehouses.connectors.databricks import DatabricksConnector
 from tests.factories import TenantFactory
@@ -70,7 +71,10 @@ def _record_cost_counts_by_method(path: str) -> dict[str, int]:
 
 
 def _ledger(tenant):
-    from hub.apps.databricks_admin.models import DatabricksCostLedger
+    try:
+        from hub.apps.databricks_admin.models import DatabricksCostLedger
+    except (RuntimeError, ModuleNotFoundError):
+        pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
 
     return DatabricksCostLedger.objects.filter(tenant_id=tenant.id)
 
@@ -218,7 +222,10 @@ class TestLedgerExactlyOnce(_ConnectorMixin):
 
 
 def _ledger_row_exists_for(tenant_id: str) -> bool:
-    from hub.apps.databricks_admin.models import DatabricksCostLedger
+    try:
+        from hub.apps.databricks_admin.models import DatabricksCostLedger
+    except (RuntimeError, ModuleNotFoundError):
+        pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
 
     return DatabricksCostLedger.objects.filter(tenant_id=tenant_id).exists()
 
@@ -254,7 +261,10 @@ class TestWorkspaceAttribution(_ConnectorMixin):
     """Workspace/warehouse attribution resolves to the real estate rows."""
 
     def _workspace(self, tenant, *, name="ws-attr"):
-        from hub.apps.databricks_admin.models import DatabricksCloud, DatabricksWorkspace
+        try:
+            from hub.apps.databricks_admin.models import DatabricksCloud, DatabricksWorkspace
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
 
         return DatabricksWorkspace.objects.create(
             tenant=tenant,
@@ -265,7 +275,10 @@ class TestWorkspaceAttribution(_ConnectorMixin):
         )
 
     def _warehouse(self, workspace):
-        from hub.apps.databricks_admin.models import DatabricksSqlWarehouse
+        try:
+            from hub.apps.databricks_admin.models import DatabricksSqlWarehouse
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
 
         return DatabricksSqlWarehouse.objects.create(
             workspace=workspace,
@@ -368,7 +381,7 @@ class TestWindowJoin:
             redis.Redis(host=host, port=port, db=12).ping()
         except (redis.RedisError, ConnectionError, OSError):
             environment_guard(f"redis ({host}:{port}) unavailable — real Redis required")
-            pytest.skip(f"redis ({host}:{port}) unavailable — real Redis required")
+            skip_or_fail(f"redis ({host}:{port}) unavailable — real Redis required")
         client = redis.Redis(host=host, port=port, db=12, decode_responses=True)
         client.flushdb()
         try:
@@ -377,8 +390,14 @@ class TestWindowJoin:
             client.flushdb()
 
     def test_the_per_query_write_joins_the_window_recorder(self, redis_window):
-        from hub.apps.databricks_admin.budget_window import window_sum
-        from hub.apps.databricks_admin.cost_ledger import record_ledger_cost
+        try:
+            from hub.apps.databricks_admin.budget_window import window_sum
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
+        try:
+            from hub.apps.databricks_admin.cost_ledger import record_ledger_cost
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
         from hub.apps.warehouses.cost_recording import CostRecord
 
         tenant = TenantFactory.create_tenant()

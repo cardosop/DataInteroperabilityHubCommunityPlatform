@@ -22,7 +22,7 @@ import pytest
 from botocore.config import Config
 from botocore.exceptions import ClientError, EndpointConnectionError
 
-from envpolicy import environment_guard
+from envpolicy import environment_guard, skip_or_fail
 
 # tests → files → apps → hub → repo root (parents[4])
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
@@ -70,7 +70,7 @@ class TestStagingMinioBrowserPresign:
                 "staging MinIO unreachable on the browser port — bring the "
                 "stack up first (make staging-up)"
             )
-            pytest.skip("staging MinIO not reachable — stack is down")
+            skip_or_fail("staging MinIO not reachable — stack is down")
 
         probe_key = "post-deploy-probe-presign.txt"
         put_url = client.generate_presigned_url(

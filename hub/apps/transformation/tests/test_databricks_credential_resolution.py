@@ -53,7 +53,10 @@ def _redis_client():
 
 
 def _token_cache():
-    from hub.apps.databricks_admin.token_cache import M2MTokenCache
+    try:
+        from hub.apps.databricks_admin.token_cache import M2MTokenCache
+    except (RuntimeError, ModuleNotFoundError):
+        pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
 
     client = _redis_client()
     cache = M2MTokenCache(redis_client=client)
@@ -87,7 +90,10 @@ class TestWorkspaceResolution(TestCase):
         self.workspace = _make_workspace(self.tenant, name=f"ws-dbt-{uuid.uuid4().hex[:8]}")
 
     def _credential(self, *, auth_mode="PAT", config=None):
-        from hub.apps.databricks_admin.models import DatabricksCredential
+        try:
+            from hub.apps.databricks_admin.models import DatabricksCredential
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
 
         return DatabricksCredential.objects.create(
             workspace=self.workspace,

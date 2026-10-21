@@ -31,7 +31,10 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 
 def _restore_estate_enforcer():
-    from hub.apps.databricks_admin.budget_enforce import enforce_budget as real_enforcer
+    try:
+        from hub.apps.databricks_admin.budget_enforce import enforce_budget as real_enforcer
+    except (RuntimeError, ModuleNotFoundError):
+        pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
 
     register_budget_enforcer(real_enforcer)
 

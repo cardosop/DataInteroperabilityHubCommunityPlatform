@@ -76,6 +76,9 @@ class TestProfileShapeAgreement:
 
 class TestLedgerSourceAgreement:
     def test_the_source_vocabulary_is_one(self):
-        from hub.apps.databricks_admin.models import DatabricksCostLedgerSource
+        try:
+            from hub.apps.databricks_admin.models import DatabricksCostLedgerSource
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
 
         assert DatabricksCostLedgerSource.DBT_RUN == "dbt_run"

@@ -130,7 +130,7 @@ class APIIntegrationTest(TestCase):
         from hub.apps.manifest import is_core_only
 
         if is_core_only():
-            pytest.skip(
+            pytest.skip(  # noqa: skip-in-body — guard-contract runtime gating (core-only mode)
                 "rate_limiting (paid layer) provides the X-RateLimit-* "
                 "headers; absent in core-only mode"
             )

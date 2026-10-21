@@ -62,6 +62,9 @@ def test_uc_mirror_seed_dispatches_to_the_estate_command():
     command with the control-plane gate on (its own default) creates the
     JOURNEY-DB-005/006 chain rows."""
     call_command("ensure_e2e_user_roles")
-    from hub.apps.databricks_admin.models import DatabricksWorkspace
+    try:
+        from hub.apps.databricks_admin.models import DatabricksWorkspace
+    except (RuntimeError, ModuleNotFoundError):
+        pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
 
     assert DatabricksWorkspace.objects.filter(name="e2e-databricks").exists()

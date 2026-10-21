@@ -47,8 +47,10 @@ import pytest
 from django.db import IntegrityError, connection
 from django.test import TestCase, TransactionTestCase
 
+from envpolicy import skip_or_fail
 from hub.apps.assets.models import Asset
 from hub.apps.contracts.models import Contract, ContractStatus, OriginalFormat, OriginalSpecType
+
 # ml is the paid layer — guarded for both core-only absence forms (W7.1).
 try:
     from hub.apps.ml.models import MLModel, ModelStatus, ModelType
@@ -115,7 +117,7 @@ def _mk_asset(tenant):
 
 def _mk_ml_model(tenant, asset):
     if MLModel is None:
-        pytest.skip("ml (paid layer) not installed in core-only mode")
+        skip_or_fail("ml (paid layer) not installed in core-only mode")
     uid = uuid.uuid4().hex[:8]
     return MLModel.objects.create(
         tenant=tenant,

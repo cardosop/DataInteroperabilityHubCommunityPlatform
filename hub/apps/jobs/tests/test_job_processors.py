@@ -593,7 +593,10 @@ class SemanticMappingJobProcessorTest(JobProcessorsTest):
             self.assertTrue(len(semantic_resource_id) > 0)
 
         # Verify semantic resource was created in DB (real execution)
-        from hub.apps.semantic.models import ResourceType, SemanticResource
+        try:
+            from hub.apps.semantic.models import ResourceType, SemanticResource
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
 
         semantic_resource = SemanticResource.objects.filter(
             resource_type=ResourceType.CONTRACT, resource_id=self.contract_id

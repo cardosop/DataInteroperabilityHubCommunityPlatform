@@ -33,14 +33,23 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 
 def _make_workspace_and_credential(auth_mode="PAT", *, token="dapi-journey-token"):
-    from hub.apps.databricks_admin.models import (
+    try:
+        from hub.apps.databricks_admin.models import (
         DatabricksCloud,
         DatabricksCredential,
         DatabricksCredentialAuthMode,
         DatabricksWorkspace,
-    )
-    from hub.apps.databricks_admin.tests._fixtures import REAL_HOST, require_dns
-    from hub.apps.databricks_admin.tests.test_uc_browse import _setup_tenant
+        )
+    except (RuntimeError, ModuleNotFoundError):
+        pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
+    try:
+        from hub.apps.databricks_admin.tests._fixtures import REAL_HOST, require_dns
+    except (RuntimeError, ModuleNotFoundError):
+        pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
+    try:
+        from hub.apps.databricks_admin.tests.test_uc_browse import _setup_tenant
+    except (RuntimeError, ModuleNotFoundError):
+        pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
 
     require_dns()
     tenant, _admin = _setup_tenant()
@@ -115,7 +124,10 @@ class TestJOURNEYDB018RunDbtOnDatabricks:
             data = yaml.safe_load(f)
 
         out = data[executor.profile_name]["outputs"]["prod"]
-        from hub.apps.databricks_admin.tests._fixtures import REAL_HOST
+        try:
+            from hub.apps.databricks_admin.tests._fixtures import REAL_HOST
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
 
         assert out["type"] == "databricks"
         assert out["host"] == REAL_HOST
@@ -131,9 +143,18 @@ class TestJOURNEYDB018RunDbtOnDatabricks:
         secret."""
         # A workspace with NO credential row → the real resolver fails
         # closed; the failure message must never carry token material.
-        from hub.apps.databricks_admin.models import DatabricksCloud, DatabricksWorkspace
-        from hub.apps.databricks_admin.tests._fixtures import REAL_HOST, require_dns
-        from hub.apps.databricks_admin.tests.test_uc_browse import _setup_tenant
+        try:
+            from hub.apps.databricks_admin.models import DatabricksCloud, DatabricksWorkspace
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
+        try:
+            from hub.apps.databricks_admin.tests._fixtures import REAL_HOST, require_dns
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
+        try:
+            from hub.apps.databricks_admin.tests.test_uc_browse import _setup_tenant
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
 
         require_dns()
         from hub.apps.transformation import dbt_executor

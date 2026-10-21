@@ -48,6 +48,7 @@ from django.contrib.auth import get_user_model
 from django.test import TransactionTestCase
 from rest_framework.test import APIClient
 
+from envpolicy import skip_or_fail
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
@@ -91,7 +92,7 @@ def _read_counter_from_metrics(client: APIClient) -> float:
     if response.status_code == 503:
         # Metrics subsystem unavailable — surface a clear failure rather
         # than silently passing.
-        pytest.skip(
+        skip_or_fail(
             "Metrics subsystem unavailable in this test environment "
             "(/metrics/ returned 503 — OPENTELEMETRY_AVAILABLE may be False)."
         )
@@ -233,7 +234,7 @@ class CrossTenantDeniedMetricExpositionTests(TransactionTestCase):
 
         response = self.metrics_client.get("/metrics/")
         if response.status_code == 503:
-            pytest.skip("Metrics subsystem unavailable in this environment")  # noqa: skip-in-body — runtime service dependency
+            skip_or_fail("Metrics subsystem unavailable in this environment")
         self.assertEqual(response.status_code, 200)
         body = response.content.decode("utf-8")
 

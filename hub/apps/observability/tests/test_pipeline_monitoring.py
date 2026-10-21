@@ -129,7 +129,10 @@ class PipelineMonitorTest(TestCase):
             status=UserStatus.ACTIVE,
         )
         # The metrics route is subscription-gated (403 without one).
-        from hub.apps.billing.models import Subscription, SubscriptionStatus
+        try:
+            from hub.apps.billing.models import Subscription, SubscriptionStatus
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.apps (paid layer not installed in core-only mode)")
         from hub.apps.tenants.models import TenantPlan
 
         plan = TenantPlan.objects.filter(tier="FREE").first() or TenantPlan.objects.first()
