@@ -8,8 +8,8 @@ uvicorn[standard]>=0.34.0,<1.0
 # Pin the minor: DRF 3.16.1 imports django.utils.cache.cc_delim_re, which was
 # REMOVED in Django 6.1 — a fresh image build with the unpinned range resolved
 # a newer 6.x and crashed at import (found by the DoD quickstart gate).
-Django>=6.0,<6.1
-djangorestframework==3.16.1
+Django>=6.1.2,<6.2
+djangorestframework==3.18.3
 django-cors-headers==4.9.0
 # Pin docutils: Django's admindocs (pulled in by DRF schema discovery) uses docutils.parsers.rst;
 # docutils 0.21+ reorganized the package and no longer exposes parsers.rst, causing AttributeError.
@@ -19,7 +19,7 @@ docutils>=0.17,<0.21
 psycopg2-binary==2.9.11
 
 # Job Queue
-django-rq==3.2.1
+django-rq==3.2.2
 rq==2.6.1
 redis==7.1.0
 # Phase 260 — deterministic distributed-lock tests need Lua (`lupa`): matches production `EVAL` release path.
@@ -36,7 +36,7 @@ graphene-django==3.2.3
 PyJWT==2.15.0  # closes the 2.12.x advisory batch (PYSEC-2026-4145 PEM-detection bypass, 4152 RSA-JWK DoS, 4183)
 cryptography==46.0.7  # 46.x family (CVE-2026-26007 subgroup-attack pin); 46.0.7 clears PYSEC-2026-35/36
 pyOpenSSL==26.0.0  # CVE-2026-27459: DTLS cookie callback buffer overflow
-django-environ==0.12.0
+django-environ==0.14.0
 django-csp==4.0
 python-magic==0.4.27  # Magic-byte MIME validation (14.6); requires libmagic system lib
 
@@ -50,7 +50,7 @@ django-storages==1.14.6
 
 # Observability
 structlog==25.5.0
-django-structlog==10.0.0
+django-structlog==10.1.0
 # prometheus-client>=0.20.0  # Replaced by OpenTelemetry metrics
 # django-prometheus>=2.4.0  # Removed: Not compatible with Django 6.0
 deprecated==1.3.1  # Required by OpenTelemetry packages
@@ -200,7 +200,7 @@ bcrypt>=4.1,<5.0
 # into INSTALLED_APPS via settings.py + the strong-migrations CI job
 # in .github/workflows/lineage-x-ci-gates.yml runs
 # ``manage.py lintmigrations``.
-django-migration-linter>=5.1,<6.0
+django-migration-linter>=6.0.0,<7.0
 
 # Phase 232 — time-travel tests for GDPR / SLA windows (fixtures also used in QA).
 freezegun>=1.4.0
