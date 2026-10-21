@@ -132,7 +132,12 @@ jobs:
       - name: Diagnose stack failure
         if: failure()
         run: |
-          docker compose -f docker-compose.test.yml -f docker-compose.test.core.yml logs hub-test-api --tail 120 || true
+          # SERVICE names, not container names (`docker compose logs`
+          # resolves services — the first diagnose step asked for the
+          # container name and got "no such service").
+          docker compose -f docker-compose.test.yml -f docker-compose.test.core.yml ps -a || true
+          docker compose -f docker-compose.test.yml -f docker-compose.test.core.yml logs migrate-test-db --tail 80 || true
+          docker compose -f docker-compose.test.yml -f docker-compose.test.core.yml logs api-service-test --tail 120 || true
       - name: Run core-only tests
         run: |
           docker compose -f docker-compose.test.yml -f docker-compose.test.core.yml exec -T \
