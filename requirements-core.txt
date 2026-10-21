@@ -97,7 +97,7 @@ charset-normalizer>=3.4.0,<4.0
 # HTTP Client
 httpx==0.28.1
 httpx2>=2.4.0  # Starlette TestClient transport (replaces deprecated httpx)
-requests==2.33.0  # clears PYSEC-2026-2275
+requests==2.34.2  # clears PYSEC-2026-2275
 urllib3>=2.6.3
 
 # Phase 260.0.8 — bounded retries for S3 reads on schema inference path
