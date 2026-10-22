@@ -429,14 +429,18 @@ class TransformationSecurityTest(TestCase):
             status=PipelineStatus.ACTIVE,
         )
 
-        # Set running jobs to exceed limit
+        # Set running jobs to exceed limit. P3-1: BOTH counters seeded
+        # (the W2.8 reconciliation trap — a missing queued key rebuilds
+        # the counts from the Job table and zeroes the seeded counter).
         from hub.apps.tenants.services import get_tenant_job_limits
 
         limits = get_tenant_job_limits(str(self.tenant1.id))
         max_concurrency = limits["max_job_concurrency"]
 
         running_key = f"job:tenant:{self.tenant1.id}:running"
+        queued_key = f"job:tenant:{self.tenant1.id}:queued"
         cache.set(running_key, max_concurrency, timeout=300)
+        cache.set(queued_key, 0, timeout=300)
 
         # Try to execute pipeline (should fail due to quota)
         try:
@@ -456,6 +460,7 @@ class TransformationSecurityTest(TestCase):
         finally:
             # Cleanup
             cache.delete(running_key)
+            cache.delete(queued_key)
 
     def test_input_validation_prevent_injection(self):
         """SQL injection strings in definitions are inert data.

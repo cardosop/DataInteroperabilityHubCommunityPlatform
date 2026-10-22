@@ -207,6 +207,45 @@ root fixes, each committed with its validation run:
   delta-share suites pass with the container's live root pair (the
   memory trap updated: always read the container env, never the
   recorded pair).
+
+### 5d. The definitive re-run + the residue sweep (2026-10-21/22)
+
+The whole-set core-only re-run over the nine wave dirs measured
+**8,119 passed / 13 failed / 1 error / 1,273 skipped / 725 deselected**
+— and ALL 14 were root-fixed and individually re-validated:
+
+- the connector `_session_config` ×3 (the mid-run-stale class — the
+  fix landed while the run was in flight; 3/3);
+- the w46 seam ready()-wiring tests ×3 — full-mode contracts, now
+  gated with the core-only skipif (3/3 + 3 skips);
+- the tenant-config job-limit tests ×3 — the W2.8 single-counter trap
+  (the FIFTH site overall, incl. the transformation-security twin —
+  1/1) + the retired envelope shape (8/8);
+- the sweep cascade test's fixed-name residue (unique name);
+- the subscription-paywall cache-hit tests — full-mode contracts,
+  gated (4/4 + 2 skips);
+- the marketplace connection-error test — green fresh;
+- the encryption migration ERROR — the residue FK chain
+  (export_run_costs → scheduled_export_runs → scheduled_exports;
+  ingestion_costs/dlq → runs → ingestions) blocked `_clear_table` and
+  poisoned the connection; the chain clears in FK order (14/14).
+
+**Skip classification (the `-rs` pass):** of the 1,273 skips, the
+buckets are all the documented classes — 82 Google-Cloud-libs, 52+…
+paid-layer guard skips (the W7.1 guard contract — by design in core
+mode), 31 Redis-unavailable, ~7 live-cloud-credential skips, 7
+DataContract-CLI skips, plus the service-availability (compose-DNS)
+class — every bucket is the W16 env-policy / guard-contract shape;
+none are silent debt. The 725 deselected are the CI marker contract.
+A final full re-run of the 14 previously-failing nodes plus the
+complete pin battery (64/64) is green.
+
+**The last remaining item is USER-GATED:** the in-place incremental
+migrate of `hub_test_313full` (167→747, the proven clone path) was
+denied by the permission boundary (shared-DB mutation beyond the
+task's named scope; peer no-objections recorded but they cannot
+substitute for user consent). The exact command is recorded above —
+the catch-up path itself is proven.
 - **Public-CI local equivalents — GREEN:** the boundary suite 51/51,
   GATE-29 clean in all three modes (`--check`,
   `--check-allowlist-growth`, `--public`).

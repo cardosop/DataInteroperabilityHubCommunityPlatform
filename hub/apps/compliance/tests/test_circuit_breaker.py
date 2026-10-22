@@ -130,7 +130,15 @@ class ComplianceCircuitBreakerActivationTests(TestCase):
             {"version": asset.version},
             format="json",
         )
-        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        # P3-2b diagnostic: surface the response body when the status
+        # disagrees (the 403 source is under diagnosis)
+        import json as _json
+        _body = ""
+        try:
+            _body = _json.dumps(resp.data)[:600]
+        except Exception:  # noqa: BLE001 — diagnostic only
+            _body = str(getattr(resp, "content", ""))[:600]
+        self.assertEqual(resp.status_code, status.HTTP_200_OK, f"body={_body}")
         asset.refresh_from_db()
         self.assertEqual(asset.compliance_status, ComplianceStatus.WARN)
         ev = AuditEvent.objects.filter(
