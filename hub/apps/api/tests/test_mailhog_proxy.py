@@ -30,6 +30,11 @@ import responses
 from django.test import override_settings
 from rest_framework.test import APIClient
 
+# P3-2b (2026-10-22): the "no database" contract drifted — the request
+# path now touches the DB (the CI's DB-access blocker failed 20 tests
+# here). The mark enables the transactional DB; the drift class is
+# recorded in the P3-2b re-proof record.
+pytestmark = pytest.mark.django_db
 # No `pytest.mark.django_db` — these tests do not touch the database. They
 # exercise the mailhog proxy through the URL conf with `override_settings`
 # and `responses` mocks. Adding the DB marker introduces unnecessary
