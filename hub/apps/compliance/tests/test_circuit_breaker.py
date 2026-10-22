@@ -15,6 +15,7 @@ from rest_framework.test import APIClient
 
 from hub.apps.assets.models import Asset, ComplianceStatus, DQStatus
 from hub.apps.audit.models import AuditEvent
+from hub.apps.compliance.models import ComplianceRun
 from hub.apps.contracts.models import (
     Contract,
     ContractStatus,
@@ -113,6 +114,17 @@ class ComplianceCircuitBreakerActivationTests(TestCase):
             created_by=self.user,
         )
 
+        # The activation contract requires a SUCCEEDED compliance run
+        # (allowed_to_store=True) — without one the rules return
+        # COMPLIANCE_SCAN_PENDING and the view blocks (403). The
+        # warn-proceed contract this test pins is about the CIRCUIT
+        # state alone, so the run must be clean.
+        ComplianceRun.objects.create(
+            tenant=self.tenant,
+            asset=asset,
+            status="SUCCEEDED",
+            allowed_to_store=True,
+        )
         resp = self.client.post(
             f"/api/v1/assets/{asset.id}/activate/",
             {"version": asset.version},
