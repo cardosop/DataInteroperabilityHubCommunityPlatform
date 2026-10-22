@@ -83,6 +83,7 @@ def _patch_dq_service_failure():
     )
 
 
+@pytest.mark.requires_plan_limits
 class DQRunBillingEmitTests(DQAPITestBaseExtended):
     def setUp(self):
         super().setUp()
