@@ -660,7 +660,11 @@ services:
       - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL:-}
       - SMTP_FROM_NAME=${SMTP_FROM_NAME:-${APP_NAME:-Meshant}}
       # Worker-specific configuration
-      - WORKER_HEALTH_PORT=${WORKER_HEALTH_PORT:-8080}
+      # P3-1: WORKER_HEALTH_PORT drives the HOST-side publish mapping
+      # ONLY — it must NOT leak into the container env (the worker
+      # binds the health server on 8080 in-container per its Dockerfile
+      # HEALTHCHECK; a container-level override desynchronized the pair
+      # and the healthcheck always failed).
       - WORKER_MAX_CONCURRENCY=${WORKER_MAX_CONCURRENCY:-4}
       - WORKER_RESERVED_SLOTS_RATIO=${WORKER_RESERVED_SLOTS_RATIO:-0.5}
       - WORKER_STARVATION_THRESHOLD_SECONDS=${WORKER_STARVATION_THRESHOLD_SECONDS:-300}

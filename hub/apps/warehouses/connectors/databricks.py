@@ -136,15 +136,28 @@ class DatabricksConnector(WarehouseConnector):
         )
         self._conn = None
 
+    def _session_config(self) -> dict:
+        """The queryTag session keys (pilot-readiness 2.3): tagged by
+        default with the tenant/asset identity; ``session_tags_enabled:
+        false`` is the EXPLICIT opt-out (the free-edition workspace
+        rejects the keys with CONFIG_NOT_AVAILABLE — the live finding).
+        Disable is strictly the false VALUE — an absent or truthy flag
+        keeps the tags (P3-1: the inline-refactor had dropped the
+        opt-out contract entirely)."""
+        if self._config.get("session_tags_enabled") is False:
+            return {}
+        session_cfg = {}
+        if self._tenant_id:
+            session_cfg["spark.databricks.queryTag.tenant_id"] = self._tenant_id
+        if self._asset_id:
+            session_cfg["spark.databricks.queryTag.asset_id"] = self._asset_id
+        return session_cfg
+
     def connect(self) -> None:
         try:
             from databricks import sql
 
-            session_cfg = {}
-            if self._tenant_id:
-                session_cfg["spark.databricks.queryTag.tenant_id"] = self._tenant_id
-            if self._asset_id:
-                session_cfg["spark.databricks.queryTag.asset_id"] = self._asset_id
+            session_cfg = self._session_config()
 
             host = (self._config.get("host", "") or "").strip()
             # Stored configs historically carried the URL scheme

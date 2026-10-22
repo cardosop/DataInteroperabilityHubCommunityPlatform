@@ -24,6 +24,18 @@ from hub.apps.api.mvp_mode import (
 pytestmark = pytest.mark.django_db
 
 
+
+
+def _paid_url_prefixes(paid_modules) -> set[str]:
+    """The paid modules' URL prefixes — derived from the module names
+    with the explicit overrides where the prefix diverges
+    (databricks_admin mounts under /api/v1/databricks/ — the
+    delta-sharing path shapes)."""
+    overrides = {"databricks_admin": "databricks/"}
+    return {
+        overrides.get(module.split(".")[-1], module.split(".")[-1] + "/")
+        for module in paid_modules
+    }
 class MvpGatedPrefixRoutabilityTest(TestCase):
     """Every prefix in MVP_GATED_RELATIVE_PREFIXES must resolve to at least one URL route."""
 
@@ -38,14 +50,7 @@ class MvpGatedPrefixRoutabilityTest(TestCase):
         from hub.apps.manifest import _PAID_MODULES
 
         core_only = os.environ.get("HUB_CORE_ONLY") == "1"
-        # URL prefixes that diverge from the module's last segment
-        # (databricks_admin mounts under /api/v1/databricks/ — the
-        # delta-sharing path shapes)
-        _module_prefix_overrides = {"databricks_admin": "databricks/"}
-        paid_prefixes = {
-            _module_prefix_overrides.get(module.split(".")[-1], module.split(".")[-1] + "/")
-            for module in _PAID_MODULES
-        }
+        paid_prefixes = _paid_url_prefixes(_PAID_MODULES)
 
         unroutable = []
         for prefix in MVP_GATED_RELATIVE_PREFIXES:
@@ -131,7 +136,7 @@ class MvpModeMiddlewareIntegrationTest(TestCase):
         from hub.apps.manifest import _PAID_MODULES
 
         core_only = os.environ.get("HUB_CORE_ONLY") == "1"
-        paid_prefixes = {module.split(".")[-1] + "/" for module in _PAID_MODULES}
+        paid_prefixes = _paid_url_prefixes(_PAID_MODULES)
         for prefix in MVP_GATED_RELATIVE_PREFIXES:
             if core_only and prefix in paid_prefixes:
                 continue
