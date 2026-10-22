@@ -58,6 +58,17 @@ class ComplianceCircuitBreakerActivationTests(TestCase):
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
         )
+        # W7.5 — enforced scope contract: the activate action requires
+        # HasScope("assets:write"); DATA_PROVIDER carries both asset
+        # scopes (the sibling asset-activation tests' pattern).
+        from hub.apps.users.models import Role
+
+        _provider_role, _ = Role.objects.get_or_create(
+            tenant=self.tenant,
+            name="DATA_PROVIDER",
+            defaults={"description": "Data Provider Role"},
+        )
+        self.user.user_roles.create(role=_provider_role)
 
     def tearDown(self):
         reset_circuit_breaker_by_name("compliance-service")
@@ -130,15 +141,7 @@ class ComplianceCircuitBreakerActivationTests(TestCase):
             {"version": asset.version},
             format="json",
         )
-        # P3-2b diagnostic: surface the response body when the status
-        # disagrees (the 403 source is under diagnosis)
-        import json as _json
-        _body = ""
-        try:
-            _body = _json.dumps(resp.data)[:600]
-        except Exception:  # noqa: BLE001 — diagnostic only
-            _body = str(getattr(resp, "content", ""))[:600]
-        self.assertEqual(resp.status_code, status.HTTP_200_OK, f"body={_body}")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
         asset.refresh_from_db()
         self.assertEqual(asset.compliance_status, ComplianceStatus.WARN)
         ev = AuditEvent.objects.filter(
