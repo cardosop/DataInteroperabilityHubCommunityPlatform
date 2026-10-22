@@ -379,7 +379,7 @@ class EveryMountedPrefixIsClassifiedTest(TestCase):
         from hub.apps.manifest import _PAID_MODULES
 
         core_only = os.environ.get("HUB_CORE_ONLY") == "1"
-        paid_prefixes = {module.split(".")[-1] + "/" for module in _PAID_MODULES}
+        paid_prefixes = _paid_url_prefixes(_PAID_MODULES)
         stale_gated = (gated - mounted) - (paid_prefixes if core_only else set())
         stale_core = (core - mounted) - (paid_prefixes if core_only else set())
         self.assertFalse(
