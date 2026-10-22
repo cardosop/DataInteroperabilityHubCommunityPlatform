@@ -31,6 +31,7 @@ pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
 
+@pytest.mark.requires_plan_limits
 class VersioningMaxDatasetsTest(TestCase):
     """create_version_from_dataset routes through the max_datasets cap."""
 
