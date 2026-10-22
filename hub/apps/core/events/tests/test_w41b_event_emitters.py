@@ -300,9 +300,11 @@ class TestMarketplaceOrderEmitters(TestCase):
         self.assertEqual(rows[0].data["rejection_reason"], "insufficient quota")
 
 
+@pytest.mark.requires_marketplace
 class TestMarketplaceAbsentEmitters(TestCase):
     """C7 — documented-absent events must STAY absent (deliberate decisions,
-    pinned so accidental wiring is caught)."""
+    pinned so accidental wiring is caught). Paid-layer test in a core
+    file — excluded from the public CI's core test set."""
 
     def setUp(self):
         (
@@ -347,6 +349,7 @@ class TestMarketplaceAbsentEmitters(TestCase):
         self.assertEqual(_emitted_rows("marketplace.entitlement.revoked", self.consumer), [])
 
 
+@pytest.mark.requires_marketplace
 class TestMarketplaceListingPublishEmitter(TestCase):
     """C7 — marketplace.listing.published on the primary publish path."""
 
