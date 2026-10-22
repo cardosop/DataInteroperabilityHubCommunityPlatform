@@ -131,7 +131,9 @@ class DsarApiTests(TestCase):
                     "subject_email": "public@example.com",
                     "regimes": ["GDPR"],
                     "hcaptcha_response": "test-bypass-token",
-                    "tenant_id": str(self.tenant.id),
+                    # W1.2b: the public ingress takes the tenant's PUBLIC
+                    # slug (a client-supplied UUID was a scoping capability)
+                    "tenant_slug": self.tenant.slug,
                 },
                 format="json",
             )
