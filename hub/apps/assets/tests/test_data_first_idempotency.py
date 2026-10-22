@@ -206,11 +206,16 @@ class IdempotencyKeyRequiredTest(TestCase):
             except ValueError:
                 body = response.content.decode("utf-8", errors="replace")
             if isinstance(body, dict):
-                # Two possible response shapes:
-                #   {"error": {"code": "INVALID_IDEMPOTENCY_KEY", ...}}  (middleware)
-                #   {"error": "message", "code": "IDEMPOTENCY_KEY_MALFORMED"}  (view)
+                # The canonical W12.5 flat envelope {"detail", "code",
+                # "details"} plus the legacy shapes some paths still emit:
+                #   {"error": {"code": ...}}  (the retired nested shape)
+                #   {"error": "message", "code": ...}  (the view's string form)
                 err = body.get("error", {})
-                code = err.get("code", "") if isinstance(err, dict) else body.get("code", "")
+                code = body.get("code", "")
+                if not code and isinstance(err, dict):
+                    code = err.get("code", "")
+                if not code and isinstance(err, str):
+                    code = err
             else:
                 code = str(body)
             assert code in (
