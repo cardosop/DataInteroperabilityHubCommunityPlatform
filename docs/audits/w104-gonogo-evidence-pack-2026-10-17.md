@@ -234,7 +234,7 @@ wire-stub key + host redis URLs),
 `TestErrorResponseContract` shape drift (4 tests, flat-vs-nested
 envelope) is attributed, not this lane's change. New pin anchors:
 `hub/apps/auth/tests/test_impersonation_w16.py:115`,
-`hub/apps/api/tests/test_error_response_contract.py:123`,
+`hub/apps/api/tests/test_error_response_contract.py:115`,
 `hub/apps/billing/tests/test_services.py:772`,
 `hub/apps/marketplace/tests/test_w117_refund_race.py:271`,
 `hub/apps/scheduled_ingestion/tests/test_w38_catalog_records.py:117`,

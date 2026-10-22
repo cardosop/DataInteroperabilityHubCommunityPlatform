@@ -143,7 +143,7 @@ def _pre_sweep_tenant(tenant_id_str: str) -> dict[str, Any]:
 
 
 def _hard_delete_one_tenant(
-    *, tenant_id, sweep_run_id: str | None
+    *, tenant_id, sweep_run_id: str | None, drill_skip_grace: bool = False
 ) -> dict[str, Any] | None:
     """Atomically re-lock + re-validate + hard-delete one tenant.
 
@@ -189,11 +189,14 @@ def _hard_delete_one_tenant(
         # whose ``restore()`` cleared the grace anchor, between
         # the candidate enumeration and the per-tenant lock
         # acquisition.
-        if (
-            tenant.scheduled_for_deletion_at is None
-            or tenant.scheduled_for_deletion_at >= cutoff
-            or tenant.legal_hold
-        ):
+        if tenant.scheduled_for_deletion_at is None or tenant.legal_hold:
+            return None
+        # P3-1: the grace re-check applies only when NOT drill-skipping
+        # — the drill's named bypass must reach the deletion (the
+        # pre-fix unconditional re-check silently skipped every drill
+        # candidate as lock_contention_or_state_drift). The legal_hold
+        # + DSAR re-checks stay enforced in every mode.
+        if not drill_skip_grace and tenant.scheduled_for_deletion_at >= cutoff:
             return None
         if tenant_blocked_by_open_dsar_restriction(tenant_id=str(tenant.id)):
             return None
@@ -246,6 +249,8 @@ def run_tenant_hard_delete_sweep(
     *,
     dry_run: bool = False,
     sweep_run_id: str | None = None,
+    tenant_slug: list[str] | None = None,
+    drill_skip_grace: bool = False,
 ) -> dict[str, Any]:
     """Walk eligible tenants and hard-delete them.
 
@@ -253,9 +258,14 @@ def run_tenant_hard_delete_sweep(
 
     * ``scheduled_for_deletion_at IS NOT NULL`` (i.e. soft-deleted via
       Phase 235.3 endpoint).
-    * ``scheduled_for_deletion_at < now() - 90d`` (grace expired).
-    * ``legal_hold = False`` at sweep time (re-check).
-    * No open RESTRICTION-class DSAR at sweep time (re-check).
+    * ``scheduled_for_deletion_at < now() - 90d`` (grace expired) —
+      bypassable ONLY in drill mode (``drill_skip_grace=True`` +
+      ``tenant_slug`` — the P3-1 drill contract: named, never
+      incidental).
+    * ``legal_hold = False`` at sweep time (re-check — enforced in
+      every mode).
+    * No open RESTRICTION-class DSAR at sweep time (re-check —
+      enforced in every mode).
 
     Returns
     -------
@@ -270,11 +280,19 @@ def run_tenant_hard_delete_sweep(
         }
     """
     cutoff = timezone.now() - timedelta(days=GRACE_WINDOW_DAYS)
+    candidate_filter: dict[str, Any] = {
+        "scheduled_for_deletion_at__isnull": False,
+    }
+    if not drill_skip_grace:
+        candidate_filter["scheduled_for_deletion_at__lt"] = cutoff
+    if tenant_slug:
+        # Drill mode: named tenants only (the grace bypass is never a
+        # blanket sweep).
+        candidate_filter["slug__in"] = tenant_slug
     candidates = list(
-        Tenant.all_objects.filter(
-            scheduled_for_deletion_at__isnull=False,
-            scheduled_for_deletion_at__lt=cutoff,
-        ).order_by("scheduled_for_deletion_at")
+        Tenant.all_objects.filter(**candidate_filter).order_by(
+            "scheduled_for_deletion_at"
+        )
     )
 
     hard_deleted: list[dict[str, Any]] = []
@@ -332,7 +350,9 @@ def run_tenant_hard_delete_sweep(
 
         try:
             result = _hard_delete_one_tenant(
-                tenant_id=tenant.id, sweep_run_id=sweep_run_id
+                tenant_id=tenant.id,
+                sweep_run_id=sweep_run_id,
+                drill_skip_grace=drill_skip_grace,
             )
         except Exception as exc:  # pragma: no cover — defensive
             logger.exception(

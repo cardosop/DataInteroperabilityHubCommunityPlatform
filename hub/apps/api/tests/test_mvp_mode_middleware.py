@@ -38,7 +38,14 @@ class MvpGatedPrefixRoutabilityTest(TestCase):
         from hub.apps.manifest import _PAID_MODULES
 
         core_only = os.environ.get("HUB_CORE_ONLY") == "1"
-        paid_prefixes = {module.split(".")[-1] + "/" for module in _PAID_MODULES}
+        # URL prefixes that diverge from the module's last segment
+        # (databricks_admin mounts under /api/v1/databricks/ — the
+        # delta-sharing path shapes)
+        _module_prefix_overrides = {"databricks_admin": "databricks/"}
+        paid_prefixes = {
+            _module_prefix_overrides.get(module.split(".")[-1], module.split(".")[-1] + "/")
+            for module in _PAID_MODULES
+        }
 
         unroutable = []
         for prefix in MVP_GATED_RELATIVE_PREFIXES:

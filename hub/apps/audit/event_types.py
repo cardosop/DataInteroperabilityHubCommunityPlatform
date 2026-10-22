@@ -259,6 +259,12 @@ ONBOARDING_COMPLETED: str = "ONBOARDING_COMPLETED"
 #: this event would have fired.
 TENANT_SOFT_DELETED: str = "TENANT_SOFT_DELETED"
 
+#: ``TENANT_DATA_EXPORTED`` — the tenant-data-export command's audit
+#: row (the DSAR/offboarding export path); the command emits it per
+#: invocation with the export summary in ``details_json``. Registered
+#: in P3-1 (the command emitted the constant before it existed here).
+TENANT_DATA_EXPORTED: str = "TENANT_DATA_EXPORTED"
+
 #: Phase 235.3 — emitted by the daily ``tenant_hard_delete_sweep``
 #: cron job IMMEDIATELY BEFORE the Tenant row is hard-deleted. The
 #: audit row survives the cascade via the ``AuditEvent.tenant``

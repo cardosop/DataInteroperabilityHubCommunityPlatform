@@ -47,9 +47,14 @@ User = get_user_model()
 
 @pytest.fixture
 def export_tenant(db):
+    # P3-1: the NAME was fixed ("Export Drill Tenant") while the slug
+    # was timestamped — the tenants_name_key unique constraint collided
+    # on re-runs/residue (the duplicate-key failure class). Both are
+    # unique now.
+    stamp = timezone.now().strftime("%s%f")
     tenant = Tenant.objects.create(
-        slug=f"export-drill-{timezone.now().strftime('%s')}",
-        name="Export Drill Tenant",
+        slug=f"export-drill-{stamp}",
+        name=f"Export Drill Tenant {stamp}",
         status=TenantStatus.ACTIVE,
         kyc_status=KYCStatus.VERIFIED,
         onboarding_completed_at=timezone.now(),
@@ -87,9 +92,15 @@ class TestTenantDataExportCommand:
         assert payload["user_count"] >= 1
 
     def test_export_emits_one_audit_event(self, export_tenant):
+        before = AuditEvent.objects.filter(
+            action=_audit_et.TENANT_DATA_EXPORTED
+        ).count()
         call_command("tenant_data_export", slug=export_tenant.slug)
         events = AuditEvent.objects.filter(action=_audit_et.TENANT_DATA_EXPORTED)
-        assert events.count() == 1, "exactly one TENANT_DATA_EXPORTED per export"
+        # P3-1: delta-counted (the shared-DB residue class).
+        assert events.count() == before + 1, (
+            "exactly one TENANT_DATA_EXPORTED per export"
+        )
         assert str(events.first().tenant_id) == str(export_tenant.id)
 
     def test_archive_roundtrip_through_storage(self, export_tenant, capsys):

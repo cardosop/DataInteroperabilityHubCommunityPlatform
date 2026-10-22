@@ -487,14 +487,19 @@ class TransformationE2ETest(TestCase):
             status=PipelineStatus.ACTIVE,
         )
 
-        # Set running jobs to exceed limit
+        # Set running jobs to exceed limit. P3-1: BOTH counters must be
+        # set — a missing queued key triggers the W2.8 DB reconciliation
+        # (the drift design), which rebuilds the counts from the Job
+        # table and silently zeroes the seeded running counter.
         from hub.apps.tenants.services import get_tenant_job_limits
 
         limits = get_tenant_job_limits(str(self.tenant.id))
         max_concurrency = limits["max_job_concurrency"]
 
         running_key = f"job:tenant:{self.tenant.id}:running"
+        queued_key = f"job:tenant:{self.tenant.id}:queued"
         cache.set(running_key, max_concurrency, timeout=300)
+        cache.set(queued_key, 0, timeout=300)
 
         # Try to execute pipeline (should fail due to quota)
         try:
@@ -514,6 +519,7 @@ class TransformationE2ETest(TestCase):
         finally:
             # Cleanup
             cache.delete(running_key)
+            cache.delete(queued_key)
 
     def test_e2e_execution_with_compliance_checks(self):
         """E2E: Pipeline execution with compliance checks."""

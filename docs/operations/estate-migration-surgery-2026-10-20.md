@@ -167,6 +167,46 @@ triaged failure classes were fixed at the root, each pinned:
 - Remaining host-side environment classes (minio compose DNS, live
   SSRF DNS probes, dashboard fixture files) resolve in the
   in-container CI environment — recorded, not fixable host-side.
+
+### 5c. The full validation sweep (2026-10-21 — every class root-fixed)
+
+The mandate to close EVERY failure produced the following additional
+root fixes, each committed with its validation run:
+
+- **Cross-tenant asset read leak (SECURITY)** — the asset-detail
+  cache was unscoped (any tenant's user got any asset by id from the
+  cache) AND the entitlement hook failed open in core mode
+  (`check_entitlement` → None without a provider, so the cross-tenant
+  fallback resolved any asset). Cache keys are tenant-scoped now
+  (`asset:detail:<tenant>:<id>` — write/read/invalidate all
+  tenant-aware, cross-tenant writes skipped); the hook raises
+  ENTITLEMENT_REQUIRED when unregistered (assets + datasets
+  cross-tenant reads deny — the datasets twin pin flipped RED-first).
+  93/93 full-mode + 9/9 core-mode.
+- **The sunset middleware's unrendered 410** — the
+  APIVersionMiddleware returned DRF Responses outside DRF's dispatch
+  (no accepted_renderer — ContentNotRenderedError on body access,
+  a production 500 in a WSGI render). Rendered explicitly now.
+- **The sunset search-surface tests** (39 across 5 files) pinned the
+  PRE-sunset behaviors of a surface that correctly 410s since
+  2026-08-10 — converted to sunset-contract pins (410 +
+  ENDPOINT_SUNSET + replacement); 3 live-surface tests updated to the
+  perfect1 envelope. Search dir core-mode: 184/184.
+- **Estate dashboard tests** pinned the pre-unwrap Grafana format —
+  rewired to the canonical provisioning shape (46/46).
+- **The wave0 fixture-arg class** (22), **the ODBC import ordering**,
+  **add_error's TypeError/ValueError contract**, **the audit-count
+  residue**, **the impact depth cap**, **the w36 missing scopes**,
+  **the quota single-key reconciliation trap**, **the marketplace
+  bare-string search_fields** (the W11.11 class) — each root-fixed,
+  each suite green (see the commit log: d3ef360af, 973bdbb20,
+  07288f9e8, ea81b92d4).
+- **GATE-29 line-drift** — four allowlist anchors re-anchored after
+  the lane's edits (75/75).
+- **MinIO creds drifted again** — the recorded pair was stale; the
+  delta-share suites pass with the container's live root pair (the
+  memory trap updated: always read the container env, never the
+  recorded pair).
 - **Public-CI local equivalents — GREEN:** the boundary suite 51/51,
   GATE-29 clean in all three modes (`--check`,
   `--check-allowlist-growth`, `--public`).
