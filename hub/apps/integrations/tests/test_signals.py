@@ -19,7 +19,6 @@ class IntegrationsSignalTest(TestCase):
 
     def test_signal_connected_to_post_save(self):
         """Signal handler is connected to WorkflowInstance post_save."""
-        import hub.apps.integrations.signals
         from hub.apps.orchestration.models import WorkflowInstance
 
         # Use Django's has_listeners to verify signal is connected for WorkflowInstance

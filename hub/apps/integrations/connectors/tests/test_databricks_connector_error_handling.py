@@ -4,16 +4,14 @@ Unit tests for DatabricksConnector error handling, retry logic, and circuit brea
 Tests error handling, retry logic with exponential backoff, circuit breaker protection,
 and distributed tracing for Databricks connector.
 """
-
 from unittest.mock import Mock, patch
 
 import httpx
+import pytest
 from django.test import TestCase
 
 from hub.apps.core.services.base import NotFoundError
 from hub.apps.integrations.connectors.databricks_connector import DatabricksConnector
-
-
 
 # P3-2b: the DATABRICKS_MARKETPLACE connector TYPE registration lives in
 # the databricks_admin estate (its apps.py ready()) — absent from the

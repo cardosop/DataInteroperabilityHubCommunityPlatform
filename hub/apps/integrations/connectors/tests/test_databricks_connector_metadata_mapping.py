@@ -3,7 +3,7 @@ Unit tests for Databricks connector metadata mapping operations.
 
 Tests map_to_hub_asset and verifies that push methods raise NotImplementedError.
 """
-
+import pytest
 from django.test import TestCase
 
 from hub.apps.assets.models import AssetSourceType
@@ -14,8 +14,6 @@ from hub.apps.integrations.base import (
     MarketplaceType,
 )
 from hub.apps.integrations.connectors.databricks_connector import DatabricksConnector
-
-
 
 # P3-2b: the DATABRICKS_MARKETPLACE connector TYPE registration lives in
 # the databricks_admin estate (its apps.py ready()) — absent from the

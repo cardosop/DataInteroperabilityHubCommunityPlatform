@@ -3,15 +3,13 @@ Unit tests for Databricks connector download operations.
 
 Tests download_resource and helper methods.
 """
-
 from unittest.mock import Mock, patch
 
+import pytest
 from django.test import TestCase
 
 from hub.apps.core.services.base import NotFoundError
 from hub.apps.integrations.connectors.databricks_connector import DatabricksConnector
-
-
 
 # P3-2b: the DATABRICKS_MARKETPLACE connector TYPE registration lives in
 # the databricks_admin estate (its apps.py ready()) — absent from the

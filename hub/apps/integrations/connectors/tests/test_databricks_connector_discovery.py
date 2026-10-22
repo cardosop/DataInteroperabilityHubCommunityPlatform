@@ -4,10 +4,10 @@ Unit tests for Databricks connector discovery operations.
 Tests list_listings, get_listing, and list_resources methods.
 Follows TDD approach - tests written before implementation.
 """
-
 from unittest.mock import Mock, patch
 
 import httpx
+import pytest
 from django.test import TestCase
 
 from hub.apps.core.services.base import NotFoundError
@@ -17,8 +17,6 @@ from hub.apps.integrations.base import (
     MarketplaceType,
 )
 from hub.apps.integrations.connectors.databricks_connector import DatabricksConnector
-
-
 
 # P3-2b: the DATABRICKS_MARKETPLACE connector TYPE registration lives in
 # the databricks_admin estate (its apps.py ready()) — absent from the

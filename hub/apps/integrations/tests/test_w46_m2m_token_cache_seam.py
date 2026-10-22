@@ -31,7 +31,7 @@ pytestmark = pytest.mark.django_db(transaction=True)
 # unregistered default (None) is the CORRECT state and these tests'
 # premises cannot hold. The core-mode default itself is pinned by
 # scripts/tests/test_w46_provider_seams_standalone.py.
-from hub.apps.manifest import is_core_only  # noqa: E402
+from hub.apps.manifest import is_core_only
 
 _core_only_skip = pytest.mark.skipif(
     is_core_only(), reason="estate ready()-wiring requires the paid layer"
