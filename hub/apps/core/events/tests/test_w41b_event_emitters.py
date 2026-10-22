@@ -199,9 +199,12 @@ def _marketplace_fixtures():
     return provider, consumer, provider_user, consumer_user, asset
 
 
+@pytest.mark.requires_marketplace
 class TestMarketplaceOrderEmitters(TestCase):
     """C2 — the notification_subscriber consumes marketplace.order.* but the
-    publisher mixin never fired: wire the primary paths."""
+    publisher mixin never fired: wire the primary paths. Paid-layer test
+    in a core file — the public CI's core test set excludes the marker
+    (the W16 guard inside raises in CI by design)."""
 
     def setUp(self):
         (
