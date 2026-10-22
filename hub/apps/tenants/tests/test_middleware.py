@@ -14,6 +14,16 @@ from hub.apps.tenants.models import Tenant, TenantStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
+# P3-1: the subscription-paywall cache-hit tests are FULL-mode
+# behaviors — in core-only mode the paywall is intentionally absent
+# (the OSS build has no subscription concept) and the middleware
+# returns None, so these premises cannot hold there.
+from hub.apps.manifest import is_core_only  # noqa: E402
+
+_full_mode_only = pytest.mark.skipif(
+    is_core_only(), reason="the subscription paywall requires the paid layer"
+)
+
 
 class TenantSuspensionMiddlewareTest(TestCase):
     """Test TenantSuspensionMiddleware"""
@@ -322,6 +332,7 @@ class TenantSuspensionMiddlewareExtendedTests(TestCase):
 
     # ── Subscription cache hit ───────────────────────────────────────
 
+    @_full_mode_only
     def test_subscription_cache_hit_blocked_status(self):
         """Cache hit with PAST_DUE status returns 403 without DB query."""
         from hub.apps.testing.billing_support import (
@@ -341,6 +352,7 @@ class TenantSuspensionMiddlewareExtendedTests(TestCase):
         self.assertIsNotNone(response)
         self.assertEqual(response.status_code, 403)
 
+    @_full_mode_only
     def test_subscription_cache_hit_active_allows_write(self):
         """Cache hit with ACTIVE status allows the write."""
         from hub.apps.testing.billing_support import (

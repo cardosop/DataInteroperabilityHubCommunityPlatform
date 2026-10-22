@@ -26,6 +26,17 @@ from hub.apps.integrations.m2m_token_cache import (
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
+# P3-1: the ready()-wiring + lazy-singleton contracts are FULL-mode
+# behaviors — in core-only mode the estate app never registers, so the
+# unregistered default (None) is the CORRECT state and these tests'
+# premises cannot hold. The core-mode default itself is pinned by
+# scripts/tests/test_w46_provider_seams_standalone.py.
+from hub.apps.manifest import is_core_only  # noqa: E402
+
+_core_only_skip = pytest.mark.skipif(
+    is_core_only(), reason="estate ready()-wiring requires the paid layer"
+)
+
 
 class DictTokenCache:
     """A real in-memory cache honoring the consumer contract (get/set)."""
@@ -50,6 +61,7 @@ def _restore_estate_factory():
 
 
 class TestM2MTokenCacheSeam:
+    @_core_only_skip
     def test_ready_wiring_registers_the_estate_factory(self):
         """After Django app population, the default cache resolves to the
         REAL estate M2MTokenCache — the inversion works end-to-end."""
@@ -62,6 +74,7 @@ class TestM2MTokenCacheSeam:
         assert cache is not None
         assert isinstance(cache, M2MTokenCache)
 
+    @_core_only_skip
     def test_default_is_a_lazy_singleton(self):
         cache_a = default_m2m_token_cache()
         cache_b = default_m2m_token_cache()

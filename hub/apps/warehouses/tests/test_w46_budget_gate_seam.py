@@ -29,6 +29,16 @@ from hub.apps.warehouses.budget_gate import (
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
+# P3-1: the ready()-wiring contract is a FULL-mode behavior — in
+# core-only mode the estate enforcer never registers and the seam's
+# unregistered default (None) is the CORRECT state. The core-mode
+# default is pinned by scripts/tests/test_w46_provider_seams_standalone.py.
+from hub.apps.manifest import is_core_only  # noqa: E402
+
+_core_only_skip = pytest.mark.skipif(
+    is_core_only(), reason="estate ready()-wiring requires the paid layer"
+)
+
 
 def _restore_estate_enforcer():
     try:
@@ -40,6 +50,7 @@ def _restore_estate_enforcer():
 
 
 class TestBudgetGateSeam:
+    @_core_only_skip
     def test_ready_wiring_registers_the_estate_enforcer(self):
         """The inversion end-to-end: the REAL enforcer answers through the
         seam (a tenant with no budget row → allow, ZERO network calls)."""

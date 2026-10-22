@@ -188,9 +188,12 @@ class TestSweepDrillOptions:
         tenant's users inside the same atomic block."""
         from django.db.models import signals  # noqa: F401 (imports keep ruff quiet)
 
+        # P3-1: unique NAME too (the fixed name collided on the
+        # tenants_name_key across runs — the residue class).
+        sweep_stamp = timezone.now().strftime("%s%f")
         tenant = Tenant.objects.create(
-            slug=f"sweep-drill-{timezone.now().strftime('%s')}",
-            name="Sweep Drill Tenant",
+            slug=f"sweep-drill-{sweep_stamp}",
+            name=f"Sweep Drill Tenant {sweep_stamp}",
             status=TenantStatus.ACTIVE,
         )
         user = User.objects.create_user(

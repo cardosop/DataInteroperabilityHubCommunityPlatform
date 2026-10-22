@@ -165,7 +165,7 @@ class AssetIdempotencyKeyTest(TestCase):
         self.assertEqual(bad.status_code, status.HTTP_409_CONFLICT)
         # Error envelope shape: {"error": {"code": ..., "message": ..., "http_status": ...}}
         body_json = bad.json()
-        self.assertEqual(body_json["error"]["code"], "IDEMPOTENCY_CONFLICT")
+        self.assertEqual(body_json["code"], "IDEMPOTENCY_CONFLICT")
 
     # ---- Validation errors ---------------------------------------------------
 
@@ -179,7 +179,7 @@ class AssetIdempotencyKeyTest(TestCase):
             HTTP_IDEMPOTENCY_KEY="abc",
         )
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(resp.json()["error"]["code"], "INVALID_IDEMPOTENCY_KEY")
+        self.assertEqual(resp.json()["code"], "INVALID_IDEMPOTENCY_KEY")
 
     # ---- Cross-tenant isolation ---------------------------------------------
 

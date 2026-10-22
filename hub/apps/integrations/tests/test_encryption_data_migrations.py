@@ -34,8 +34,21 @@ def _clear_table(table):
     """Wipe a migration-test table: the forward/reverse migration fns
     process ALL rows table-wide, so rows committed by earlier tests
     (encrypted under a different ENCRYPTION_KEY) would poison the
-    reverse run with InvalidToken."""
+    reverse run with InvalidToken. P3-1: the WHOLE dependent chain
+    must be cleared in FK order first — residue children from prior
+    runs block the parent DELETE with an FK IntegrityError
+    (export_run_costs → scheduled_export_runs → scheduled_exports;
+    scheduled_ingestion_costs/dlq → scheduled_ingestion_runs →
+    scheduled_ingestions), which poisons the test's connection and
+    surfaces as a teardown "connection already closed"."""
     with connection.cursor() as cur:
+        if table == "scheduled_exports":
+            cur.execute("DELETE FROM export_run_costs")
+            cur.execute("DELETE FROM scheduled_export_runs")
+        elif table == "scheduled_ingestions":
+            cur.execute("DELETE FROM scheduled_ingestion_costs")
+            cur.execute("DELETE FROM scheduled_ingestion_dlq")
+            cur.execute("DELETE FROM scheduled_ingestion_runs")
         cur.execute(f"DELETE FROM {table}")
 
 

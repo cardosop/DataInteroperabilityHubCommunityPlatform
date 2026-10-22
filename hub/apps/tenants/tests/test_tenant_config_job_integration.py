@@ -224,9 +224,14 @@ class TenantConfigJobIntegrationTest(TestCase):
         # Create tenant config with low concurrency limit
         TenantConfig.objects.create(tenant=self.tenant, max_job_concurrency=2, max_queued_jobs=10)
 
-        # Set running jobs to limit (simulate existing running jobs)
+        # Set running jobs to limit (simulate existing running jobs).
+        # P3-1: BOTH counters must be seeded — a missing key triggers
+        # the W2.8 DB reconciliation, which rebuilds the counts from
+        # the Job table and silently zeroes the seeded counter.
         running_key = f"job:tenant:{self.tenant.id}:running"
+        queued_key = f"job:tenant:{self.tenant.id}:queued"
         cache.set(running_key, 2, timeout=86400)
+        cache.set(queued_key, 0, timeout=86400)
 
         self.client.force_authenticate(user=self.user)
 
@@ -243,18 +248,22 @@ class TenantConfigJobIntegrationTest(TestCase):
 
         # Should return 429 Too Many Requests
         self.assertEqual(response.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
-        self.assertIn("error", response.data)
-        self.assertEqual(response.data["error"]["code"], "JOB_RATE_LIMITED")
-        self.assertIn("concurrent job limit", str(response.data["error"]["message"]))
+        # P3-1: the perfect1 envelope (detail/code/details) — the old
+        # {"error": {...}} shape was retired.
+        self.assertEqual(response.data["code"], "JOB_RATE_LIMITED")
+        self.assertIn("concurrent job limit", str(response.data["detail"]))
 
     def test_job_creation_exceeding_queued_jobs_limit(self):
         """Test job creation fails when tenant queued jobs limit exceeded"""
         # Create tenant config with low queue depth limit
         TenantConfig.objects.create(tenant=self.tenant, max_job_concurrency=5, max_queued_jobs=3)
 
-        # Set queued jobs to limit (simulate existing queued jobs)
+        # Set queued jobs to limit (simulate existing queued jobs).
+        # P3-1: both counters seeded (the W2.8 reconciliation trap).
         queued_key = f"job:tenant:{self.tenant.id}:queued"
+        running_key = f"job:tenant:{self.tenant.id}:running"
         cache.set(queued_key, 3, timeout=86400)
+        cache.set(running_key, 0, timeout=86400)
 
         self.client.force_authenticate(user=self.user)
 
@@ -271,9 +280,10 @@ class TenantConfigJobIntegrationTest(TestCase):
 
         # Should return 429 Too Many Requests
         self.assertEqual(response.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
-        self.assertIn("error", response.data)
-        self.assertEqual(response.data["error"]["code"], "JOB_RATE_LIMITED")
-        self.assertIn("queued job limit", str(response.data["error"]["message"]))
+        # P3-1: the perfect1 envelope (detail/code/details) — the old
+        # {"error": {...}} shape was retired.
+        self.assertEqual(response.data["code"], "JOB_RATE_LIMITED")
+        self.assertIn("queued job limit", str(response.data["detail"]))
 
     def test_job_creation_with_platform_defaults(self):
         """Test job creation uses platform defaults when tenant config not set"""
@@ -355,9 +365,13 @@ class TenantConfigJobIntegrationTest(TestCase):
         self.assertTrue(can_create)
         self.assertIsNone(error)
 
-        # Test exceeding concurrency limit
+        # Test exceeding concurrency limit. P3-1: both counters seeded
+        # (the W2.8 reconciliation trap — a missing key rebuilds the
+        # counts from the Job table, zeroing the seeded counter).
         running_key = f"job:tenant:{self.tenant.id}:running"
+        queued_key = f"job:tenant:{self.tenant.id}:queued"
         cache.set(running_key, 3, timeout=86400)  # At limit
+        cache.set(queued_key, 0, timeout=86400)
 
         can_create, error = check_tenant_job_limits(str(self.tenant.id))
         self.assertFalse(can_create)
@@ -365,10 +379,11 @@ class TenantConfigJobIntegrationTest(TestCase):
 
         # Reset
         cache.delete(running_key)
+        cache.delete(queued_key)
 
-        # Test exceeding queued limit
-        queued_key = f"job:tenant:{self.tenant.id}:queued"
+        # Test exceeding queued limit (both counters seeded).
         cache.set(queued_key, 10, timeout=86400)  # At limit
+        cache.set(running_key, 0, timeout=86400)
 
         can_create, error = check_tenant_job_limits(str(self.tenant.id))
         self.assertFalse(can_create)
