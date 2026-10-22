@@ -21,12 +21,12 @@ from __future__ import annotations
 
 import json
 
-from django.core.management.base import BaseCommand
+from hub.apps.audit.command_audit import AuditedCommand
 
 DEFAULT_MAX = 100
 
 
-class Command(BaseCommand):
+class Command(AuditedCommand):
     help = (
         "Phase 228 F4 (228.F4.12): replay pending OpenLineage DLQ "
         "rows. Bumps replay_attempts; marks permanently_failed=True "

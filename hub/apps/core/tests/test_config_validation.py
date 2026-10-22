@@ -1,3 +1,5 @@
+import pytest
+
 """
 Tests for hub.apps.core.config_validation (Phase 10).
 
@@ -188,6 +190,7 @@ class ValidateProductionSecretsTests(SimpleTestCase):
         self.assertIn("JWT_SECRET_KEY", str(ctx.exception))
 
 
+@pytest.mark.requires_marketplace
 class ValidatePaidServiceConfigTests(SimpleTestCase):
     """Phase P.8 D6 — a full-mode prod/staging deploy missing payment,
     triple-store, BaaS or ML configuration must fail at boot, naming the

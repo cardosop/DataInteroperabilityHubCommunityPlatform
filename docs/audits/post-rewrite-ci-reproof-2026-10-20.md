@@ -150,3 +150,30 @@ stale-test class, all root-fixed in the private tree and re-shipped:
 Every failure so far is a stale test or a missing-commit gap — the
 public CI has found zero product-code defects; it has found (and the
 lane fixed) real repo-integrity + contract-drift debt.
+
+## The tail's classes (rounds 11-25, each root-fixed in the private tree)
+
+- W12.5 envelope: test_error_response_contract + the idempotency suites
+  (api/assets/data-first) — the canonical flat envelope everywhere;
+  FINDING: the exception HANDLER still emits the nested shape (its own
+  tests pin it) — the consolidation follow-up moves the handler onto
+  api_error_response.
+- The mvp-mode routability + classification pins: the paid-prefix
+  derivation mapped databricks_admin to the wrong URL prefix (the
+  estate mounts under /api/v1/databricks/) — one shared helper with
+  the explicit override.
+- The circuit-breaker activation tests (compliance + dq twins): three
+  separate evolved contracts — the 5.4.3 run-gate (a SUCCEEDED
+  allowed_to_store run is now required), the W7.5 enforced assets:write
+  scope (DATA_PROVIDER role), and the fixture's failed-scan runs
+  conflating circuit-state with run-state.
+- The paid-layer-in-core-files class: marketplace emitter tests +
+  the plan-limit cap tests + the dq billing-emit tests — new markers
+  (requires_marketplace, requires_plan_limits) + the core-CI
+  exclusion list (the tests still run in the private full suite).
+- The W1.2b public-DSAR slug contract (tenant_slug replaces the
+  scoping UUID).
+- The analytics months contract (strict middleware validation wins).
+
+The enumeration round (no fail-fast, 60-minute budget) completes the
+list; the remaining fixes land as one batch.

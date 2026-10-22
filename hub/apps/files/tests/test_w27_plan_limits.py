@@ -100,6 +100,11 @@ def _make_plan(*, max_storage_gb=None, max_datasets=None, slug=None) -> TenantPl
     return plan
 
 
+
+# P3-2b: plan-limit enforcement is the billing layer (unlimited by
+# construction in the core-only tree).
+pytestmark = [pytest.mark.requires_plan_limits]
+
 class W27StoragePins(FilesTestBase):
     """B3 — PENDING-aware storage counters (quota-stacking contract)."""
 

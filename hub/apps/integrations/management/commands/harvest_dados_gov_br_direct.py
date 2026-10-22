@@ -17,9 +17,10 @@ Usage:
 import logging
 
 from django.contrib.auth import get_user_model
-from django.core.management.base import BaseCommand, CommandError
+from django.core.management.base import CommandError
 from django.db import transaction
 
+from hub.apps.audit.command_audit import AuditedCommand
 from hub.apps.integrations.base import MarketplaceType
 from hub.apps.integrations.config.marketplace_instances import get_marketplace_instance_config
 from hub.apps.integrations.factory import MarketplaceConnectorFactory
@@ -31,7 +32,7 @@ User = get_user_model()
 logger = logging.getLogger(__name__)
 
 
-class Command(BaseCommand):
+class Command(AuditedCommand):
     help = "Directly harvest data from dados.gov.br and create federated assets"
 
     def add_arguments(self, parser):

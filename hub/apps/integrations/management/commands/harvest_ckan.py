@@ -8,9 +8,10 @@ Usage:
 """
 
 from django.contrib.auth import get_user_model
-from django.core.management.base import BaseCommand, CommandError
+from django.core.management.base import CommandError
 from django.db import transaction
 
+from hub.apps.audit.command_audit import AuditedCommand
 from hub.apps.integrations.base import MarketplaceType
 from hub.apps.integrations.config.marketplace_instances import get_marketplace_instance_config
 from hub.apps.integrations.models import MarketplaceConnection
@@ -20,7 +21,7 @@ from hub.apps.tenants.models import Tenant
 User = get_user_model()
 
 
-class Command(BaseCommand):
+class Command(AuditedCommand):
     help = "Harvest data from CKAN instances (e.g., dados.gov.br) into Hub"
 
     def add_arguments(self, parser):

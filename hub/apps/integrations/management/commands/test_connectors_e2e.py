@@ -28,7 +28,7 @@ import uuid
 from typing import Any
 
 from django.contrib.auth import get_user_model
-from django.core.management.base import BaseCommand, CommandError
+from django.core.management.base import CommandError
 from django.db import transaction
 
 from hub.apps.assets.models import (
@@ -36,6 +36,7 @@ from hub.apps.assets.models import (
     AssetSourceType,
     ExternalResourceReference,
 )
+from hub.apps.audit.command_audit import AuditedCommand
 from hub.apps.contracts.models import OriginalSpecType
 from hub.apps.integrations.base import (
     MarketplaceType,
@@ -118,7 +119,7 @@ def get_snowflake_credentials() -> dict:
     return credentials
 
 
-class Command(BaseCommand):
+class Command(AuditedCommand):
     help = (
         "Manual end-to-end testing of marketplace connectors (CKAN, dados.gov.br, Snowflake, Azure)"
     )

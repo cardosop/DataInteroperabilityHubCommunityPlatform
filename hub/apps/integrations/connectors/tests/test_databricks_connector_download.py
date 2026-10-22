@@ -12,6 +12,13 @@ from hub.apps.core.services.base import NotFoundError
 from hub.apps.integrations.connectors.databricks_connector import DatabricksConnector
 
 
+
+# P3-2b: the DATABRICKS_MARKETPLACE connector TYPE registration lives in
+# the databricks_admin estate (its apps.py ready()) — absent from the
+# core-only public tree, the factory lookup returns None. Excluded from
+# the core CI's test set; the private full suite runs them.
+pytestmark = [pytest.mark.requires_estate]
+
 class TestDatabricksConnectorDownloadResource(TestCase):
     """Test download_resource method."""
 

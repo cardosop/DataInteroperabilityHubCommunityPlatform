@@ -184,6 +184,7 @@ class TestBigQueryConnectorContract(TestCase):
         )
 
 
+@pytest.mark.requires_snowflake
 class TestSnowflakeLiveIntegration(TestCase):
     """Snowflake live integration — gated at class setup by
     ``_require_snowflake_creds`` (W16: raise in CI, skip locally).
@@ -249,6 +250,7 @@ class TestSnowflakeLiveIntegration(TestCase):
             connector.close()
 
 
+@pytest.mark.requires_gcp
 class TestBigQueryLiveIntegration(TestCase):
     """BigQuery live integration — gated at class setup by
     ``_require_bigquery_creds`` (W16: raise in CI, skip locally)."""

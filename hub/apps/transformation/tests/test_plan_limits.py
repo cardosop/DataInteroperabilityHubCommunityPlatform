@@ -13,6 +13,9 @@ from django.test import TestCase
 from hub.apps.transformation.models import TransformationPipeline
 from hub.apps.transformation.services import TransformationService
 
+# P3-2b: plan-limit enforcement is the billing layer (unlimited by
+# construction in the core-only tree).
+pytestmark = [pytest.mark.requires_plan_limits]
 
 class TestTransformationPlanLimits(TestCase):
     """Verify transformation operations enforce plan limits."""

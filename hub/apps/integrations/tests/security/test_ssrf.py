@@ -71,6 +71,8 @@ import uuid
 import pytest
 from django.core.exceptions import ValidationError as DjangoValidationError
 
+from envpolicy import skip_or_fail
+
 # ---------------------------------------------------------------------------
 # Parameterised attack URLs — Phase 250.5.B.4 (14 vectors)
 # ---------------------------------------------------------------------------
@@ -173,7 +175,7 @@ class TestSSRFGuardAcceptsValidUrls:
             # If DNS is unavailable in the runner, treat the test
             # as a skip rather than a fail.
             if "could not be resolved" in str(exc) or "timed out" in str(exc):
-                pytest.skip(f"DNS unavailable: {exc}")  # noqa: skip-in-body — runtime service dependency
+                skip_or_fail(f"DNS unavailable: {exc}")
             raise
 
     @pytest.mark.parametrize(
@@ -337,11 +339,11 @@ class TestExternalResourceReferenceSSRFIntegration:
         except DjangoValidationError as exc:
             msg = str(exc)
             if "could not be resolved" in msg or "timed out" in msg:
-                pytest.skip(f"DNS unavailable: {msg}")  # noqa: skip-in-body — runtime service dependency
+                skip_or_fail(f"DNS unavailable: {msg}")
             raise
         except SSRFViolationError as exc:
             if "could not be resolved" in str(exc) or "timed out" in str(exc):
-                pytest.skip(f"DNS unavailable: {exc}")  # noqa: skip-in-body — runtime service dependency
+                skip_or_fail(f"DNS unavailable: {exc}")
             raise
 
 

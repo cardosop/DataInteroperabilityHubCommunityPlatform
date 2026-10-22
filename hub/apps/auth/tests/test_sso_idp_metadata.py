@@ -231,6 +231,7 @@ class TestIdPMetadataContract:
         assert "secret-token-value-abc123" not in str(exc_info.value)
 
 
+@pytest.mark.requires_services
 class TestIdPMetadataLive:
     """The real IdP surface (W16): fetch the live discovery document."""
 

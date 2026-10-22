@@ -146,7 +146,7 @@ jobs:
             -e DATABASE_URL=postgresql://hub_test:hub_test@postgres-test:5432/hub_test_test_shared \
             api-service-test \
             python -m pytest hub/apps/ hub/tests/test_mvp_mode.py --reuse-db -q --timeout=300 \
-              -m "not benchmark and not e2e and not integration and not network and not odh_inference and not performance and not requires_aws and not requires_clamav and not requires_gcp and not requires_marketplace and not requires_plan_limits and not requires_prefect and not requires_redis and not requires_services and not requires_snowflake"
+              -m "not benchmark and not e2e and not integration and not network and not odh_inference and not performance and not requires_aws and not requires_clamav and not requires_gcp and not requires_marketplace and not requires_deploy_workflow and not requires_estate and not requires_plan_limits and not requires_prefect and not requires_redis and not requires_services and not requires_snowflake"
         timeout-minutes: 60
       - name: Tear down
         if: always()

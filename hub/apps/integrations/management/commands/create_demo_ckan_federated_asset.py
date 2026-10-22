@@ -11,9 +11,10 @@ Usage:
 """
 
 from django.contrib.auth import get_user_model
-from django.core.management.base import BaseCommand, CommandError
+from django.core.management.base import CommandError
 from django.db import transaction
 
+from hub.apps.audit.command_audit import AuditedCommand
 from hub.apps.integrations.base import MarketplaceType
 from hub.apps.integrations.config.marketplace_instances import get_marketplace_instance_config
 from hub.apps.integrations.factory import MarketplaceConnectorFactory
@@ -27,7 +28,7 @@ User = get_user_model()
 DEFAULT_LISTING_ID = "annakarenina"
 
 
-class Command(BaseCommand):
+class Command(AuditedCommand):
     help = (
         "PULL a specific listing from demo.ckan.org and create a federated asset synchronously. "
         "Used for tests and fixtures."

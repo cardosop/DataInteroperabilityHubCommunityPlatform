@@ -32,6 +32,11 @@ def deploy_yml_text() -> str:
     return DEPLOY_YML.read_text(encoding="utf-8")
 
 
+
+# P3-2b: the smoke-gate pins read the private deploy.yml (not shipped in
+# the public tree) — excluded from the core CI's test set.
+pytestmark = [pytest.mark.requires_deploy_workflow]
+
 def test_w44_smoke_gate_step_is_present(deploy_yml_text):
     """The named step header is the canonical anchor humans grep for."""
     assert "Phase 227 W4.4 — structureless residue smoke gate" in deploy_yml_text

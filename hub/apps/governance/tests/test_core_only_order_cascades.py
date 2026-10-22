@@ -92,6 +92,7 @@ def _make_user(tenant):
     return user
 
 
+@pytest.mark.requires_marketplace
 class CoreOnlyOrderCascadeTests(TestCase):
     """Approve / reject / revoke complete without the paid marketplace."""
 

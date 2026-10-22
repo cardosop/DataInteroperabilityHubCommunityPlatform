@@ -547,6 +547,7 @@ class TestWarehouseStartHelper:
             srv.close()
 
 
+@pytest.mark.requires_services
 class TestDatabricksLiveIntegration(TestCase):
     """Databricks live integration — gated at class setup by
     ``_require_databricks_creds`` (W16: raise in CI, skip locally).
@@ -628,6 +629,7 @@ class TestDatabricksLiveIntegration(TestCase):
             connector.close()
 
 
+@pytest.mark.requires_aws
 class TestAthenaLiveIntegration(TestCase):
     """Athena live integration — gated at class setup by
     ``_require_athena_sandbox`` (W16: raise in CI, skip locally)."""
