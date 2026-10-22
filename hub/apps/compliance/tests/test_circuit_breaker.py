@@ -15,7 +15,6 @@ from rest_framework.test import APIClient
 
 from hub.apps.assets.models import Asset, ComplianceStatus, DQStatus
 from hub.apps.audit.models import AuditEvent
-from hub.apps.compliance.service_client import ComplianceServiceClient
 from hub.apps.contracts.models import (
     Contract,
     ContractStatus,
@@ -63,21 +62,14 @@ class ComplianceCircuitBreakerActivationTests(TestCase):
         reset_circuit_breaker_by_name("compliance-service")
 
     def _open_compliance_circuit(self) -> None:
-        client = ComplianceServiceClient()
+        # Open the breaker DIRECTLY — the old fixture drove it open via
+        # failed scan_file calls, which ALSO created ComplianceRuns with
+        # allowed_to_store=False; the 5.4.3 hardening now (correctly)
+        # blocks activation on those failed runs, conflating the two
+        # concerns. The warn-proceed contract this suite pins is about
+        # the CIRCUIT state, not the run state.
         breaker = get_shared_circuit_breaker("compliance-service")
-        threshold = breaker.failure_threshold
-        for i in range(threshold):
-            result = client.scan_file(
-                b"c\n1\n",
-                "csv",
-                tenant_id=str(self.tenant.id),
-            )
-            # Verify each call actually failed (returned fallback/error)
-            self.assertEqual(
-                result.get("overall_status"),
-                "UNKNOWN",
-                f"Call {i + 1}/{threshold} should have failed against unreachable host",
-            )
+        breaker._set_state(CircuitBreakerState.OPEN)
         self.assertEqual(breaker.get_state(), CircuitBreakerState.OPEN)
 
     def test_activation_proceeds_with_warn_when_compliance_circuit_open(self):
