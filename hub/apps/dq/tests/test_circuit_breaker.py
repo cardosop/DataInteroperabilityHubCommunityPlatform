@@ -74,6 +74,17 @@ class DQCircuitBreakerActivationTests(TestCase):
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
         )
+        # W7.5 enforced-scope contract: the activate action requires
+        # HasScope("assets:write") — DATA_PROVIDER carries both asset
+        # scopes (the sibling asset-activation tests' pattern).
+        from hub.apps.users.models import Role
+
+        _provider_role, _ = Role.objects.get_or_create(
+            tenant=self.tenant,
+            name="DATA_PROVIDER",
+            defaults={"description": "Data Provider Role"},
+        )
+        self.user.user_roles.create(role=_provider_role)
 
     def tearDown(self):
         reset_circuit_breaker_by_name("dq-service")
@@ -137,6 +148,18 @@ class DQCircuitBreakerActivationTests(TestCase):
         # Activation with circuit OPEN: the activation endpoint checks
         # the circuit state and degrades to WARN without making any
         # DQ-service HTTP call.
+        # The activation contract requires a SUCCEEDED compliance run
+        # (allowed_to_store=True) — without one the rules return
+        # COMPLIANCE_SCAN_PENDING and the view blocks. The warn-proceed
+        # contract this test pins is about the CIRCUIT state alone.
+        from hub.apps.compliance.models import ComplianceRun
+
+        ComplianceRun.objects.create(
+            tenant=self.tenant,
+            asset=asset,
+            status="SUCCEEDED",
+            allowed_to_store=True,
+        )
         resp = self.client.post(
             f"/api/v1/assets/{asset.id}/activate/",
             {"version": asset.version},
